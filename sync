@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Preview configuration changes; use --apply to install them.
+
+Examples:
+  ./sync
+  ./sync --apply
+  ./sync --apply --replace-existing
+  ./sync --check
+  ./sync --home /tmp/agent-config-test --apply
+
+Empty Markdown placeholders are skipped. Existing files are replaced only
+with --replace-existing and are backed up alongside the destination first.
+Cursor User Rules are exported to .generated/cursor-user-rules.md for pasting
+into Cursor's Customize > Rules settings. Profiles are not activated by sync.
+"""
+
+import argparse
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+INSTRUCTIONS = {
+    "codex": ".codex/AGENTS.md",
+    "claude-code": ".claude/CLAUDE.md",
+    "opencode": ".config/opencode/AGENTS.md",
+    "grok": ".grok/AGENTS.md",
+}
+SKILLS = {
+    "shared": ".agents/skills",
+    "claude-code": ".claude/skills",
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="write the previewed changes")
+    mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
+    parser.add_argument("--replace-existing", action="store_true",
+                        help="allow replacement of existing destinations, keeping backups")
+    parser.add_argument("--home", type=Path, default=Path.home(),
+                        help="destination home directory (useful for testing)")
+    args = parser.parse_args()
+    home = args.home.expanduser().resolve()
+    files = {}
+    executable_files = set()
+    common = (ROOT / "instructions/common.md").read_text().strip()
+
+    for tool, destination in {
+        **INSTRUCTIONS, "cursor": None,
+    }.items():
+        specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
+        contents = "\n\n".join(part for part in [common, specific] if part)
+        if contents:
+            target = home / destination if destination else ROOT / ".generated/cursor-user-rules.md"
+            files[target] = (contents + "\n").encode()
+
+    for source, destination in SKILLS.items():
+        for skill in sorted((ROOT / "skills" / source).iterdir()):
+            entry = skill / "SKILL.md"
+            if not entry.is_file() or not entry.read_text().strip():
+                continue
+            for file in sorted(skill.rglob("*")):
+                if file.is_file():
+                    target = home / destination / skill.name / file.relative_to(skill)
+                    files[target] = file.read_bytes()
+                    if file.stat().st_mode & 0o111:
+                        executable_files.add(target)
+
+    for agent in sorted((ROOT / "agents/claude-code").glob("*.md")):
+        if agent.read_text().strip():
+            files[home / ".claude/agents" / agent.name] = agent.read_bytes()
+
+    changes = []
+    blocked = False
+    for target, contents in files.items():
+        exists = target.exists() or target.is_symlink()
+        if (target.is_file() and target.read_bytes() == contents
+                and (target not in executable_files or target.stat().st_mode & 0o111)):
+            continue
+        if exists and not (target.is_file() or target.is_symlink()):
+            print(f"BLOCKED (destination is not a file): {target}")
+            blocked = True
+            continue
+        if exists and not args.replace_existing:
+            print(f"BLOCKED (requires --replace-existing): {target}")
+            blocked = True
+        else:
+            print(f"{'REPLACE + BACKUP' if exists else 'CREATE'}: {target}")
+        changes.append((target, contents, exists))
+
+    if blocked:
+        print("No files written. Review destinations before using --replace-existing.")
+        return 2
+    if not changes:
+        print("No changes needed." if files else "No populated sources; empty placeholders skipped.")
+        return 0
+    if args.check:
+        return 1
+    if not args.apply:
+        print("Preview only. Use --apply to write these changes.")
+        return 0
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    for target, contents, exists in changes:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if exists:
+            backup = target.with_name(f"{target.name}.backup-{stamp}")
+            shutil.copy2(target, backup, follow_symlinks=False)
+            print(f"BACKUP: {backup}")
+        # Replace the directory entry, never write through an existing symlink.
+        temporary = target.with_name(f".{target.name}.sync-{stamp}")
+        try:
+            with temporary.open("xb") as stream:
+                stream.write(contents)
+            if target in executable_files:
+                temporary.chmod(0o755)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+    print(f"Applied {len(changes)} file change(s). Restart sessions to load new instructions.")
+    if ROOT / ".generated/cursor-user-rules.md" in files:
+        print("Cursor: paste .generated/cursor-user-rules.md into Customize > Rules.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except OSError as error:
+        print(f"Sync failed: {error}", file=sys.stderr)
+        sys.exit(2)
