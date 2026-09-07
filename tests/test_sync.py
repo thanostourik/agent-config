@@ -40,8 +40,28 @@ class SyncTest(unittest.TestCase):
                          "Shared rules\n\nCodex rules\n")
         for path in [".claude/CLAUDE.md", ".grok/AGENTS.md", ".config/opencode/AGENTS.md"]:
             self.assertEqual((self.home / path).read_text(), "Shared rules\n")
-        self.assertEqual((self.repo / ".generated/cursor-user-rules.md").read_text(),
-                         "Shared rules\n")
+        self.assertEqual((self.home / ".cursor/rules/agent-config.mdc").read_text(),
+                         "---\ndescription: Personal agent configuration\nglobs: \n"
+                         "alwaysApply: true\n---\n\nShared rules\n")
+        self.assertFalse((self.repo / ".generated").exists())
+        self.run_sync("--check")
+
+    def test_cursor_specific_rules_and_existing_rules_are_preserved(self):
+        (self.repo / "instructions/common.md").write_text("Shared rules")
+        (self.repo / "instructions/cursor.md").write_text("Cursor rules")
+        existing = self.home / ".cursor/rules/other.mdc"
+        existing.parent.mkdir(parents=True)
+        existing.write_text("Existing rule")
+        self.run_sync("--apply")
+        target = self.home / ".cursor/rules/agent-config.mdc"
+        self.assertTrue(target.read_text().endswith("Shared rules\n\nCursor rules\n"))
+        self.assertEqual(existing.read_text(), "Existing rule")
+        self.assertNotIn("Cursor rules", (self.home / ".claude/CLAUDE.md").read_text())
+        (self.repo / "instructions/cursor.md").write_text("Updated Cursor rules")
+        self.run_sync("--apply", expected=2)
+        self.run_sync("--apply", "--replace-existing")
+        self.assertTrue(target.read_text().endswith("Updated Cursor rules\n"))
+        self.assertEqual(len(list(target.parent.glob("agent-config.mdc.backup-*"))), 1)
         self.run_sync("--check")
 
     def test_conflicts_block_all_writes_and_replacement_backs_up_symlink(self):

@@ -10,8 +10,9 @@ Examples:
 
 Empty Markdown placeholders are skipped. Existing files are replaced only
 with --replace-existing and are backed up alongside the destination first.
-Cursor User Rules are exported to .generated/cursor-user-rules.md for pasting
-into Cursor's Customize > Rules settings. Profiles are not activated by sync.
+Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
+apply. Cursor IDE discovers these for projects under the home directory.
+Profiles are not activated by sync.
 """
 
 import argparse
@@ -27,6 +28,7 @@ INSTRUCTIONS = {
     "claude-code": ".claude/CLAUDE.md",
     "opencode": ".config/opencode/AGENTS.md",
     "grok": ".grok/AGENTS.md",
+    "cursor": ".cursor/rules/agent-config.mdc",
 }
 SKILLS = {
     "shared": ".agents/skills",
@@ -50,13 +52,13 @@ def main():
     executable_files = set()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
-    for tool, destination in {
-        **INSTRUCTIONS, "cursor": None,
-    }.items():
+    for tool, destination in INSTRUCTIONS.items():
         specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
         contents = "\n\n".join(part for part in [common, specific] if part)
         if contents:
-            target = home / destination if destination else ROOT / ".generated/cursor-user-rules.md"
+            target = home / destination
+            if tool == "cursor":
+                contents = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n" + contents
             files[target] = (contents + "\n").encode()
 
     for source, destination in SKILLS.items():
@@ -123,8 +125,6 @@ def main():
         finally:
             temporary.unlink(missing_ok=True)
     print(f"Applied {len(changes)} file change(s). Restart sessions to load new instructions.")
-    if ROOT / ".generated/cursor-user-rules.md" in files:
-        print("Cursor: paste .generated/cursor-user-rules.md into Customize > Rules.")
     return 0
 
 
