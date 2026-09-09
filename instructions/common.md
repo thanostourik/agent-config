@@ -27,8 +27,8 @@
 ## Plans & AI workflow artifacts
 
 - Plans are flat files in `.plans/`, named `YYYY-MM-DD-short-slug.md`, and are committed.
-- Everything else an AI run parks on disk (analysis, reports, subagent handoffs) goes in
-  `.plans/scratch/` and is not committed. Rendered `*.html` next to plans is also not committed.
+- Temporary working artifacts (analysis notes, scratch reports, subagent handoffs) go in
+  `.plans/scratch/` and are not committed. Rendered `*.html` next to plans is also not committed.
   Projects keep a `.plans/.gitignore` for both.
 
 ## Coding preferences
@@ -39,8 +39,8 @@
 - Be careful with destructive actions that I did not explicitly request.
 - Tests are good. Endless smoke tests, "regression tests" for feature deletions, etc. are much less
   good. Tests should be focused, not slop.
-- Comments are a great way to clarify functionality and how code is used. Don't comment every line,
-  but do describe concisely how functions and classes are used above their definitions.
+- Don't comment every line.
+  Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Handle errors at meaningful boundaries; avoid redundant catches.
@@ -68,7 +68,8 @@
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create
-  merge commits. Squash first only if I ask.
+  merge commits. Squash first only if I ask. If the branch is already pushed, the rebase will require
+  a force-push: tell me and stop.
 - No force-push, ever. If a push is rejected, stop and tell me.
 
 ## Local environment
