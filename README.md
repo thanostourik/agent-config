@@ -6,11 +6,11 @@ Grok, Cursor, and OpenCode, kept in one place.
 ## Use
 
 ```
-./sync            # preview what would change
-./sync --apply    # install into each tool's config directory
+./sync            # show what would change
+./sync --apply    # copy the files into each tool's config folder
 ```
 
-Existing files with different content are only replaced with
-`--replace-existing`, and get a timestamped backup.
+If a file already exists with different content, sync refuses to overwrite it.
+Add `--replace-existing` to allow it. Sync keeps a timestamped backup of the old file.
 
-See [AGENTS.md](AGENTS.md) for the layout, install locations, and tests.
+See [AGENTS.md](AGENTS.md) for the folder layout, install locations, and tests.

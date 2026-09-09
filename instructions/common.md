@@ -8,7 +8,9 @@
   going with arguments for each side.
 - Define and explain unfamiliar technical terms on first use, and reuse the same term consistently.
 - Answer concisely; add detail only when needed for correctness or a decision.
-- Explain plans and architecture in plain, short sentences. I'm not a native English speaker.
+- Write so I can follow on the first read: one idea per sentence, say who does what, use concrete
+  words over abstract ones, and give a short example when a rule is abstract. Every word being
+  familiar is not enough; I need to picture what the sentence says.
 - Questions and design discussion are NEVER implementation approval, not even if I agree
   with your proposal mid-discussion. Implement only after an explicit "go" / "do it" / "implement".
 
@@ -19,7 +21,8 @@
   dependencies, or the agreed approach.
 - If the task is too broad to complete reliably, explain the issue and propose a concrete split.
 - Never revert, overwrite, or commit my uncommitted local work. Ask first, every time.
-- Resolve routine implementation details using repository conventions.
+- For small implementation choices (naming, file placement, patterns), follow what the repository
+  already does. Don't ask me about those.
 - When giving me setup or test instructions, give exact, complete steps. Do not assume I know the tool.
 - Anything that can run longer than ~5 minutes: set an explicit timeout or run it in the background
   with progress checks. Never sit silently on a foreground command.
@@ -27,9 +30,9 @@
 ## Plans & AI workflow artifacts
 
 - Plans are flat files in `.plans/`, named `YYYY-MM-DD-short-slug.md`, and are committed.
-- Temporary working artifacts (analysis notes, scratch reports, subagent handoffs) go in
-  `.plans/scratch/` and are not committed. Rendered `*.html` next to plans is also not committed.
-  Projects keep a `.plans/.gitignore` for both.
+- Temporary files you create while working (analysis notes, scratch reports, subagent handoffs)
+  go in `.plans/scratch/`. Git ignores that folder and any `*.html` next to the plans, through
+  the project's `.plans/.gitignore`.
 
 ## Coding preferences
 
@@ -42,16 +45,17 @@
 - Don't comment every line.
   Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
 - Match the surrounding code's style, naming, and patterns.
-- Avoid unnecessary wrappers, abstractions, and speculative configuration.
-- Handle errors at meaningful boundaries; avoid redundant catches.
+- Don't add wrappers, abstractions, or configuration options that nothing needs yet.
+- Catch errors only where something useful can be done with them (user input, external calls,
+  I/O). Let the rest propagate.
 - Prefer early returns when they make control flow clearer.
 
 ## Verification
 
 - Never say "done" or "fixed" without exercising the change: run it, hit the endpoint, drive the UI.
   Reading your own code is not verification.
-- Pick the checks that match the change: unit tests for logic, an endpoint call for an API, a
-  screenshot compared against the mockup for UI.
+- Match the check to the change: logic gets a unit test, an API gets a real request, UI gets a
+  screenshot compared against the mockup.
 - If you can't verify, say exactly what is unverified and how I can check it.
 - Manual steps for me must be complete and exact: where to click, what to enter, in what order.
 
@@ -64,7 +68,7 @@
 - Conventional commit messages, always: `type(scope): summary (ISSUE-123)` (feat, fix, refactor,
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
 - You may push the current task branch and open a PR against the default branch without asking.
-  Draft PR descriptions from the plan + diff; that's where the plan's "why" gets preserved.
+  Write the PR description from the plan and the diff, so the reason for the change is recorded.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create
@@ -74,8 +78,8 @@
 
 ## Local environment
 
-- Containers started by the project's dev script (databases, auth servers, etc.) run in a branch-isolated
-  environment. You may start, reset, and reseed them freely.
+- The project's dev script starts containers (databases, auth servers, etc.) that belong to the
+  current branch only. You may start, reset, and reseed them freely.
 - App servers (Next.js, Spring Boot, etc.): check whether one is already running and reuse it.
   Ask before starting one yourself, and stop anything you started when you're done so I can run it from my IDE.
 - Never touch shared or remote services (deployed environments, remote databases).
