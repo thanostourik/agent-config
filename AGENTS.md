@@ -62,9 +62,8 @@ explicitly requests installation. Test sync changes with temporary destinations;
 never use live configuration as a test fixture.
 
 Run `python -m unittest discover -s tests -v` for sync changes. The tests copy
-the current source tree, so populated source fragments can affect tests that
-assume an empty scaffold; report that distinction rather than clearing user
-content to make tests pass. No build or development server is needed.
+the source tree and blank out instruction and skill content, so they exercise
+the script, not the real configuration. No build or development server is needed.
 
 Keep shared preferences separate from application behavior and optional model
 policies. Never copy credentials, session state, or plugin caches into this repo.

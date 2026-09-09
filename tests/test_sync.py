@@ -14,6 +14,12 @@ class SyncTest(unittest.TestCase):
         self.home = self.root / "home"
         shutil.copytree(Path(__file__).resolve().parents[1], self.repo,
                         ignore=shutil.ignore_patterns(".git", ".generated", "__pycache__"))
+        # Tests exercise the sync script, not the real configuration content:
+        # start every test from an empty scaffold.
+        for path in (self.repo / "instructions").glob("*.md"):
+            path.write_text("")
+        for folder in ("skills/shared", "skills/claude-code", "agents/claude-code"):
+            shutil.rmtree(self.repo / folder, ignore_errors=True)
 
     def run_sync(self, *args, expected=0):
         result = subprocess.run([str(self.repo / "sync"), "--home", str(self.home), *args],
