@@ -45,7 +45,7 @@
 - Don't comment every line.
   Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
 - Match the surrounding code's style, naming, and patterns.
-- Don't add wrappers, abstractions, or configuration options that nothing needs yet.
+- Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Catch errors only where something useful can be done with them (user input, external calls,
   I/O). Let the rest propagate.
 - Prefer early returns when they make control flow clearer.
@@ -78,8 +78,8 @@
 
 ## Local environment
 
-- The project's dev script starts containers (databases, auth servers, etc.) that belong to the
-  current branch only. You may start, reset, and reseed them freely.
+- Containers started by the project's dev script (databases, auth servers, etc.) run in a branch-isolated
+  environment. You may start, reset, and reseed them freely.
 - App servers (Next.js, Spring Boot, etc.): check whether one is already running and reuse it.
   Ask before starting one yourself, and stop anything you started when you're done so I can run it from my IDE.
 - Never touch shared or remote services (deployed environments, remote databases).
