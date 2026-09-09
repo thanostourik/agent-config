@@ -68,7 +68,7 @@
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create
-  merge commits. Squash first only if I ask. If the branch is already pushed, the rebase will require
+  merge commits. Squash first only if I ask. If the branch is already pushed, the rebase may require
   a force-push: tell me and stop.
 - No force-push, ever. If a push is rejected, stop and tell me.
 

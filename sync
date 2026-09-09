@@ -62,7 +62,10 @@ def main():
             files[target] = (contents + "\n").encode()
 
     for source, destination in SKILLS.items():
-        for skill in sorted((ROOT / "skills" / source).iterdir()):
+        source_dir = ROOT / "skills" / source
+        if not source_dir.is_dir():
+            continue
+        for skill in sorted(source_dir.iterdir()):
             entry = skill / "SKILL.md"
             if not entry.is_file() or not entry.read_text().strip():
                 continue

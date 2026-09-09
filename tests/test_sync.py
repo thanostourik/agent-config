@@ -82,12 +82,14 @@ class SyncTest(unittest.TestCase):
 
     def test_skills_agents_and_profile_isolation(self):
         skill = self.repo / "skills/shared/example"
-        skill.mkdir()
+        skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
         script = skill / "run.sh"
         script.write_text("#!/bin/sh\nexit 0\n")
         script.chmod(0o755)
+        (self.repo / "agents/claude-code").mkdir(parents=True)
         (self.repo / "agents/claude-code/codex-runner.md").write_text("Agent instructions")
+        (self.repo / "profiles").mkdir()
         (self.repo / "profiles/fable-with-sol.md").write_text("Fable-only instructions")
         self.run_sync("--apply")
         installed = self.home / ".agents/skills/example/run.sh"

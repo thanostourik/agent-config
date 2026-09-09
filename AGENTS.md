@@ -21,12 +21,13 @@ them, and do not rename `instructions/claude-code.md` to `CLAUDE.md`.
 - `instructions/common.md`: personal preferences shared by all five tools.
 - `instructions/<tool>.md`: application-specific additions. Sync concatenates
   common instructions first, followed by the application's instructions.
-- `profiles/`: optional model/workflow policies, such as Fable delegating
-  investigation to Sol. Sync does not install or activate profiles.
+- `profiles/`: optional model/workflow policies. Sync does not install or
+  activate profiles.
 - `skills/shared/`: populated skill directories copied to `~/.agents/skills/`.
 - `skills/claude-code/`: populated skill directories copied to `~/.claude/skills/`.
 - `agents/claude-code/`: nonempty Markdown agent definitions copied to
   `~/.claude/agents/`.
+- Directories that do not exist or are empty are skipped by sync.
 - `sync`: executable Python script using only the standard library.
 - `tests/test_sync.py`: integration tests using temporary repositories and homes.
 
