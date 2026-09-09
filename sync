@@ -6,6 +6,7 @@ Examples:
   ./sync --apply
   ./sync --apply --replace-existing
   ./sync --check
+  ./sync --clean-backups
   ./sync --home /tmp/agent-config-test --apply
 
 Empty Markdown placeholders are skipped. Existing files are replaced only
@@ -49,6 +50,8 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="write the previewed changes")
     mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
+    mode.add_argument("--clean-backups", action="store_true",
+                      help="delete backups next to installed files, then exit")
     parser.add_argument("--replace-existing", action="store_true",
                         help="allow replacement of existing destinations, keeping backups")
     parser.add_argument("--home", type=Path, default=Path.home(),
@@ -86,6 +89,14 @@ def main():
             for agent in sorted(agents_dir.iterdir()):
                 if agent.is_file() and agent.read_text().strip():
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
+
+    if args.clean_backups:
+        backups = [b for target in files for b in target.parent.glob(f"{target.name}.backup-*")]
+        for backup in backups:
+            backup.unlink()
+            print(f"DELETED: {backup}")
+        print(f"Deleted {len(backups)} backup(s).")
+        return 0
 
     changes = []
     blocked = False

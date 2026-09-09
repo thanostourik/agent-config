@@ -68,6 +68,8 @@ project somewhere else, it may not see them.
 - `./sync --home /some/temporary/path` installs into that folder instead of
   the real home folder. Use this for testing. Sync still reads the source
   files from this repository.
+- `./sync --clean-backups` deletes every backup that sits next to an installed
+  file. It changes nothing else.
 - Sync never deletes a file it installed earlier. Remove those by hand.
 
 Install into the real home folder only when the user asks. When you test a

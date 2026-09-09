@@ -114,6 +114,17 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".claude/CLAUDE.md").exists())
         self.run_sync("--check")
 
+    def test_clean_backups_removes_only_backups(self):
+        (self.repo / "instructions/common.md").write_text("new")
+        target = self.home / ".codex/AGENTS.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("old")
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual(len(list(target.parent.glob("AGENTS.md.backup-*"))), 1)
+        self.run_sync("--clean-backups")
+        self.assertEqual(list(target.parent.glob("AGENTS.md.backup-*")), [])
+        self.assertEqual(target.read_text(), "new\n")
+
 
 if __name__ == "__main__":
     unittest.main()
