@@ -21,25 +21,29 @@ them, and do not rename `instructions/claude-code.md` to `CLAUDE.md`.
 - `instructions/common.md`: personal preferences shared by all five tools.
 - `instructions/<tool>.md`: application-specific additions. Sync concatenates
   common instructions first, followed by the application's instructions.
-- `profiles/`: optional model/workflow policies. Sync does not install or
-  activate profiles.
-- `skills/shared/`: populated skill directories copied to `~/.agents/skills/`.
-- `skills/claude-code/`: populated skill directories copied to `~/.claude/skills/`.
-- `agents/claude-code/`: nonempty Markdown agent definitions copied to
-  `~/.claude/agents/`.
-- Directories that do not exist or are empty are skipped by sync.
+- `skills/<tool>/<name>/`: populated skill directories, installed to that
+  tool's user skills directory. `skills/shared/` installs to `~/.agents/skills/`.
+- `agents/<tool>/<name>.*`: nonempty agent definitions, installed to that
+  tool's user agents directory.
+- Directories that do not exist or are empty are skipped by sync. Create
+  `skills/<tool>/` or `agents/<tool>/` only when adding content.
 - `sync`: executable Python script using only the standard library.
 - `tests/test_sync.py`: integration tests using temporary repositories and homes.
 
-## Instruction destinations
+## Destinations
 
-| Source addition | Destination |
-| --- | --- |
-| `instructions/claude-code.md` | `~/.claude/CLAUDE.md` |
-| `instructions/codex.md` | `~/.codex/AGENTS.md` |
-| `instructions/grok.md` | `~/.grok/AGENTS.md` |
-| `instructions/opencode.md` | `~/.config/opencode/AGENTS.md` |
-| `instructions/cursor.md` | `~/.cursor/rules/agent-config.mdc` |
+| Tool | Instructions | Skills | Agents |
+| --- | --- | --- | --- |
+| `claude-code` | `~/.claude/CLAUDE.md` | `~/.claude/skills/` | `~/.claude/agents/` |
+| `codex` | `~/.codex/AGENTS.md` | `~/.codex/skills/` | `~/.codex/agents/` |
+| `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` |
+| `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` |
+| `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` |
+| `shared` | none | `~/.agents/skills/` | none |
+
+The table lives in `TOOLS` at the top of `sync`. Agent file formats are
+tool-specific (Markdown for Claude Code, Grok, OpenCode, and Cursor; TOML for
+Codex); sync copies them as-is.
 
 Cursor output includes rule metadata with `alwaysApply: true`. Its IDE's
 home-directory rule discovery covers projects under `~/Devel`; do not assume

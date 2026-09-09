@@ -12,7 +12,6 @@ Empty Markdown placeholders are skipped. Existing files are replaced only
 with --replace-existing and are backed up alongside the destination first.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
-Profiles are not activated by sync.
 """
 
 import argparse
@@ -23,17 +22,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
-INSTRUCTIONS = {
-    "codex": ".codex/AGENTS.md",
-    "claude-code": ".claude/CLAUDE.md",
-    "opencode": ".config/opencode/AGENTS.md",
-    "grok": ".grok/AGENTS.md",
-    "cursor": ".cursor/rules/agent-config.mdc",
+# Per-tool destinations relative to the home directory. Source layout:
+#   instructions/<tool>.md  -> instructions (common.md is prepended)
+#   skills/<tool>/<name>/   -> skills
+#   agents/<tool>/<name>.*  -> agent definitions
+# skills/shared/ installs to ~/.agents/skills, which several tools read.
+TOOLS = {
+    "claude-code": {"instructions": ".claude/CLAUDE.md",
+                    "skills": ".claude/skills", "agents": ".claude/agents"},
+    "codex": {"instructions": ".codex/AGENTS.md",
+              "skills": ".codex/skills", "agents": ".codex/agents"},
+    "grok": {"instructions": ".grok/AGENTS.md",
+             "skills": ".grok/skills", "agents": ".grok/agents"},
+    "opencode": {"instructions": ".config/opencode/AGENTS.md",
+                 "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
+    "cursor": {"instructions": ".cursor/rules/agent-config.mdc",
+               "skills": ".cursor/skills", "agents": ".cursor/agents"},
+    "shared": {"skills": ".agents/skills"},
 }
-SKILLS = {
-    "shared": ".agents/skills",
-    "claude-code": ".claude/skills",
-}
+CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 
 
 def main():
@@ -52,33 +59,33 @@ def main():
     executable_files = set()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
-    for tool, destination in INSTRUCTIONS.items():
-        specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
-        contents = "\n\n".join(part for part in [common, specific] if part)
-        if contents:
-            target = home / destination
-            if tool == "cursor":
-                contents = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n" + contents
-            files[target] = (contents + "\n").encode()
+    for tool, destinations in TOOLS.items():
+        if "instructions" in destinations:
+            specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
+            contents = "\n\n".join(part for part in [common, specific] if part)
+            if contents:
+                if tool == "cursor":
+                    contents = CURSOR_HEADER + contents
+                files[home / destinations["instructions"]] = (contents + "\n").encode()
 
-    for source, destination in SKILLS.items():
-        source_dir = ROOT / "skills" / source
-        if not source_dir.is_dir():
-            continue
-        for skill in sorted(source_dir.iterdir()):
-            entry = skill / "SKILL.md"
-            if not entry.is_file() or not entry.read_text().strip():
-                continue
-            for file in sorted(skill.rglob("*")):
-                if file.is_file():
-                    target = home / destination / skill.name / file.relative_to(skill)
-                    files[target] = file.read_bytes()
-                    if file.stat().st_mode & 0o111:
-                        executable_files.add(target)
+        skills_dir = ROOT / "skills" / tool
+        if "skills" in destinations and skills_dir.is_dir():
+            for skill in sorted(skills_dir.iterdir()):
+                entry = skill / "SKILL.md"
+                if not entry.is_file() or not entry.read_text().strip():
+                    continue
+                for file in sorted(skill.rglob("*")):
+                    if file.is_file():
+                        target = home / destinations["skills"] / skill.name / file.relative_to(skill)
+                        files[target] = file.read_bytes()
+                        if file.stat().st_mode & 0o111:
+                            executable_files.add(target)
 
-    for agent in sorted((ROOT / "agents/claude-code").glob("*.md")):
-        if agent.read_text().strip():
-            files[home / ".claude/agents" / agent.name] = agent.read_bytes()
+        agents_dir = ROOT / "agents" / tool
+        if "agents" in destinations and agents_dir.is_dir():
+            for agent in sorted(agents_dir.iterdir()):
+                if agent.is_file() and agent.read_text().strip():
+                    files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
     changes = []
     blocked = False

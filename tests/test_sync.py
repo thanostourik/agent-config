@@ -93,15 +93,24 @@ class SyncTest(unittest.TestCase):
         script = skill / "run.sh"
         script.write_text("#!/bin/sh\nexit 0\n")
         script.chmod(0o755)
+        grok_skill = self.repo / "skills/grok/commit"
+        grok_skill.mkdir(parents=True)
+        (grok_skill / "SKILL.md").write_text("Grok skill")
+        (self.repo / "skills/codex/empty").mkdir(parents=True)
+        (self.repo / "skills/codex/empty/SKILL.md").write_text("")
         (self.repo / "agents/claude-code").mkdir(parents=True)
-        (self.repo / "agents/claude-code/codex-runner.md").write_text("Agent instructions")
+        (self.repo / "agents/claude-code/runner.md").write_text("Agent instructions")
+        (self.repo / "agents/codex").mkdir(parents=True)
+        (self.repo / "agents/codex/runner.toml").write_text("name = 'runner'")
         (self.repo / "profiles").mkdir()
         (self.repo / "profiles/fable-with-sol.md").write_text("Fable-only instructions")
         self.run_sync("--apply")
         installed = self.home / ".agents/skills/example/run.sh"
         subprocess.run([str(installed)], check=True, timeout=5)
-        self.assertTrue((self.home / ".claude/agents/codex-runner.md").is_file())
-        self.assertFalse((self.home / ".claude/skills/codex-analyze").exists())
+        self.assertTrue((self.home / ".grok/skills/commit/SKILL.md").is_file())
+        self.assertFalse((self.home / ".codex/skills").exists())
+        self.assertTrue((self.home / ".claude/agents/runner.md").is_file())
+        self.assertTrue((self.home / ".codex/agents/runner.toml").is_file())
         self.assertFalse((self.home / ".claude/CLAUDE.md").exists())
         self.run_sync("--check")
 
