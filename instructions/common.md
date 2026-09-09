@@ -78,8 +78,9 @@
 
 ## Local environment
 
-- Containers started by the project's dev script (databases, auth servers, etc.) run in a branch-isolated
-  environment. You may start, reset, and reseed them freely.
+- Containers (databases, auth servers, etc.) started by the project's dev script
+  (`dev_setup/dev.sh`) run in a branch-isolated environment. You may start, reset, and
+  reseed them freely. If that script does not exist, treat containers as shared and ask first.
 - App servers (Next.js, Spring Boot, etc.): check whether one is already running and reuse it.
   Ask before starting one yourself, and stop anything you started when you're done so I can run it from my IDE.
 - Never touch shared or remote services (deployed environments, remote databases).
