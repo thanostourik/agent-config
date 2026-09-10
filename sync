@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent
 #   hooks/<tool>.json       -> hook configuration (copied as is; for Claude Code
 #                              it is the "hooks" value merged into settings.json)
 # skills/shared/ installs to ~/.agents/skills, which several tools read.
+# bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
 TOOLS = {
     "claude-code": {"instructions": ".claude/CLAUDE.md", "hooks": ".claude/settings.json",
                     "skills": ".claude/skills", "agents": ".claude/agents"},
@@ -104,6 +105,12 @@ def main():
                 files[target] = (json.dumps(settings, indent=2) + "\n").encode()
             else:
                 files[target] = hooks_file.read_bytes()
+
+    for script in sorted((ROOT / "bin").glob("*")):
+        if script.is_file():
+            target = home / ".local/bin" / script.name
+            files[target] = script.read_bytes()
+            executable_files.add(target)
 
     if args.clean_backups:
         backups = [b for target in files for b in target.parent.glob(f"{target.name}.backup-*")]

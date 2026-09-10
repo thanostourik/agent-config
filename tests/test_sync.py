@@ -20,7 +20,7 @@ class SyncTest(unittest.TestCase):
         for path in (self.repo / "instructions").glob("*.md"):
             path.write_text("")
         for folder in ("skills/shared", "skills/grok", "skills/opencode", "agents/claude-code",
-                       "hooks"):
+                       "hooks", "bin"):
             shutil.rmtree(self.repo / folder, ignore_errors=True)
 
     def run_sync(self, *args, expected=0):
@@ -131,6 +131,14 @@ class SyncTest(unittest.TestCase):
                          {"theme": "dark", "hooks": {"PostToolUse": []}})
         self.assertFalse((self.home / ".grok/hooks.json").exists())
         self.run_sync("--check")
+
+    def test_scripts_install_executable_into_local_bin(self):
+        (self.repo / "bin").mkdir()
+        (self.repo / "bin/hello").write_text("#!/bin/sh\necho hi\n")
+        self.run_sync("--apply")
+        result = subprocess.run([str(self.home / ".local/bin/hello")],
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.stdout, "hi\n")
 
     def test_clean_backups_removes_only_backups(self):
         (self.repo / "instructions/common.md").write_text("new")

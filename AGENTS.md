@@ -32,6 +32,9 @@ Two things to keep as they are:
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>.json`: hook configuration for one tool. Only Claude Code,
   Codex, and Cursor support hooks. Grok and OpenCode get a skill instead.
+- `bin/<name>`: a script that hooks or skills call. Sync installs it into
+  `~/.local/bin/`, executable. `render-plan` needs the `marked` npm package
+  (`npm i -g marked`).
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 
@@ -48,6 +51,8 @@ If a skill or agent folder does not exist or is empty, sync skips it. Create
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` |
 | `shared` | none | `~/.agents/skills/` | none | none |
+
+`bin/` is not in the table. Every file in it goes to `~/.local/bin/`.
 
 The `TOOLS` dictionary at the top of `sync` holds this same table. To change a
 path, change it there.
