@@ -1,43 +1,26 @@
 #!/bin/bash
-# render-plan — render a .plans/*.md plan to a styled, self-contained .html next
-# to it and publish it to Postplan (https://postplan.dev), printing the URL.
+# render-plan: turn a .plans/*.md file into a styled .html next to it, upload it
+# to Postplan, and print both links.
 #
-# Usage:
-#   render-plan <plan.md>     render + publish one file, print the URLs
-#   render-plan --hook        agent-hook mode: reads a PostToolUse JSON event on
-#                             stdin (Claude Code / grok / codex — shape-agnostic),
-#                             renders any .plans/**.md paths found in it.
-#                             Always exits 0 so a miss never breaks the tool call.
+#   render-plan <plan.md>   render and publish one plan
+#   render-plan --hook      read an agent hook event (JSON) on stdin and render
+#                           every .plans/*.md path in it; always exits 0
 #
-# Rendering uses the `marked` CLI (npm i -g marked); CSS is embedded below so
-# the .html is a single self-contained file. Publishing uses the `postplan` CLI
-# through npx; log in once with `npx postplan auth login`. Re-uploading the same
-# file updates the same draft, so the URL is stable across edits.
+# Needs npx. Log in once with `npx postplan auth login`. Uploading the same
+# file again updates the same draft, so the URL does not change.
 set -u
 
-find_marked() {
-  command -v marked && return
-  ls "$HOME"/.nvm/versions/node/*/bin/marked 2>/dev/null | sort -V | tail -1
-}
-
 render() {
-  local md=$1
-  [ -f "$md" ] || return 0
-  local MARKED; MARKED=$(find_marked)
-  if [ -z "$MARKED" ]; then echo "render-plan: marked not found (npm i -g marked)" >&2; return 1; fi
-  local html="${md%.md}.html"
-  local title
-  title=$(grep -m1 '^# ' "$md" | sed 's/^# //') || true
-  [ -n "$title" ] || title=$(basename "$md" .md)
-  local body
-  body=$("$MARKED" --gfm < "$md") || return 1
-  cat > "$html" <<EOF
+  local md=$1 html=${1%.md}.html title body
+  title=$(sed -n 's/^# //p;T;q' "$md")
+  body=$(npx -y marked --gfm < "$md") || return
+  cat > "$html" <<HTML
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
+<title>${title:-$(basename "$md" .md)}</title>
 <style>
 :root { color-scheme: light dark; }
 body {
@@ -82,43 +65,33 @@ hr { border: none; border-top: 1px solid #d1d9e0; margin: 2rem 0; }
 ${body}
 </body>
 </html>
-EOF
+HTML
   echo "Plan rendered: file://$(readlink -f "$html")"
-  publish "$html"
-}
-
-# Upload the HTML to Postplan and print the draft URL. A failed upload only
-# prints a warning; the local file:// link above still works.
-publish() {
   local url
-  url=$(npx -y postplan upload "$1" 2>/dev/null | sed -n 's/^URL: //p')
-  if [ -z "$url" ]; then echo "render-plan: Postplan upload failed (run: npx postplan auth login)" >&2; return 0; fi
+  url=$(npx -y postplan upload "$html" 2>/dev/null | sed -n 's/^URL: //p')
+  if [ -z "$url" ]; then
+    echo "Postplan upload failed. Run: npx postplan auth login" >&2
+    return
+  fi
   echo "Plan published: $url"
 }
 
-if [ "${1:-}" = "--hook" ]; then
-  input=$(cat)
-  # cwd of the agent session, for resolving relative paths (field name varies by harness)
-  cwd=$(printf '%s' "$input" | jq -r '.cwd // .workspaceRoot // empty' 2>/dev/null)
-  [ -n "$cwd" ] || cwd=${CLAUDE_PROJECT_DIR:-${GROK_WORKSPACE_ROOT:-$PWD}}
-  # Shape-agnostic: pull anything that looks like a .plans/**.md path out of the event
-  paths=$(printf '%s' "$input" | sed 's/\\\//\//g' \
-    | grep -oE '[^"[:space:]]*\.plans/[^"[:space:]]*\.md' | sort -u)
-  [ -n "$paths" ] || exit 0
-  output=$(for p in $paths; do
-             case "$p" in /*) render "$p" ;; *) render "$cwd/$p" ;; esac
-           done)
-  [ -n "$output" ] || exit 0
-  # Claude Code and Codex hooks show plain stdout only in the transcript; this
-  # JSON shape puts the links into the agent's context. Other tools ignore it.
-  jq -n --arg text "$output" \
-    '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $text}}'
-  exit 0
+if [ "${1:-}" != "--hook" ]; then
+  [ -f "${1:-}" ] || { echo "usage: render-plan <plan.md> | render-plan --hook" >&2; exit 1; }
+  render "$1"
+  exit
 fi
 
-if [ $# -eq 1 ] && [ -f "$1" ]; then
-  render "$1"
-else
-  echo "usage: render-plan <plan.md> | render-plan --hook" >&2
-  exit 1
-fi
+event=$(cat)
+# Hook events differ per tool, so take every .plans/*.md path in the JSON and
+# resolve relative ones against the session directory.
+cwd=$(jq -r '.cwd // .workspace_roots[0] // empty' <<< "$event" 2>/dev/null)
+paths=$(sed 's/\\\//\//g' <<< "$event" | grep -oE '[^"[:space:]]*\.plans/[^"[:space:]]*\.md' | sort -u)
+output=$(for p in $paths; do
+  [[ $p = /* ]] || p=${cwd:-$PWD}/$p
+  [ -f "$p" ] && render "$p"
+done)
+[ -n "$output" ] || exit 0
+# Claude Code and Codex put this JSON's additionalContext in front of the agent.
+jq -n --arg text "$output" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $text}}'
+exit 0

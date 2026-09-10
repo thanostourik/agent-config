@@ -33,8 +33,8 @@ Two things to keep as they are:
 - `hooks/<tool>.json`: hook configuration for one tool. Only Claude Code,
   Codex, and Cursor support hooks. Grok and OpenCode get a skill instead.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
-  `~/.local/bin/`, executable. `render-plan` needs the `marked` npm package
-  (`npm i -g marked`) and a one-time Postplan login (`npx postplan auth login`).
+  `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
+  through `npx` and a one-time Postplan login (`npx postplan auth login`).
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 

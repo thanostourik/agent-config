@@ -1,5 +1,4 @@
 ## Plans
 
-- A hook renders every plan you write or change in `.plans/` to HTML and publishes it to
-  Postplan. After you write or change a plan, give me the `https://...postplan.dev` URL from
-  the hook output. If you did not see it, run `render-plan <plan path>` and use its output.
+- A hook publishes every plan you write or change in `.plans/` to Postplan. Give me the
+  `https://...postplan.dev` link it prints. If you did not see one, run `render-plan <plan path>`.
