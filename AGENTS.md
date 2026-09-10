@@ -34,7 +34,7 @@ Two things to keep as they are:
   Codex, and Cursor support hooks. Grok and OpenCode get a skill instead.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `render-plan` needs the `marked` npm package
-  (`npm i -g marked`).
+  (`npm i -g marked`) and a one-time Postplan login (`npx postplan auth login`).
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 

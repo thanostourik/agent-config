@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "$HOME/.local/bin/render-plan --hook",
-            "timeout": 15
+            "timeout": 30
           }
         ]
       }
