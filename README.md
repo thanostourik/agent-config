@@ -1,6 +1,6 @@
 # agent-config
 
-My personal instructions, skills, and agent definitions for Claude Code, Codex,
+My personal instructions, skills, hooks, and agent definitions for Claude Code, Codex,
 Grok, Cursor, and OpenCode, kept in one place.
 
 ## Use

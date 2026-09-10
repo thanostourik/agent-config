@@ -1,0 +1,14 @@
+{
+  "PostToolUse": [
+    {
+      "matcher": "Write|Edit|MultiEdit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "$HOME/.local/bin/render-plan --hook",
+          "timeout": 15
+        }
+      ]
+    }
+  ]
+}

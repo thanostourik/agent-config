@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      { "command": "$HOME/.local/bin/render-plan --hook" }
+    ]
+  }
+}

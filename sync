@@ -16,6 +16,7 @@ apply. Cursor IDE discovers these for projects under the home directory.
 """
 
 import argparse
+import json
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -27,17 +28,19 @@ ROOT = Path(__file__).resolve().parent
 #   instructions/<tool>.md  -> instructions (common.md is prepended)
 #   skills/<tool>/<name>/   -> skills
 #   agents/<tool>/<name>.*  -> agent definitions
+#   hooks/<tool>.json       -> hook configuration (copied as is; for Claude Code
+#                              it is the "hooks" value merged into settings.json)
 # skills/shared/ installs to ~/.agents/skills, which several tools read.
 TOOLS = {
-    "claude-code": {"instructions": ".claude/CLAUDE.md",
+    "claude-code": {"instructions": ".claude/CLAUDE.md", "hooks": ".claude/settings.json",
                     "skills": ".claude/skills", "agents": ".claude/agents"},
-    "codex": {"instructions": ".codex/AGENTS.md",
+    "codex": {"instructions": ".codex/AGENTS.md", "hooks": ".codex/hooks.json",
               "skills": ".codex/skills", "agents": ".codex/agents"},
     "grok": {"instructions": ".grok/AGENTS.md",
              "skills": ".grok/skills", "agents": ".grok/agents"},
     "opencode": {"instructions": ".config/opencode/AGENTS.md",
                  "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
-    "cursor": {"instructions": ".cursor/rules/agent-config.mdc",
+    "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
     "shared": {"skills": ".agents/skills"},
 }
@@ -89,6 +92,18 @@ def main():
             for agent in sorted(agents_dir.iterdir()):
                 if agent.is_file() and agent.read_text().strip():
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
+
+        hooks_file = ROOT / "hooks" / f"{tool}.json"
+        if "hooks" in destinations and hooks_file.is_file():
+            target = home / destinations["hooks"]
+            if tool == "claude-code":
+                # Claude Code keeps hooks inside settings.json next to unrelated
+                # settings, so replace only the "hooks" key and keep the rest.
+                settings = json.loads(target.read_text()) if target.is_file() else {}
+                settings["hooks"] = json.loads(hooks_file.read_text())
+                files[target] = (json.dumps(settings, indent=2) + "\n").encode()
+            else:
+                files[target] = hooks_file.read_bytes()
 
     if args.clean_backups:
         backups = [b for target in files for b in target.parent.glob(f"{target.name}.backup-*")]

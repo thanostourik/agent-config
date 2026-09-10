@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import tempfile
@@ -18,7 +19,8 @@ class SyncTest(unittest.TestCase):
         # start every test from an empty scaffold.
         for path in (self.repo / "instructions").glob("*.md"):
             path.write_text("")
-        for folder in ("skills/shared", "skills/claude-code", "agents/claude-code"):
+        for folder in ("skills/shared", "skills/grok", "skills/opencode", "agents/claude-code",
+                       "hooks"):
             shutil.rmtree(self.repo / folder, ignore_errors=True)
 
     def run_sync(self, *args, expected=0):
@@ -112,6 +114,22 @@ class SyncTest(unittest.TestCase):
         self.assertTrue((self.home / ".claude/agents/runner.md").is_file())
         self.assertTrue((self.home / ".codex/agents/runner.toml").is_file())
         self.assertFalse((self.home / ".claude/CLAUDE.md").exists())
+        self.run_sync("--check")
+
+    def test_hooks_are_copied_or_merged_into_claude_settings(self):
+        (self.repo / "hooks").mkdir()
+        (self.repo / "hooks/codex.json").write_text('{"hooks": {}}\n')
+        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
+        (self.repo / "hooks/grok.json").write_text('{"unsupported": true}')
+        settings = self.home / ".claude/settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text('{"theme": "dark", "hooks": {"Stop": []}}')
+        self.run_sync("--apply", expected=2)
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual((self.home / ".codex/hooks.json").read_text(), '{"hooks": {}}\n')
+        self.assertEqual(json.loads(settings.read_text()),
+                         {"theme": "dark", "hooks": {"PostToolUse": []}})
+        self.assertFalse((self.home / ".grok/hooks.json").exists())
         self.run_sync("--check")
 
     def test_clean_backups_removes_only_backups(self):
