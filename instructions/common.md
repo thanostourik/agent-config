@@ -42,8 +42,9 @@
 - Be careful with destructive actions that I did not explicitly request.
 - Tests are good. Endless smoke tests, "regression tests" for feature deletions, etc. are much less
   good. Tests should be focused, not slop.
-- Don't comment every line.
-  Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
+- No inline comments unless the line would otherwise look like a bug
+  (a deliberate ordering, a swallowed exception, a workaround).
+- Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Catch errors only where something useful can be done with them (user input, external calls,
