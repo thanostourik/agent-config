@@ -45,6 +45,4 @@ running the model) that made the changes. Use only known model information;
 if the exact model is unavailable, say so instead of guessing.
 
 Open a ready-for-review PR rather than a draft so review bots can run, unless
-the user requests a draft. Return the PR link. If the user also asked to
-babysit it, continue with the `babysit-pr` skill if available; otherwise report
-that the skill is unavailable.
+the user requests a draft. Return the PR link.
