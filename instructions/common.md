@@ -69,7 +69,7 @@
 - Conventional commit messages, always: `type(scope): summary (ISSUE-123)` (feat, fix, refactor,
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
 - You may push the current task branch and open a PR against the default branch without asking.
-  Write the PR description from the plan and the diff, so the reason for the change is recorded.
+- Use the `file-pr` skill when creating or updating PRs.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create

@@ -1,8 +1,8 @@
 ---
 name: file-pr
-description: File a concise pull request. Use when the user asks to file, open, or create a PR.
+description: Create or update a concise pull request. Use when creating or updating a PR.
 metadata:
-  harness: "claude-code, codex"
+  harness: "claude-code, codex, grok, opencode, cursor"
 ---
 
 # File PR
@@ -12,21 +12,24 @@ existing open PR instead of creating a duplicate. Review the diff locally
 against the intended base branch (`origin/main` when that is the repository's
 default) to make sure its contents match the goal.
 
-PR titles usually become commit messages, so follow the repository's title
-conventions. Look at recently merged PRs and Git history for examples. Prefer a
+PR titles usually become commit messages, so use the conventional commit-message
+format required by the active instructions, including the type, scope, and issue
+ID when applicable. Look at recently merged PRs and Git history for examples
+that follow those instructions. Prefer a
 concise, human-readable title that explains why the change matters:
 
 Bad:
-> perf(server): negotiate permessage-deflate on the websocket
+> feat(server): negotiate permessage-deflate on the websocket
 
 Good:
-> perf(server): cut websocket frame size by 70%+ with compression
+> feat(server): cut websocket frame size by 70%+ with compression
 
 Use measured numbers only when the change's validation supports them.
 
-Open the description with a simple explanation of the problem based on the
-user's original prompt, then briefly explain the solution. Do not lead with an
-implementation inventory:
+Open the description with the problem the user wanted solved, then briefly
+explain how the final change solves it. Check the description against the final
+diff so it describes what actually changed. Do not lead with an implementation
+inventory:
 
 Bad:
 > Removed implicit workspace carry-over from every "new thread" entry point
