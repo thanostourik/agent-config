@@ -132,6 +132,60 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".grok/hooks.json").exists())
         self.run_sync("--check")
 
+    def test_skill_metadata_overrides_folder_and_copies_resources(self):
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True)
+        contents = ('---\nname: example\nmetadata:\n  author: someone\n'
+                    '  harness: "grok, opencode"\n---\nExample skill\n')
+        (skill / "SKILL.md").write_text(contents)
+        (skill / "run.sh").write_text("#!/bin/sh\necho skill\n")
+        (skill / "run.sh").chmod(0o755)
+        self.run_sync()
+        self.assertFalse(self.home.exists())
+        self.run_sync("--apply")
+        for folder in (".grok/skills", ".config/opencode/skill"):
+            installed = self.home / folder / "example"
+            self.assertEqual((installed / "SKILL.md").read_text(), contents)
+            result = subprocess.run([str(installed / "run.sh")], capture_output=True,
+                                    text=True, check=True, timeout=5)
+            self.assertEqual(result.stdout, "skill\n")
+        self.assertFalse((self.home / ".agents").exists())
+        self.run_sync("--check")
+
+    def test_skill_metadata_ignores_other_fields_and_body_examples(self):
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            '---\nname: example\nmetadata:\n  author: someone\n'
+            'description: |\n  harness: example text\n---\n'
+            'metadata:\n  harness: "grok"\n')
+        self.run_sync("--apply")
+        self.assertTrue((self.home / ".agents/skills/example/SKILL.md").exists())
+        self.assertFalse((self.home / ".grok").exists())
+
+    def test_invalid_skill_routing_blocks_all_writes(self):
+        (self.repo / "instructions/common.md").write_text("New instructions")
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True)
+        for field in ('  harness: [grok, opencode]', '  harness: grok',
+                      '  harness: ""', '  harness: "grok, unknown"',
+                      '  harness: "grok, "', '  harness: "grok, grok"',
+                      '    harness: "grok"',
+                      '  harness: "grok"\n  harness: "opencode"'):
+            with self.subTest(field=field):
+                (skill / "SKILL.md").write_text(f"---\nmetadata:\n{field}\n---\nSkill\n")
+                self.run_sync("--apply", expected=2)
+                self.assertFalse(self.home.exists())
+
+    def test_duplicate_skill_destinations_block_all_writes(self):
+        for tool in ("grok", "opencode"):
+            skill = self.repo / "skills" / tool / "example"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                '---\nmetadata:\n  harness: "grok"\n---\nSkill\n')
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+
     def test_scripts_install_executable_into_local_bin(self):
         (self.repo / "bin").mkdir()
         (self.repo / "bin/hello").write_text("#!/bin/sh\necho hi\n")
