@@ -17,6 +17,7 @@ apply. Cursor IDE discovers these for projects under the home directory.
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -48,6 +49,40 @@ TOOLS = {
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 
 
+def skill_harnesses(entry, default):
+    """Read our single-line metadata.harness string, not general YAML."""
+    lines = entry.read_text().splitlines()
+    if not lines or lines[0] != "---":
+        return [default]
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        raise ValueError(f"{entry}: frontmatter must end with ---") from None
+    in_metadata = False
+    harnesses = None
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            in_metadata = line.rstrip() == "metadata:"
+            if line.startswith("metadata:") and not in_metadata:
+                raise ValueError(f"{entry}: metadata must be a block starting with metadata:")
+            continue
+        if not in_metadata or not line.lstrip().startswith("harness:"):
+            continue
+        match = re.fullmatch(r'  harness: "([a-z, -]+)"\s*', line)
+        if not match:
+            raise ValueError(f'{entry}: use exactly two spaces then harness: "grok, opencode"')
+        if harnesses is not None:
+            raise ValueError(f"{entry}: duplicate metadata.harness")
+        harnesses = [name.strip() for name in match[1].split(",")]
+        if any(name not in TOOLS for name in harnesses):
+            raise ValueError(f"{entry}: harness names must be one of {', '.join(TOOLS)}")
+        if len(set(harnesses)) != len(harnesses):
+            raise ValueError(f"{entry}: duplicate harness names")
+    return harnesses if harnesses is not None else [default]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -64,6 +99,7 @@ def main():
     home = args.home.expanduser().resolve()
     files = {}
     executable_files = set()
+    skill_sources = {}
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
@@ -81,12 +117,18 @@ def main():
                 entry = skill / "SKILL.md"
                 if not entry.is_file() or not entry.read_text().strip():
                     continue
-                for file in sorted(skill.rglob("*")):
-                    if file.is_file():
-                        target = home / destinations["skills"] / skill.name / file.relative_to(skill)
-                        files[target] = file.read_bytes()
-                        if file.stat().st_mode & 0o111:
-                            executable_files.add(target)
+                for harness in skill_harnesses(entry, tool):
+                    destination = home / TOOLS[harness]["skills"] / skill.name
+                    if destination in skill_sources:
+                        raise ValueError(f"Duplicate skill destination {destination}: "
+                                         f"{skill_sources[destination]} and {skill}")
+                    skill_sources[destination] = skill
+                    for file in sorted(skill.rglob("*")):
+                        if file.is_file():
+                            target = destination / file.relative_to(skill)
+                            files[target] = file.read_bytes()
+                            if file.stat().st_mode & 0o111:
+                                executable_files.add(target)
 
         agents_dir = ROOT / "agents" / tool
         if "agents" in destinations and agents_dir.is_dir():
@@ -174,6 +216,6 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except OSError as error:
+    except (OSError, ValueError) as error:
         print(f"Sync failed: {error}", file=sys.stderr)
         sys.exit(2)

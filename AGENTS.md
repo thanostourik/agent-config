@@ -41,6 +41,24 @@ Two things to keep as they are:
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
 
+Skills keep this directory layout. By default, their source folder selects
+the installation destination. An optional field in the opening `SKILL.md`
+frontmatter overrides that destination with an explicit list:
+
+```yaml
+metadata:
+  harness: "grok, opencode"
+```
+
+Use exactly two spaces before `harness`, double quotes, and a single-line,
+comma-separated string. Sync reads this restricted format without a YAML
+dependency. Other metadata fields are ignored. Names come from the table below;
+`shared` means the shared directory, not all tools. Missing `harness` preserves
+folder-based routing. Unknown or repeated names, unsupported harness syntax,
+and two source skills targeting the same installed folder stop sync before writes.
+Metadata stays in the installed copies. For example, `skills/shared/render-plan/`
+uses the field above to install one source into both Grok and OpenCode.
+
 ## Where sync installs each file
 
 | Tool | Instructions | Skills | Agents | Hooks |
