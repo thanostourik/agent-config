@@ -56,7 +56,7 @@ dependency. Other metadata fields are ignored. Names come from the table below;
 `shared` means the shared directory, not all tools. Missing `harness` preserves
 folder-based routing. Unknown or repeated names, unsupported harness syntax,
 and two source skills targeting the same installed folder stop sync before writes.
-Metadata stays in the installed copies. For example, `skills/grok/render-plan/`
+Metadata stays in the installed copies. For example, `skills/shared/render-plan/`
 uses the field above to install one source into both Grok and OpenCode.
 
 ## Where sync installs each file
