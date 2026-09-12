@@ -1,6 +1,6 @@
 ---
 name: claude-review
-description: Request an independent Claude review of a local diff, commit, plan, or specified files. Use only when the user explicitly invokes this skill or asks for a Claude review; ordinary review requests do not trigger delegation.
+description: Use only when the user explicitly requests a Claude review or invokes this skill.
 ---
 
 # Claude review

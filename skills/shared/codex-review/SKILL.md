@@ -1,6 +1,6 @@
 ---
 name: codex-review
-description: Request an independent Codex review of a local diff, commit, plan, or specified files. Use only when the user explicitly invokes this skill or asks for a Codex review; ordinary review requests do not trigger delegation.
+description: Use only when the user explicitly requests a Codex review or invokes this skill.
 disable-model-invocation: true
 ---
 

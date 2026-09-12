@@ -1,6 +1,6 @@
 ---
 name: file-pr
-description: Create or update a concise pull request. Use when creating or updating a PR.
+description: Use when creating or updating a pull request.
 metadata:
   harness: "claude-code, codex, grok, opencode, cursor"
 ---
