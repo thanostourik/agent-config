@@ -35,7 +35,7 @@ class HelperTest(unittest.TestCase):
         self.write_cmd("uvx", f"""#!/bin/sh
 python3 -c 'import json,os,sys
 keys=["JIRA_URL","JIRA_USERNAME","JIRA_API_TOKEN","READ_ONLY_MODE"]
-json.dump({{k: os.environ[k] for k in keys}}, open(sys.argv[1], "w"))
+json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
 ' '{self.env_out}'
 """)
 
@@ -58,11 +58,13 @@ echo "Not found." >&2
 exit 1
 """)
 
-    def run_helper(self, url="https://jira.example.com", expected=0):
+    def run_helper(self, url="https://jira.example.com", expected=0, extra_env=None):
         env = os.environ.copy()
         env["PATH"] = f"{self.bin}:/usr/bin:/bin"
         env["HOME"] = str(self.root)
         env["XDG_RUNTIME_DIR"] = str(self.runtime)
+        if extra_env:
+            env.update(extra_env)
         result = subprocess.run([str(HELPER), url], capture_output=True, text=True,
                                 timeout=5, env=env)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
@@ -75,7 +77,7 @@ exit 1
 
     def test_unlocked_session_uses_one_get_item_call(self):
         (self.runtime / "bw-session").write_text("session-key")
-        self.run_helper()
+        self.run_helper(extra_env={"READ_ONLY_MODE": "true"})
         self.assertEqual(self.bw_calls(), [
             ["--nointeraction", "get", "item", "https://jira.example.com"],
         ])
@@ -83,7 +85,7 @@ exit 1
             "JIRA_URL": "https://jira.example.com",
             "JIRA_USERNAME": "jira-user",
             "JIRA_API_TOKEN": "jira-token",
-            "READ_ONLY_MODE": "true",
+            "READ_ONLY_MODE": None,
         })
 
     def test_falls_back_to_host_when_full_url_is_missing(self):

@@ -107,6 +107,6 @@ print("token=" + shlex.quote(token))
 export JIRA_URL=$url
 export JIRA_USERNAME=$user
 export JIRA_API_TOKEN=$token
-export READ_ONLY_MODE=true
+unset READ_ONLY_MODE
 
 exec uvx mcp-atlassian
