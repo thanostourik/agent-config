@@ -62,14 +62,23 @@
 
 ## Git
 
-- Never work on main directly; branch before making changes.
+Every task that touches a file follows the same path: branch, commit and push as you go, open a
+PR when the implementation is in place, keep it updated until I merge it. You never need to ask
+for any of these steps. Reading and answering questions is the only work that happens on main.
+
+- Branch before the first file you create or edit. A plan, a scratch note, or a one-line fix all
+  count as changes. Never write on main.
 - Branch name format: `<prefix>/ISSUE-123-short-name`, with prefix `feature/`, `fix/`, or `chore/`.
   Omit the issue id when there is none.
-- Commit freely on the task branch as checkpoints: small, frequent, after each working step.
+- Commit after each working step and push right away. Local-only commits have no value to me: I
+  want to see the branch on the remote at all times.
 - Conventional commit messages, always: `type(scope): summary (ISSUE-123)` (feat, fix, refactor,
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
-- You may push the current task branch and open a PR against the default branch without asking.
-- Use the `file-pr` skill when creating or updating PRs.
+- Open the PR as soon as the implementation is committed, using the `file-pr` skill. Do not wait
+  for verification to finish: the PR description says what is verified and what is not, and you
+  update it as that changes. Give me the PR link.
+- Follow-up work on the same branch goes to the same PR: push the commits and refresh the
+  description when the scope or the verification status changed.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create

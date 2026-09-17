@@ -7,8 +7,9 @@ metadata:
 
 # File PR
 
-Before filing, check whether a PR for this branch already exists. Reuse an
-existing open PR instead of creating a duplicate. Review the diff locally
+Before filing, check whether a PR for this branch already exists. If one does,
+update it instead of creating a duplicate: push the new commits and rewrite the
+description so it matches the branch as it is now. Review the diff locally
 against the intended base branch (`origin/main` when that is the repository's
 default) to make sure its contents match the goal.
 
@@ -42,7 +43,12 @@ Good:
 > The "new worktree" default was ignored when starting new threads on existing
 > worktrees. Now new threads consistently use your configured preferences.
 
-Include relevant validation results and follow any repository PR template.
+End the description with a verification section that separates what was
+actually run from what was not. Name each check and its result. When a check
+has not run yet, say so plainly and say how the user can run it. Do not present
+untested work as tested. When verification finishes later, update the section.
+Follow any repository PR template.
+
 Add a short blurb at the end naming the model and harness (the coding tool
 running the model) that made the changes. Use only known model information;
 if the exact model is unavailable, say so instead of guessing.
