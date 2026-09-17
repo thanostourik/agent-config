@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent
 #   agents/<tool>/<name>.*  -> agent definitions
 #   hooks/<tool>.json       -> hook configuration (copied as is; for Claude Code
 #                              it is the "hooks" value merged into settings.json)
-# skills/shared/ installs to ~/.agents/skills, which several tools read.
+# skills/shared/ installs to every skills destination unless harness says otherwise.
 # bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
 TOOLS = {
     "claude-code": {"instructions": ".claude/CLAUDE.md", "hooks": ".claude/settings.json",
@@ -103,11 +103,17 @@ def backup_path(target, stamp):
     return target.with_name(f"{target.name}.backup-{stamp}")
 
 
+def default_skill_harnesses(default):
+    if default == "shared":
+        return [name for name, destinations in TOOLS.items() if "skills" in destinations]
+    return [default]
+
+
 def skill_harnesses(entry, default):
     """Read our single-line metadata.harness string, not general YAML."""
     lines = entry.read_text().splitlines()
     if not lines or lines[0] != "---":
-        return [default]
+        return default_skill_harnesses(default)
     try:
         end = lines.index("---", 1)
     except ValueError:
@@ -134,7 +140,7 @@ def skill_harnesses(entry, default):
             raise ValueError(f"{entry}: harness names must be one of {', '.join(TOOLS)}")
         if len(set(harnesses)) != len(harnesses):
             raise ValueError(f"{entry}: duplicate harness names")
-    return harnesses if harnesses is not None else [default]
+    return harnesses if harnesses is not None else default_skill_harnesses(default)
 
 
 def main():

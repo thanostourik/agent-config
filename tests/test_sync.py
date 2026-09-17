@@ -6,6 +6,16 @@ import unittest
 from pathlib import Path
 
 
+SKILL_DIRS = (
+    ".claude/skills",
+    ".codex/skills",
+    ".grok/skills",
+    ".config/opencode/skill",
+    ".cursor/skills",
+    ".agents/skills",
+)
+
+
 class SyncTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -14,7 +24,8 @@ class SyncTest(unittest.TestCase):
         self.repo = self.root / "repo"
         self.home = self.root / "home"
         shutil.copytree(Path(__file__).resolve().parents[1], self.repo,
-                        ignore=shutil.ignore_patterns(".git", ".generated", "__pycache__"))
+                        ignore=shutil.ignore_patterns(".git", ".generated", "__pycache__",
+                                                      "config.json"))
         # Tests exercise the sync script, not the real configuration content:
         # start every test from an empty scaffold.
         for path in (self.repo / "instructions").glob("*.md"):
@@ -109,8 +120,10 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply")
         installed = self.home / ".agents/skills/example/run.sh"
         subprocess.run([str(installed)], check=True, timeout=5)
+        for folder in SKILL_DIRS:
+            self.assertTrue((self.home / folder / "example/SKILL.md").is_file())
         self.assertTrue((self.home / ".grok/skills/commit/SKILL.md").is_file())
-        self.assertFalse((self.home / ".codex/skills").exists())
+        self.assertFalse((self.home / ".codex/skills/empty").exists())
         self.assertTrue((self.home / ".claude/agents/runner.md").is_file())
         self.assertTrue((self.home / ".codex/agents/runner.toml").is_file())
         self.assertFalse((self.home / ".claude/CLAUDE.md").exists())
@@ -160,8 +173,8 @@ class SyncTest(unittest.TestCase):
             'description: |\n  harness: example text\n---\n'
             'metadata:\n  harness: "grok"\n')
         self.run_sync("--apply")
-        self.assertTrue((self.home / ".agents/skills/example/SKILL.md").exists())
-        self.assertFalse((self.home / ".grok").exists())
+        for folder in SKILL_DIRS:
+            self.assertTrue((self.home / folder / "example/SKILL.md").exists())
 
     def test_invalid_skill_routing_blocks_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")
@@ -227,8 +240,9 @@ class SyncTest(unittest.TestCase):
             "agents": {"runner": {"enabled": False}},
         })
         self.run_sync("--apply")
-        self.assertFalse((self.home / ".agents/skills/example").exists())
-        self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
+        for folder in SKILL_DIRS:
+            self.assertFalse((self.home / folder / "example").exists())
+            self.assertTrue((self.home / folder / "kept/SKILL.md").is_file())
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertTrue((self.home / ".cursor/hooks.json").is_file())
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
@@ -259,7 +273,8 @@ class SyncTest(unittest.TestCase):
             "agents": {"runner": {"enabled": False}},
         })
         self.run_sync("--apply", "--replace-existing")
-        self.assertFalse((self.home / ".agents/skills/example").exists())
+        for folder in SKILL_DIRS:
+            self.assertFalse((self.home / folder / "example").exists())
         self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
         self.assertEqual(extra.read_text(), "not from sync")
         self.assertFalse((self.home / ".codex/hooks.json").exists())
@@ -275,7 +290,8 @@ class SyncTest(unittest.TestCase):
         (skill / "SKILL.md").write_text("Example skill")
         self.assertFalse((self.repo / "config.json").exists())
         self.run_sync("--apply")
-        self.assertTrue((self.home / ".agents/skills/example/SKILL.md").is_file())
+        for folder in SKILL_DIRS:
+            self.assertTrue((self.home / folder / "example/SKILL.md").is_file())
 
     def test_invalid_config_blocks_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")

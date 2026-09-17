@@ -27,8 +27,8 @@ Two things to keep as they are:
   common file and the tool file into one installed file. The common part comes
   first.
 - `skills/<tool>/<name>/`: a skill for one tool.
-- `skills/shared/<name>/`: a skill that several tools read from one shared
-  folder.
+- `skills/shared/<name>/`: a skill installed to every tool (and
+  `~/.agents/skills/`) unless `harness` names a shorter list.
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>.json`: hook configuration for one tool. Only Claude Code,
   Codex, and Cursor support hooks. Grok and OpenCode get a skill instead.
@@ -48,9 +48,10 @@ If a skill or agent folder does not exist or is empty, sync skips it. Create
 When you add a skill, agent, or hooks file, add it to `config.example.json`
 so the menu stays complete.
 
-Skills keep this directory layout. By default, their source folder selects
-the installation destination. An optional field in the opening `SKILL.md`
-frontmatter overrides that destination with an explicit list:
+Skills keep this directory layout. By default, a skill under `skills/<tool>/`
+installs to that tool, and a skill under `skills/shared/` installs to every
+skills destination. An optional field in the opening `SKILL.md` frontmatter
+overrides that destination with an explicit list:
 
 ```yaml
 metadata:
@@ -60,11 +61,11 @@ metadata:
 Use exactly two spaces before `harness`, double quotes, and a single-line,
 comma-separated string. Sync reads this restricted format without a YAML
 dependency. Other metadata fields are ignored. Names come from the table below;
-`shared` means the shared directory, not all tools. Missing `harness` preserves
-folder-based routing. Unknown or repeated names, unsupported harness syntax,
-and two source skills targeting the same installed folder stop sync before writes.
-Metadata stays in the installed copies. For example, `skills/shared/render-plan/`
-uses the field above to install one source into both Grok and OpenCode.
+`shared` means `~/.agents/skills/`. Missing `harness` keeps those defaults.
+Unknown or repeated names, unsupported harness syntax, and two source skills
+targeting the same installed folder stop sync before writes. Metadata stays in
+the installed copies. For example, `skills/shared/render-plan/` uses the field
+above to install one source into Grok and OpenCode only.
 
 ## Where sync installs each file
 

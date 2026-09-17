@@ -2,6 +2,8 @@
 name: codex-review
 description: Use only when the user explicitly requests a Codex review or invokes this skill.
 disable-model-invocation: true
+metadata:
+  harness: "claude-code, grok, opencode, cursor, shared"
 ---
 
 # Codex review
