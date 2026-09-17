@@ -9,5 +9,11 @@
     "claude-code": { "enabled": true },
     "codex": { "enabled": true },
     "cursor": { "enabled": true }
+  },
+  "mcp": {
+    "jira": {
+      "enabled": true,
+      "instances": {}
+    }
   }
 }

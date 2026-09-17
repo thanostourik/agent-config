@@ -13,13 +13,16 @@ Empty Markdown placeholders are skipped. Existing files are replaced only
 with --replace-existing and are backed up alongside the destination first.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
-config.json (gitignored) can disable skills, agents, and hooks.
+config.json (gitignored) can disable skills, agents, hooks, and MCP servers.
 Missing entries stay enabled. Copy config.example.json to start.
 Disabled items are removed from the destinations sync installed.
+Jira MCP URLs live only in config.json; sync merges server entries into each
+tool's MCP config and does not put secrets in those files.
 """
 
 import argparse
 import json
+import os
 import re
 import shutil
 import sys
@@ -50,6 +53,14 @@ TOOLS = {
     "shared": {"skills": ".agents/skills"},
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
+INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+MANAGED_MCP = ".config/agent-config/managed-mcp.json"
+MCP_JSON = (
+    (".cursor/mcp.json", "mcpServers", "stdio"),
+    (".claude.json", "mcpServers", "stdio"),
+    (".config/opencode/opencode.json", "mcp", "opencode"),
+)
+MCP_TOML = (".codex/config.toml", ".grok/config.toml")
 
 
 def load_config():
@@ -72,6 +83,16 @@ def load_config():
             if "enabled" in entry and not isinstance(entry["enabled"], bool):
                 raise ValueError(
                     f"config.json {section}.{name}.enabled must be true or false")
+    mcp = data.get("mcp")
+    if mcp is not None:
+        if not isinstance(mcp, dict):
+            raise ValueError("config.json mcp must be an object")
+        for name, entry in mcp.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"config.json mcp.{name} must be an object")
+            if "enabled" in entry and not isinstance(entry["enabled"], bool):
+                raise ValueError(f"config.json mcp.{name}.enabled must be true or false")
+    jira_servers(data)
     return data
 
 
@@ -90,6 +111,166 @@ def is_enabled(config, section, name):
     if "enabled" not in entry:
         return True
     return entry["enabled"]
+
+
+def jira_servers(config):
+    """Return (mcp name, url) pairs. One instance is installed as server jira."""
+    if not is_enabled(config, "mcp", "jira"):
+        return []
+    mcp = config.get("mcp")
+    if mcp is None:
+        return []
+    if not isinstance(mcp, dict):
+        raise ValueError("config.json mcp must be an object")
+    jira = mcp.get("jira")
+    if jira is None:
+        return []
+    if not isinstance(jira, dict):
+        raise ValueError("config.json mcp.jira must be an object")
+    instances = jira.get("instances")
+    if instances is None:
+        return []
+    if not isinstance(instances, dict):
+        raise ValueError("config.json mcp.jira.instances must be an object")
+    items = []
+    for name, entry in instances.items():
+        if not INSTANCE_NAME.fullmatch(name):
+            raise ValueError(
+                f"config.json mcp.jira.instances key {name!r} must start with a "
+                "letter and use only letters, digits, _ or -")
+        if not isinstance(entry, dict):
+            raise ValueError(f"config.json mcp.jira.instances.{name} must be an object")
+        url = entry.get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise ValueError(
+                f"config.json mcp.jira.instances.{name}.url must be a non-empty string")
+        items.append((name, url.strip()))
+    if len(items) == 1:
+        return [("jira", items[0][1])]
+    return items
+
+
+def mcp_gui_env():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return {
+        "DISPLAY": os.environ.get("DISPLAY") or ":0",
+        "DBUS_SESSION_BUS_ADDRESS": (
+            os.environ.get("DBUS_SESSION_BUS_ADDRESS") or f"unix:path={runtime}/bus"),
+        "XDG_RUNTIME_DIR": runtime,
+    }
+
+
+def stdio_server(helper, url, env):
+    return {"command": str(helper), "args": [url], "env": env}
+
+
+def opencode_server(helper, url, env):
+    return {
+        "type": "local",
+        "command": [str(helper), url],
+        "enabled": True,
+        "environment": env,
+        "timeout": 180000,
+    }
+
+
+def merge_json_mcp(path, bucket_key, flavor, helper, servers, previous):
+    data = json.loads(path.read_text()) if path.is_file() else {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    bucket = data.get(bucket_key)
+    if not isinstance(bucket, dict):
+        bucket = {}
+    desired = {name for name, _url in servers}
+    for name in previous:
+        if name not in desired:
+            bucket.pop(name, None)
+    env = mcp_gui_env()
+    for name, url in servers:
+        if flavor == "opencode":
+            bucket[name] = opencode_server(helper, url, env)
+        else:
+            bucket[name] = stdio_server(helper, url, env)
+    if bucket:
+        data[bucket_key] = bucket
+    else:
+        data.pop(bucket_key, None)
+    return (json.dumps(data, indent=2) + "\n").encode()
+
+
+def toml_scalar(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_scalar(item) for item in value) + "]"
+    if not isinstance(value, str):
+        raise ValueError(f"unsupported TOML value {value!r}")
+    return json.dumps(value)
+
+
+def render_toml_mcp(name, helper, url, env):
+    lines = [
+        f"[mcp_servers.{name}]",
+        f"command = {toml_scalar(str(helper))}",
+        f"args = {toml_scalar([url])}",
+        "startup_timeout_sec = 180",
+        "enabled = true",
+        "",
+        f"[mcp_servers.{name}.env]",
+    ]
+    for key, value in env.items():
+        lines.append(f"{key} = {toml_scalar(value)}")
+    return "\n".join(lines) + "\n"
+
+
+def strip_toml_mcp(text, names):
+    names = set(names)
+    out = []
+    skipping = False
+    for line in text.splitlines(True):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            header = stripped[1:-1].strip()
+            skipping = False
+            for name in names:
+                key = f"mcp_servers.{name}"
+                if header == key or header.startswith(key + "."):
+                    skipping = True
+                    break
+        if not skipping:
+            out.append(line)
+    return "".join(out)
+
+
+def merge_toml_mcp(path, helper, servers, previous):
+    text = path.read_text() if path.is_file() else ""
+    text = strip_toml_mcp(text, set(previous) | {name for name, _url in servers})
+    chunks = []
+    if text.strip():
+        chunks.append(text.rstrip() + "\n")
+    env = mcp_gui_env()
+    for name, url in servers:
+        chunks.append(render_toml_mcp(name, helper, url, env))
+    if not chunks:
+        return b""
+    return "".join(chunks).encode()
+
+
+def read_managed_jira(home):
+    path = home / MANAGED_MCP
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    names = data.get("jira")
+    if names is None:
+        return []
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise ValueError(f"{path} jira must be a list of names")
+    return names
 
 
 def remove_backup(backup):
@@ -234,6 +415,23 @@ def main():
             target = home / ".local/bin" / script.name
             files[target] = script.read_bytes()
             executable_files.add(target)
+
+    helper = home / ".local/bin/mcp-atlassian-start"
+    previous_jira = read_managed_jira(home)
+    servers = jira_servers(config)
+    if servers or previous_jira:
+        for relative, bucket, flavor in MCP_JSON:
+            target = home / relative
+            if servers or target.is_file():
+                files[target] = merge_json_mcp(
+                    target, bucket, flavor, helper, servers, previous_jira)
+        for relative in MCP_TOML:
+            target = home / relative
+            if servers or target.is_file():
+                files[target] = merge_toml_mcp(target, helper, servers, previous_jira)
+        files[home / MANAGED_MCP] = (
+            json.dumps({"jira": [name for name, _url in servers]}, indent=2) + "\n"
+        ).encode()
 
     backup_roots.update(files)
     if args.clean_backups:

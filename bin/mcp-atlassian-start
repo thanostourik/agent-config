@@ -1,0 +1,77 @@
+#!/bin/sh
+# Start mcp-atlassian for one Jira URL. Username and password come from the
+# Bitwarden login whose URI is that URL. Sync writes this command into each
+# tool's MCP config; the URL is the only argument.
+set -eu
+
+if [ "${1:-}" = "" ]; then
+  echo "usage: mcp-atlassian-start <jira-url>" >&2
+  exit 1
+fi
+url=$1
+
+uid=$(id -u)
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+export DISPLAY="${DISPLAY:-:0}"
+export PATH="${HOME}/.local/bin:/usr/bin:/bin:${PATH}"
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "mcp-atlassian-start: $1 is not on PATH" >&2
+    exit 1
+  }
+}
+need bw
+need zenity
+need uvx
+
+session="${XDG_RUNTIME_DIR}/bw-session"
+if [ -s "$session" ]; then
+  BW_SESSION=$(cat "$session")
+  export BW_SESSION
+fi
+
+status=$(bw status 2>/dev/null | sed -n 's/.*"status": *"\([^"]*\)".*/\1/p')
+if [ "$status" = "unauthenticated" ] || [ -z "$status" ]; then
+  echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
+  exit 1
+fi
+
+if [ "$status" != "unlocked" ]; then
+  pw=$(zenity --password --title='Bitwarden master password' --text='Same password that unlocks the Bitwarden app.
+NOT Client ID. NOT Client Secret. NOT Jira.')
+  test -n "$pw"
+  tmp="${XDG_RUNTIME_DIR}/bw-mp"
+  umask 077
+  printf %s "$pw" > "$tmp"
+  unset pw
+  bw unlock --passwordfile "$tmp" --raw > "$session"
+  rm -f "$tmp"
+  chmod 600 "$session"
+  BW_SESSION=$(cat "$session")
+  export BW_SESSION
+fi
+
+host=${url#*://}
+host=${host%%/*}
+
+lookup() {
+  bw get "$1" "$url" 2>/dev/null || bw get "$1" "$host"
+}
+
+user=$(lookup username) || {
+  echo "Bitwarden has no username for $url. The login URI must match this URL." >&2
+  exit 1
+}
+token=$(lookup password) || {
+  echo "Bitwarden has no password for $url. The login URI must match this URL." >&2
+  exit 1
+}
+
+export JIRA_URL=$url
+export JIRA_USERNAME=$user
+export JIRA_API_TOKEN=$token
+export READ_ONLY_MODE=true
+
+exec uvx mcp-atlassian

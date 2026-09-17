@@ -285,6 +285,9 @@ class SyncTest(unittest.TestCase):
         self.write_config({"skills": {"example": {"enabled": "no"}}})
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
+        self.write_config({"mcp": {"jira": {"enabled": "no"}}})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
 
     def test_example_config_lists_installable_skills_and_hooks(self):
         source = Path(__file__).resolve().parents[1]
@@ -296,6 +299,132 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(set(example["hooks"]), hooks)
         for entry in (*example["skills"].values(), *example["hooks"].values()):
             self.assertEqual(entry, {"enabled": True})
+        self.assertEqual(example["mcp"]["jira"]["enabled"], True)
+        self.assertEqual(example["mcp"]["jira"]["instances"], {})
+
+    def add_helper(self):
+        source = Path(__file__).resolve().parents[1] / "bin/mcp-atlassian-start"
+        dest = self.repo / "bin"
+        dest.mkdir()
+        shutil.copy(source, dest / "mcp-atlassian-start")
+        (dest / "mcp-atlassian-start").chmod(0o755)
+
+    def jira_config(self, instances, enabled=True):
+        self.write_config({"mcp": {"jira": {"enabled": enabled, "instances": instances}}})
+
+    def test_missing_config_does_not_touch_existing_mcp(self):
+        target = self.home / ".cursor/mcp.json"
+        target.parent.mkdir(parents=True)
+        target.write_text('{"mcpServers": {"jira": {"command": "keep-me"}}}')
+        self.assertFalse((self.repo / "config.json").exists())
+        self.run_sync("--apply")
+        self.assertEqual(json.loads(target.read_text())["mcpServers"]["jira"]["command"],
+                         "keep-me")
+        self.assertFalse((self.home / ".config/agent-config/managed-mcp.json").exists())
+
+    def test_empty_jira_instances_do_not_create_mcp_files(self):
+        self.add_helper()
+        self.jira_config({})
+        self.run_sync("--apply")
+        self.assertFalse((self.home / ".cursor/mcp.json").exists())
+        self.assertFalse((self.home / ".claude.json").exists())
+        self.assertTrue((self.home / ".local/bin/mcp-atlassian-start").is_file())
+
+    def test_one_jira_instance_installs_as_server_jira(self):
+        self.add_helper()
+        url = "https://jira.example.com"
+        self.jira_config({"work": {"url": url}})
+        self.home.mkdir()
+        self.home.joinpath(".claude.json").write_text('{"theme": "dark"}')
+        self.home.joinpath(".codex").mkdir(parents=True)
+        self.home.joinpath(".codex/config.toml").write_text("[features]\nmemories = false\n")
+        self.home.joinpath(".cursor").mkdir()
+        self.home.joinpath(".cursor/mcp.json").write_text(
+            '{"mcpServers": {"other": {"command": "keep"}}}')
+        self.run_sync("--apply", "--replace-existing")
+        helper = str(self.home / ".local/bin/mcp-atlassian-start")
+        cursor = json.loads((self.home / ".cursor/mcp.json").read_text())
+        self.assertEqual(cursor["mcpServers"]["other"]["command"], "keep")
+        self.assertEqual(cursor["mcpServers"]["jira"]["command"], helper)
+        self.assertEqual(cursor["mcpServers"]["jira"]["args"], [url])
+        self.assertEqual(set(cursor["mcpServers"]["jira"]["env"]),
+                         {"DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"})
+        claude = json.loads((self.home / ".claude.json").read_text())
+        self.assertEqual(claude["theme"], "dark")
+        self.assertEqual(claude["mcpServers"]["jira"]["args"], [url])
+        opencode = json.loads((self.home / ".config/opencode/opencode.json").read_text())
+        self.assertEqual(opencode["mcp"]["jira"]["type"], "local")
+        self.assertEqual(opencode["mcp"]["jira"]["command"], [helper, url])
+        self.assertEqual(opencode["mcp"]["jira"]["timeout"], 180000)
+        grok = (self.home / ".grok/config.toml").read_text()
+        self.assertIn("[mcp_servers.jira]", grok)
+        self.assertIn("startup_timeout_sec = 180", grok)
+        self.assertIn(f"args = [{json.dumps(url)}]", grok)
+        codex = (self.home / ".codex/config.toml").read_text()
+        self.assertIn("[features]", codex)
+        self.assertIn("memories = false", codex)
+        self.assertIn("[mcp_servers.jira]", codex)
+        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
+                         {"jira": ["jira"]})
+        result = subprocess.run([helper], capture_output=True, text=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("usage:", result.stderr)
+        self.run_sync("--check")
+
+    def test_two_jira_instances_use_keys_and_disable_removes_them(self):
+        self.add_helper()
+        self.jira_config({
+            "work": {"url": "https://jira.example.com"},
+            "other": {"url": "https://other.example.com"},
+        })
+        extra = self.home / ".cursor/mcp.json"
+        extra.parent.mkdir(parents=True)
+        extra.write_text('{"mcpServers": {"unrelated": {"command": "keep"}}}')
+        self.run_sync("--apply", "--replace-existing")
+        cursor = json.loads(extra.read_text())["mcpServers"]
+        self.assertEqual(set(cursor), {"unrelated", "work", "other"})
+        self.assertNotIn("jira", cursor)
+        self.assertEqual(cursor["work"]["args"], ["https://jira.example.com"])
+        self.assertEqual(cursor["other"]["args"], ["https://other.example.com"])
+        self.jira_config({
+            "work": {"url": "https://jira.example.com"},
+            "other": {"url": "https://other.example.com"},
+        }, enabled=False)
+        self.run_sync("--apply", "--replace-existing")
+        cursor = json.loads(extra.read_text())["mcpServers"]
+        self.assertEqual(cursor, {"unrelated": {"command": "keep"}})
+        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
+                         {"jira": []})
+
+    def test_one_jira_instance_then_two_replaces_the_jira_name(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        cursor = json.loads((self.home / ".cursor/mcp.json").read_text())["mcpServers"]
+        self.assertEqual(set(cursor), {"jira"})
+        self.jira_config({
+            "work": {"url": "https://jira.example.com"},
+            "other": {"url": "https://other.example.com"},
+        })
+        self.run_sync("--apply", "--replace-existing")
+        cursor = json.loads((self.home / ".cursor/mcp.json").read_text())["mcpServers"]
+        self.assertEqual(set(cursor), {"work", "other"})
+        grok = (self.home / ".grok/config.toml").read_text()
+        self.assertNotIn("[mcp_servers.jira]", grok)
+        self.assertIn("[mcp_servers.work]", grok)
+        self.assertIn("[mcp_servers.other]", grok)
+
+    def test_invalid_jira_instances_block_all_writes(self):
+        (self.repo / "instructions/common.md").write_text("New instructions")
+        self.jira_config({"work": {}})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+        self.jira_config({"1work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+        self.write_config({"mcp": {"jira": {"enabled": True, "instances": []}}})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
 
 
 if __name__ == "__main__":
