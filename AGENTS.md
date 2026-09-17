@@ -42,10 +42,10 @@ Two things to keep as they are:
   on what you do not want. Sync does not require an entry. Missing means on.
   `enabled: true` is the same as missing. Instructions and `bin/` always
   install. Disabling an item removes the copies sync installed for it.
-  `mcp.jira.instances` holds Jira URLs. Leave it empty in the example. One
-  instance is installed as MCP server `jira`; two or more use the instance
-  keys. Sync merges those servers into each tool's MCP config and never writes
-  credentials.
+  `mcp.jira.instances` holds Jira URLs. The example uses a fake URL; copy it
+  to `config.json` and replace that URL. One instance is installed as MCP
+  server `jira`; two or more use the instance keys. Sync merges those servers
+  into each tool's MCP config and never writes credentials.
 - `SETUP.md`: extra machine-setup steps for anything sync installs. Sync does
   not copy this file. Add a section when a tool needs something besides
   `./sync`.
@@ -55,8 +55,7 @@ Two things to keep as they are:
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
 When you add a skill, agent, or hooks file, add it to `config.example.json`
-so the menu stays complete. Do not put a real Jira URL in that example;
-keep `mcp.jira.instances` empty.
+so the menu stays complete. Do not put a real Jira URL in that example.
 
 Skills keep this directory layout. By default, their source folder selects
 the installation destination. An optional field in the opening `SKILL.md`

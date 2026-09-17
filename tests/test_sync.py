@@ -300,7 +300,8 @@ class SyncTest(unittest.TestCase):
         for entry in (*example["skills"].values(), *example["hooks"].values()):
             self.assertEqual(entry, {"enabled": True})
         self.assertEqual(example["mcp"]["jira"]["enabled"], True)
-        self.assertEqual(example["mcp"]["jira"]["instances"], {})
+        self.assertEqual(example["mcp"]["jira"]["instances"],
+                         {"work": {"url": "https://jira.example.com"}})
 
     def add_helper(self):
         source = Path(__file__).resolve().parents[1] / "bin/mcp-atlassian-start"

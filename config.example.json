@@ -13,7 +13,9 @@
   "mcp": {
     "jira": {
       "enabled": true,
-      "instances": {}
+      "instances": {
+        "work": { "url": "https://jira.example.com" }
+      }
     }
   }
 }
