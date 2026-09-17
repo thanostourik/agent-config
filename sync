@@ -13,6 +13,8 @@ Empty Markdown placeholders are skipped. Existing files are replaced only
 with --replace-existing and are backed up alongside the destination first.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
+config.local.json (gitignored) can disable skills, agents, and hooks.
+Missing entries stay enabled. Copy config.example.json to start.
 """
 
 import argparse
@@ -47,6 +49,46 @@ TOOLS = {
     "shared": {"skills": ".agents/skills"},
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
+
+
+def load_local_config():
+    """Read config.local.json. Missing file means everything stays enabled."""
+    path = ROOT / "config.local.json"
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("config.local.json must be a JSON object")
+    for section in ("skills", "agents", "hooks"):
+        items = data.get(section)
+        if items is None:
+            continue
+        if not isinstance(items, dict):
+            raise ValueError(f"config.local.json {section} must be an object")
+        for name, entry in items.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"config.local.json {section}.{name} must be an object")
+            if "enabled" in entry and not isinstance(entry["enabled"], bool):
+                raise ValueError(
+                    f"config.local.json {section}.{name}.enabled must be true or false")
+    return data
+
+
+def is_enabled(config, section, name):
+    """Missing section or name is on. enabled: true is the same as missing."""
+    items = config.get(section)
+    if items is None:
+        return True
+    if not isinstance(items, dict):
+        raise ValueError(f"config.local.json {section} must be an object")
+    entry = items.get(name)
+    if entry is None:
+        return True
+    if not isinstance(entry, dict):
+        raise ValueError(f"config.local.json {section}.{name} must be an object")
+    if "enabled" not in entry:
+        return True
+    return entry["enabled"]
 
 
 def skill_harnesses(entry, default):
@@ -100,6 +142,7 @@ def main():
     files = {}
     executable_files = set()
     skill_sources = {}
+    config = load_local_config()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
@@ -116,6 +159,8 @@ def main():
             for skill in sorted(skills_dir.iterdir()):
                 entry = skill / "SKILL.md"
                 if not entry.is_file() or not entry.read_text().strip():
+                    continue
+                if not is_enabled(config, "skills", skill.name):
                     continue
                 for harness in skill_harnesses(entry, tool):
                     destination = home / TOOLS[harness]["skills"] / skill.name
@@ -134,10 +179,13 @@ def main():
         if "agents" in destinations and agents_dir.is_dir():
             for agent in sorted(agents_dir.iterdir()):
                 if agent.is_file() and agent.read_text().strip():
+                    if not is_enabled(config, "agents", agent.stem):
+                        continue
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
         hooks_file = ROOT / "hooks" / f"{tool}.json"
-        if "hooks" in destinations and hooks_file.is_file():
+        if ("hooks" in destinations and hooks_file.is_file()
+                and is_enabled(config, "hooks", tool)):
             target = home / destinations["hooks"]
             if tool == "claude-code":
                 # Claude Code keeps hooks inside settings.json next to unrelated

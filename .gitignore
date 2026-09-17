@@ -1,2 +1,3 @@
 /.plans/scratch/
 __pycache__/
+config.local.json

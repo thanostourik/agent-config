@@ -35,11 +35,18 @@ Two things to keep as they are:
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
+- `config.example.json`: the enable/disable menu for skills, agents, and hooks.
+  Copy it to `config.local.json` (gitignored) and set `enabled` to `false` on
+  what you do not want. Sync does not require an entry. Missing means on.
+  `enabled: true` is the same as missing. Instructions and `bin/` always
+  install.
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
+When you add a skill, agent, or hooks file, add it to `config.example.json`
+so the menu stays complete.
 
 Skills keep this directory layout. By default, their source folder selects
 the installation destination. An optional field in the opening `SKILL.md`
