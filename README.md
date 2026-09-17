@@ -14,6 +14,11 @@ Grok, Cursor, and OpenCode, kept in one place.
 ./sync --home /tmp/test --apply       # install into another folder, for testing
 ```
 
+To turn a skill, agent, or hook off, copy `config.example.json` to
+`config.json` and set that entry's `enabled` to `false`. Do not commit
+`config.json`. Sync treats a missing entry as on. The next `./sync --apply`
+removes the copies it installed for disabled items.
+
 Sync refuses to overwrite a file that differs unless you pass `--replace-existing`.
 Backups are saved next to the replaced file as `<file>.backup-<timestamp>`.
 

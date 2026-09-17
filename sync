@@ -13,6 +13,9 @@ Empty Markdown placeholders are skipped. Existing files are replaced only
 with --replace-existing and are backed up alongside the destination first.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
+config.json (gitignored) can disable skills, agents, and hooks.
+Missing entries stay enabled. Copy config.example.json to start.
+Disabled items are removed from the destinations sync installed.
 """
 
 import argparse
@@ -47,6 +50,57 @@ TOOLS = {
     "shared": {"skills": ".agents/skills"},
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
+
+
+def load_config():
+    """Read config.json. Missing file means everything stays enabled."""
+    path = ROOT / "config.json"
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("config.json must be a JSON object")
+    for section in ("skills", "agents", "hooks"):
+        items = data.get(section)
+        if items is None:
+            continue
+        if not isinstance(items, dict):
+            raise ValueError(f"config.json {section} must be an object")
+        for name, entry in items.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"config.json {section}.{name} must be an object")
+            if "enabled" in entry and not isinstance(entry["enabled"], bool):
+                raise ValueError(
+                    f"config.json {section}.{name}.enabled must be true or false")
+    return data
+
+
+def is_enabled(config, section, name):
+    """Missing section or name is on. enabled: true is the same as missing."""
+    items = config.get(section)
+    if items is None:
+        return True
+    if not isinstance(items, dict):
+        raise ValueError(f"config.json {section} must be an object")
+    entry = items.get(name)
+    if entry is None:
+        return True
+    if not isinstance(entry, dict):
+        raise ValueError(f"config.json {section}.{name} must be an object")
+    if "enabled" not in entry:
+        return True
+    return entry["enabled"]
+
+
+def remove_backup(backup):
+    if backup.is_dir() and not backup.is_symlink():
+        shutil.rmtree(backup)
+    else:
+        backup.unlink()
+
+
+def backup_path(target, stamp):
+    return target.with_name(f"{target.name}.backup-{stamp}")
 
 
 def skill_harnesses(entry, default):
@@ -100,6 +154,9 @@ def main():
     files = {}
     executable_files = set()
     skill_sources = {}
+    deletes = []
+    backup_roots = set()
+    config = load_config()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
@@ -117,12 +174,18 @@ def main():
                 entry = skill / "SKILL.md"
                 if not entry.is_file() or not entry.read_text().strip():
                     continue
+                enabled = is_enabled(config, "skills", skill.name)
                 for harness in skill_harnesses(entry, tool):
                     destination = home / TOOLS[harness]["skills"] / skill.name
                     if destination in skill_sources:
                         raise ValueError(f"Duplicate skill destination {destination}: "
                                          f"{skill_sources[destination]} and {skill}")
                     skill_sources[destination] = skill
+                    backup_roots.add(destination)
+                    if not enabled:
+                        if destination.exists() or destination.is_symlink():
+                            deletes.append((destination, True))
+                        continue
                     for file in sorted(skill.rglob("*")):
                         if file.is_file():
                             target = destination / file.relative_to(skill)
@@ -133,12 +196,30 @@ def main():
         agents_dir = ROOT / "agents" / tool
         if "agents" in destinations and agents_dir.is_dir():
             for agent in sorted(agents_dir.iterdir()):
-                if agent.is_file() and agent.read_text().strip():
-                    files[home / destinations["agents"] / agent.name] = agent.read_bytes()
+                if not (agent.is_file() and agent.read_text().strip()):
+                    continue
+                target = home / destinations["agents"] / agent.name
+                backup_roots.add(target)
+                if not is_enabled(config, "agents", agent.stem):
+                    if target.exists() or target.is_symlink():
+                        deletes.append((target, False))
+                    continue
+                files[target] = agent.read_bytes()
 
         hooks_file = ROOT / "hooks" / f"{tool}.json"
         if "hooks" in destinations and hooks_file.is_file():
             target = home / destinations["hooks"]
+            backup_roots.add(target)
+            if not is_enabled(config, "hooks", tool):
+                if tool == "claude-code":
+                    if target.is_file():
+                        settings = json.loads(target.read_text())
+                        if "hooks" in settings:
+                            del settings["hooks"]
+                            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
+                elif target.exists() or target.is_symlink():
+                    deletes.append((target, False))
+                continue
             if tool == "claude-code":
                 # Claude Code keeps hooks inside settings.json next to unrelated
                 # settings, so replace only the "hooks" key and keep the rest.
@@ -154,10 +235,11 @@ def main():
             files[target] = script.read_bytes()
             executable_files.add(target)
 
+    backup_roots.update(files)
     if args.clean_backups:
-        backups = [b for target in files for b in target.parent.glob(f"{target.name}.backup-*")]
+        backups = [b for target in backup_roots for b in target.parent.glob(f"{target.name}.backup-*")]
         for backup in backups:
-            backup.unlink()
+            remove_backup(backup)
             print(f"DELETED: {backup}")
         print(f"Deleted {len(backups)} backup(s).")
         return 0
@@ -180,11 +262,22 @@ def main():
             print(f"{'REPLACE + BACKUP' if exists else 'CREATE'}: {target}")
         changes.append((target, contents, exists))
 
+    removals = []
+    for target, directory in deletes:
+        if target.is_symlink() or (not directory and target.is_file()) or (
+                directory and target.is_dir()):
+            print(f"DELETE: {target}")
+            removals.append((target, directory))
+            continue
+        print(f"BLOCKED (destination is not a sync-owned {'directory' if directory else 'file'}): {target}")
+        blocked = True
+
     if blocked:
         print("No files written. Review destinations before using --replace-existing.")
         return 2
-    if not changes:
-        print("No changes needed." if files else "No populated sources; empty placeholders skipped.")
+    if not changes and not removals:
+        print("No changes needed." if files or deletes else
+              "No populated sources; empty placeholders skipped.")
         return 0
     if args.check:
         return 1
@@ -196,7 +289,7 @@ def main():
     for target, contents, exists in changes:
         target.parent.mkdir(parents=True, exist_ok=True)
         if exists:
-            backup = target.with_name(f"{target.name}.backup-{stamp}")
+            backup = backup_path(target, stamp)
             shutil.copy2(target, backup, follow_symlinks=False)
             print(f"BACKUP: {backup}")
         # Replace the directory entry, never write through an existing symlink.
@@ -209,7 +302,18 @@ def main():
             temporary.replace(target)
         finally:
             temporary.unlink(missing_ok=True)
-    print(f"Applied {len(changes)} file change(s). Restart sessions to load new instructions.")
+    for target, directory in removals:
+        backup = backup_path(target, stamp)
+        if target.is_symlink() or target.is_file():
+            shutil.copy2(target, backup, follow_symlinks=False)
+            target.unlink()
+        else:
+            shutil.copytree(target, backup, symlinks=True)
+            shutil.rmtree(target)
+        print(f"BACKUP: {backup}")
+        print(f"DELETED: {target}")
+    print(f"Applied {len(changes)} file change(s), {len(removals)} deletion(s). "
+          "Restart sessions to load new instructions.")
     return 0
 
 

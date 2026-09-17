@@ -35,11 +35,18 @@ Two things to keep as they are:
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
+- `config.example.json`: the enable/disable menu for skills, agents, and hooks.
+  Copy it to `config.json` (gitignored) and set `enabled` to `false` on what
+  you do not want. Sync does not require an entry. Missing means on.
+  `enabled: true` is the same as missing. Instructions and `bin/` always
+  install. Disabling an item removes the copies sync installed for it.
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
+When you add a skill, agent, or hooks file, add it to `config.example.json`
+so the menu stays complete.
 
 Skills keep this directory layout. By default, their source folder selects
 the installation destination. An optional field in the opening `SKILL.md`
@@ -96,12 +103,13 @@ project somewhere else, it may not see them.
 - `./sync --apply` writes the changes. If a destination file exists with
   different content, sync refuses. Add `--replace-existing` to allow it. Sync
   then saves a timestamped backup next to the old file before replacing it.
+  Disabling a skill, agent, or hook deletes only that item's sync destinations
+  (Claude Code: the `hooks` key in `settings.json`, not the rest of the file).
 - `./sync --home /some/temporary/path` installs into that folder instead of
   the real home folder. Use this for testing. Sync still reads the source
   files from this repository.
 - `./sync --clean-backups` deletes every backup that sits next to an installed
   file. It changes nothing else.
-- Sync never deletes a file it installed earlier. Remove those by hand.
 
 Install into the real home folder only when the user asks. When you test a
 change to sync, always pass a temporary `--home` folder.
