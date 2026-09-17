@@ -1,0 +1,112 @@
+#!/bin/sh
+# Start mcp-atlassian for one Jira URL. Username and password come from the
+# Bitwarden login whose URI is that URL. Sync writes this command into each
+# tool's MCP config; the URL is the only argument.
+set -eu
+
+if [ "${1:-}" = "" ]; then
+  echo "usage: mcp-atlassian-start <jira-url>" >&2
+  exit 1
+fi
+url=$1
+
+uid=$(id -u)
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+export DISPLAY="${DISPLAY:-:0}"
+export PATH="${HOME}/.local/bin:/usr/bin:/bin:${PATH}"
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "mcp-atlassian-start: $1 is not on PATH" >&2
+    exit 1
+  }
+}
+need bw
+need zenity
+need uvx
+need python3
+
+session="${XDG_RUNTIME_DIR}/bw-session"
+if [ -s "$session" ]; then
+  BW_SESSION=$(cat "$session")
+  export BW_SESSION
+fi
+
+host=${url#*://}
+host=${host%%/*}
+err=$(mktemp "${XDG_RUNTIME_DIR}/bw-err.XXXXXX")
+unlocked=0
+item_json=""
+
+unlock() {
+  pw=$(zenity --password --title='Bitwarden master password' --text='Same password that unlocks the Bitwarden app.
+NOT Client ID. NOT Client Secret. NOT Jira.')
+  test -n "$pw"
+  tmp="${XDG_RUNTIME_DIR}/bw-mp"
+  umask 077
+  printf %s "$pw" > "$tmp"
+  unset pw
+  bw --nointeraction unlock --passwordfile "$tmp" --raw > "$session"
+  rm -f "$tmp"
+  chmod 600 "$session"
+  BW_SESSION=$(cat "$session")
+  export BW_SESSION
+}
+
+while :; do
+  if item_json=$(bw --nointeraction get item "$url" 2>"$err"); then
+    break
+  fi
+  reason=$(cat "$err")
+  case $reason in
+    *"Vault is locked."*)
+      if [ "$unlocked" = 1 ]; then
+        echo "Bitwarden vault is still locked after unlock." >&2
+        rm -f "$err"
+        exit 1
+      fi
+      unlock
+      unlocked=1
+      ;;
+    *"not logged in"*)
+      echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
+      rm -f "$err"
+      exit 1
+      ;;
+    *"Not found."*)
+      if item_json=$(bw --nointeraction get item "$host" 2>"$err"); then
+        break
+      fi
+      echo "Bitwarden has no login for $url. The login URI must match this URL." >&2
+      rm -f "$err"
+      exit 1
+      ;;
+    *)
+      printf '%s\n' "$reason" >&2
+      rm -f "$err"
+      exit 1
+      ;;
+  esac
+done
+rm -f "$err"
+
+eval "$(printf '%s\n' "$item_json" | python3 -c '
+import json, shlex, sys
+item = json.load(sys.stdin)
+login = item.get("login") or {}
+user = login.get("username") or ""
+token = login.get("password") or ""
+if not user or not token:
+    sys.stderr.write("Bitwarden login for this URL has no username or password.\n")
+    sys.exit(1)
+print("user=" + shlex.quote(user))
+print("token=" + shlex.quote(token))
+')"
+
+export JIRA_URL=$url
+export JIRA_USERNAME=$user
+export JIRA_API_TOKEN=$token
+unset READ_ONLY_MODE
+
+exec uvx mcp-atlassian
