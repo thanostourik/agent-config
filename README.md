@@ -19,14 +19,14 @@ To turn a skill, agent, hook, or Jira MCP off, copy `config.example.json` to
 `config.json`. Sync treats a missing entry as on. The next `./sync --apply`
 removes the copies it installed for disabled items.
 
-Jira MCP URLs also go in `config.json` (never in git). Paste this into a new
-agent session to wire it up:
+Jira MCP URLs also go in `config.json` (never in git). Some tools need machine
+setup beyond copying files. Paste this into a new agent session:
 
 ```
-Follow SETUP.md in this repository to wire Jira MCP into Claude Code, Codex, Grok, Cursor, and OpenCode. Use my existing Bitwarden login whose URI is the Jira URL. Do not put the URL or credentials in git, do not create or rename Bitwarden items, and do not run bw login from the agent.
+Follow SETUP.md in this repository and complete every setup the tools in this repo need.
 ```
 
-See [SETUP.md](SETUP.md) for the steps. Sync refuses to overwrite a file that
-differs unless you pass `--replace-existing`. Backups are saved next to the
-replaced file as `<file>.backup-<timestamp>`. See [AGENTS.md](AGENTS.md) for
-the folder layout, install locations, and tests.
+See [SETUP.md](SETUP.md). Sync refuses to overwrite a file that differs unless
+you pass `--replace-existing`. Backups are saved next to the replaced file as
+`<file>.backup-<timestamp>`. See [AGENTS.md](AGENTS.md) for the folder layout,
+install locations, and tests.

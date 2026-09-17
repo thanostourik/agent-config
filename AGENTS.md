@@ -45,9 +45,10 @@ Two things to keep as they are:
   `mcp.jira.instances` holds Jira URLs. Leave it empty in the example. One
   instance is installed as MCP server `jira`; two or more use the instance
   keys. Sync merges those servers into each tool's MCP config and never writes
-  credentials. See [SETUP.md](SETUP.md) to wire it on a machine.
-- `SETUP.md`: steps for an agent (or you) to fill `config.json` and install
-  Jira MCP. It is not copied into the tools.
+  credentials.
+- `SETUP.md`: extra machine-setup steps for anything sync installs. Sync does
+  not copy this file. Add a section when a tool needs something besides
+  `./sync`.
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 
