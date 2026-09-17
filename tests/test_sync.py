@@ -205,8 +205,8 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(list(target.parent.glob("AGENTS.md.backup-*")), [])
         self.assertEqual(target.read_text(), "new\n")
 
-    def write_local_config(self, data):
-        (self.repo / "config.local.json").write_text(json.dumps(data))
+    def write_config(self, data):
+        (self.repo / "config.json").write_text(json.dumps(data))
 
     def test_disabled_skill_and_hook_are_skipped(self):
         skill = self.repo / "skills/shared/example"
@@ -221,7 +221,7 @@ class SyncTest(unittest.TestCase):
         (self.repo / "agents/codex").mkdir(parents=True)
         (self.repo / "agents/codex/runner.toml").write_text("name = 'runner'")
         (self.repo / "agents/codex/other.toml").write_text("name = 'other'")
-        self.write_local_config({
+        self.write_config({
             "skills": {"example": {"enabled": False}, "kept": {"enabled": True}},
             "hooks": {"codex": {"enabled": False}},
             "agents": {"runner": {"enabled": False}},
@@ -234,20 +234,55 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertTrue((self.home / ".codex/agents/other.toml").is_file())
 
-    def test_missing_local_config_leaves_everything_enabled(self):
+    def test_disable_removes_only_sync_installed_copies(self):
         skill = self.repo / "skills/shared/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
-        self.assertFalse((self.repo / "config.local.json").exists())
+        kept = self.repo / "skills/shared/kept"
+        kept.mkdir(parents=True)
+        (kept / "SKILL.md").write_text("Kept skill")
+        (self.repo / "hooks").mkdir()
+        (self.repo / "hooks/codex.json").write_text('{"hooks": {}}\n')
+        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
+        (self.repo / "agents/codex").mkdir(parents=True)
+        (self.repo / "agents/codex/runner.toml").write_text("name = 'runner'")
+        settings = self.home / ".claude/settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text('{"theme": "dark", "hooks": {"Stop": []}}')
+        self.run_sync("--apply", "--replace-existing")
+        extra = self.home / ".agents/skills/unrelated/SKILL.md"
+        extra.parent.mkdir(parents=True)
+        extra.write_text("not from sync")
+        self.write_config({
+            "skills": {"example": {"enabled": False}},
+            "hooks": {"codex": {"enabled": False}, "claude-code": {"enabled": False}},
+            "agents": {"runner": {"enabled": False}},
+        })
+        self.run_sync("--apply", "--replace-existing")
+        self.assertFalse((self.home / ".agents/skills/example").exists())
+        self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
+        self.assertEqual(extra.read_text(), "not from sync")
+        self.assertFalse((self.home / ".codex/hooks.json").exists())
+        self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
+        self.assertEqual(json.loads(settings.read_text()), {"theme": "dark"})
+        self.assertTrue(list((self.home / ".agents/skills").glob("example.backup-*")))
+        self.run_sync("--clean-backups")
+        self.assertFalse(list((self.home / ".agents/skills").glob("example.backup-*")))
+
+    def test_missing_config_leaves_everything_enabled(self):
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("Example skill")
+        self.assertFalse((self.repo / "config.json").exists())
         self.run_sync("--apply")
         self.assertTrue((self.home / ".agents/skills/example/SKILL.md").is_file())
 
-    def test_invalid_local_config_blocks_all_writes(self):
+    def test_invalid_config_blocks_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")
-        (self.repo / "config.local.json").write_text("{")
+        (self.repo / "config.json").write_text("{")
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
-        self.write_local_config({"skills": {"example": {"enabled": "no"}}})
+        self.write_config({"skills": {"example": {"enabled": "no"}}})
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
