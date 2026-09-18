@@ -8,8 +8,10 @@ metadata:
 
 # Codex review
 
-Use the user's selected model, or `gpt-5.6-sol` when none is specified. Review
-locally; do not post findings, edit the reviewed files, or delegate again.
+Use the user's selected model, or `gpt-6-astra` when none is specified. Use the
+user's selected effort (`low`, `medium`, `high`, or `xhigh`), or `low` when none
+is specified. Review locally; do not post findings, edit the reviewed files, or
+delegate again.
 
 ## Prepare
 
@@ -19,12 +21,14 @@ current commit and `git status --short`. Use a unique directory under
 Do not include unrelated user changes unless they are part of the requested target.
 
 For a standard diff review, choose exactly one target: `--uncommitted`,
-`--base <branch>`, or `--commit <sha>`. Set `REVIEW_REPO`, `REVIEW_MODEL`, and
-`REVIEW_DIR` to the absolute repository path, selected model, and artifact directory:
+`--base <branch>`, or `--commit <sha>`. Set `REVIEW_REPO`, `REVIEW_MODEL`,
+`REVIEW_EFFORT`, and `REVIEW_DIR` to the absolute repository path, selected model,
+selected effort, and artifact directory:
 
 ```bash
 timeout 300 codex -C "$REVIEW_REPO" -s read-only -a never \
   exec -m "$REVIEW_MODEL" -c "review_model=\"$REVIEW_MODEL\"" \
+  -c "model_reasoning_effort=\"$REVIEW_EFFORT\"" \
   -o "$REVIEW_DIR/report.md" review --uncommitted \
   </dev/null >"$REVIEW_DIR/run.log" 2>&1
 ```
@@ -35,7 +39,8 @@ specific requirements, write a self-contained `prompt.md` and use:
 
 ```bash
 timeout 300 codex -C "$REVIEW_REPO" -s read-only -a never \
-  exec -m "$REVIEW_MODEL" -o "$REVIEW_DIR/report.md" - \
+  exec -m "$REVIEW_MODEL" -c "model_reasoning_effort=\"$REVIEW_EFFORT\"" \
+  -o "$REVIEW_DIR/report.md" - \
   <"$REVIEW_DIR/prompt.md" >"$REVIEW_DIR/run.log" 2>&1
 ```
 
@@ -49,9 +54,10 @@ missing decisions. Request an explicit statement if no substantive issues are fo
 
 Run in the background with progress checks if the command may take several
 minutes. On failure or timeout, report the error and whether output is partial;
-do not silently switch models or broaden permissions.
+do not silently switch models or effort, or broaden permissions.
 
 Read the report and verify substantive findings against the source before
 presenting them. Distinguish confirmed issues from unresolved concerns, name
-the reviewed target and model, and state verification gaps. A clean review is
-not evidence that tests passed. Check the final Git state; do not revert user work.
+the reviewed target, model, and effort, and state verification gaps. A clean
+review is not evidence that tests passed. Check the final Git state; do not
+revert user work.

@@ -7,9 +7,10 @@ metadata:
 
 # Claude review
 
-Use the user's selected model, or `opus` when none is specified. Start a fresh
-review session, without resuming the author's conversation. Review locally;
-do not post findings or edit the reviewed files.
+Use the user's selected model, or `fable-5.1` when none is specified. Use the
+user's selected effort (`low`, `medium`, `high`, or `max`), or `low` when none is
+specified. Start a fresh review session, without resuming the author's
+conversation. Review locally; do not post findings or edit the reviewed files.
 
 ## Prepare
 
@@ -35,12 +36,13 @@ without edits, commands, or further delegation.
 
 ## Run
 
-Set `REVIEW_REPO`, `REVIEW_MODEL`, and `REVIEW_DIR` to the absolute repository
-path, selected model, and artifact directory. Run from the repository:
+Set `REVIEW_REPO`, `REVIEW_MODEL`, `REVIEW_EFFORT`, and `REVIEW_DIR` to the
+absolute repository path, selected model, selected effort, and artifact
+directory. Run from the repository:
 
 ```bash
 cd "$REVIEW_REPO"
-timeout 300 claude -p --model "$REVIEW_MODEL" \
+timeout 300 claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   --tools "Read,Glob,Grep" --allowedTools "Read,Glob,Grep" \
   --permission-mode dontAsk --disable-slash-commands --strict-mcp-config \
   --no-session-persistence --output-format text \
@@ -53,11 +55,12 @@ tools. This is a static review: the caller remains responsible for tests.
 
 Run in the background with progress checks if it may take several minutes.
 On failure or timeout, report the error and whether output is partial. Do not
-silently switch models or bypass permissions to make the invocation work.
+silently switch models or effort, or bypass permissions to make the invocation
+work.
 
 ## Assess the result
 
 Verify substantive findings against the source before presenting them.
-Distinguish confirmed issues from unresolved concerns, name the reviewed target
-and model, and state verification gaps. A clean review is not evidence that tests
-passed. Check the final Git state; do not revert user work.
+Distinguish confirmed issues from unresolved concerns, name the reviewed target,
+model, and effort, and state verification gaps. A clean review is not evidence
+that tests passed. Check the final Git state; do not revert user work.
