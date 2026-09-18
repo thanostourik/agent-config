@@ -86,6 +86,8 @@ for any of these steps. Reading and answering questions is the only work that ha
   a force-push: tell me and stop.
 - After you rebase, tell me how it went: a clean rebase, or which files conflicted and how you
   resolved them.
+- Never merge another branch into the working branch, and never rebase it, unless I say so
+  explicitly. If it needs main's changes, stop and ask.
 - No force-push, ever. If a push is rejected, stop and tell me.
 
 ## Local environment
