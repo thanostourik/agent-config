@@ -1,5 +1,6 @@
 {
   "skills": {
+    "agentic-test": { "enabled": true },
     "claude-review": { "enabled": true },
     "codex-review": { "enabled": true },
     "file-pr": { "enabled": true },
