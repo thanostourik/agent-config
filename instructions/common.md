@@ -84,6 +84,8 @@ for any of these steps. Reading and answering questions is the only work that ha
 - When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create
   merge commits. Squash first only if I ask. If the branch is already pushed, the rebase may require
   a force-push: tell me and stop.
+- After you rebase, tell me how it went: a clean rebase, or which files conflicted and how you
+  resolved them.
 - No force-push, ever. If a push is rejected, stop and tell me.
 
 ## Local environment
