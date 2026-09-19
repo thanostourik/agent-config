@@ -1,6 +1,7 @@
 ---
 name: claude-review
 description: Use only when the user explicitly requests a Claude review or invokes this skill.
+disable-model-invocation: true
 metadata:
   harness: "codex, grok, opencode, cursor, shared"
 ---
