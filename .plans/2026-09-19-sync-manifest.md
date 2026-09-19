@@ -11,8 +11,9 @@
    the tools and I put there. Sync never changes or deletes those.
 3. **Keep its own files in one place.** Bookkeeping and backups live under
    `~/.config/agent-config/`. Tool folders hold installed content only.
-4. **Back up only what git does not have.** A backup is made only when sync is
-   about to destroy content that exists nowhere else.
+4. **Back up only what sync did not write.** A backup is made only when sync is
+   about to destroy content that someone else put there: a tool, or me by hand.
+   Content sync wrote itself came from this repository, so it gets no backup.
 5. **Stay simple.** Plain Python, standard library only. Preview by default,
    `--check`, `--apply`, `--home` keep working as they do now.
 
@@ -52,12 +53,18 @@ SHA-256 hash of what it wrote.
 ```
 
 Paths are relative to the home folder. An entry's hash is taken over its value
-as canonical JSON, so formatting differences in the tool's file do not matter.
-TOML tables are read with `tomllib` and hashed the same way.
+as canonical JSON (`json.dumps` with sorted keys and `default=str`), so
+formatting differences in the tool's file do not matter. TOML tables are read
+with `tomllib` and hashed the same way. Every comparison of values in this
+design uses that canonical text, never Python `==`. That keeps `180` and
+`180.0` apart, treats `nan` as equal to itself, and survives a datetime.
 
 This file replaces `managed-mcp.json`. Sync deletes the old file on the first
-apply. It needs no migration: the first run finds the installed Jira entries
-equal to the desired ones and records them (see "First run").
+apply and does not read it. The first run finds the installed Jira entries equal
+to the desired ones and records them (see "First run"). The cost: if I disable
+or rename Jira instances in `config.json` before that first run, the old
+entries are never recorded and stay installed. So the upgrade step is: run
+`./sync --apply` once right after merging, before touching the Jira config.
 
 Sync rejects a state file that is not valid JSON of this shape, or that holds
 an absolute path or a `..` part, and exits with 2 before any write.
@@ -69,8 +76,10 @@ On each run sync builds the **desired set** from the repository and
 desired or recorded:
 
 An item on disk is **clean** when it equals what sync wants to install, or when
-its hash equals the recorded hash. Clean means: nothing there is mine, and git
-has the content.
+its hash equals the recorded hash. Clean means: sync wrote it and nobody
+changed it since. It does not mean git has it. If I sync an uncommitted source
+and then throw that source away, sync deletes the installed copy without a
+backup. That copy was never the original; the source I discarded was.
 
 | Desired | On disk | Sync does |
 | --- | --- | --- |
@@ -88,27 +97,42 @@ removed source, a removed file inside a skill, a disabled item, and a changed
 `harness` list with one mechanism. The separate deletion code for disabled
 items goes away.
 
-As today, one blocked item stops the whole run before any write.
+As today, one blocked item stops the whole run before any write. Sync applies
+deletions before writes, so a source file that turned into a folder of the same
+name works.
 
 ### File details
 
 - A symlink at a file's path is never clean, even when it points at matching
   content. With the flag, sync backs up the link itself and replaces the link.
   It never writes through it.
-- A directory at a file's path is always blocked, with or without the flag.
+- A directory at a file's path is always blocked, with or without the flag. So
+  is a parent that exists and is not a folder, unless it is a clean item this
+  run deletes. Sync checks this before any write.
 - A symlinked parent folder is allowed. People symlink their dotfile folders
   on purpose, and today's sync already works that way.
-- After deleting skill files, sync removes folders that became empty, up to but
-  not including the tool's skills folder.
+- When a recorded file leaves the state (deleted, or already missing), sync
+  removes its parent folders that are empty, up to but not including the tool's
+  skills folder. It stops at a symlink. A path that is not under a current
+  skills folder, for example after a `TOOLS` rename, is not pruned.
 
 ### Entry details
 
 - Sync reads each shared file once, applies all its entry changes, and writes
-  it once.
-- A Jira server name that already exists in the file but is not recorded is
-  "not clean". So a server I wrote by hand is never overwritten silently. The
-  same holds for a `hooks` key sync never wrote: disabling hooks leaves it
-  alone. (Today sync deletes that key regardless.)
+  it once. Claude Code rewrites `~/.claude.json` and `settings.json` while it
+  runs. So right before writing, sync reads the file again. If the bytes
+  changed since the first read, sync stops with "changed during sync, run
+  again" and exits with 2. This shrinks the window for losing a tool's write
+  from the length of the run to almost nothing. It cannot close it.
+- A shared file that is a symlink is followed: sync reads and replaces the file
+  it points to. The file is the tool's and mine, and if I symlinked it into a
+  dotfiles folder, that is where it should stay. The "never write through a
+  symlink" rule is for files sync owns.
+- A Jira server name that already exists in the file, is not recorded, and
+  differs from the desired value is "not clean". So a server I wrote by hand is
+  never overwritten silently. One that equals the desired value is recorded,
+  like any other item. The same holds for a `hooks` key sync never wrote:
+  disabling hooks leaves it alone. (Today sync deletes that key regardless.)
 - A shared file is never blocked as a whole, and needs no flag, when only
   clean entries change.
 - **Every rewrite of a shared file gets a backup.** The rest of the file is not
@@ -117,13 +141,23 @@ As today, one blocked item stops the whole run before any write.
   exit 2, no writes. (Today the bucket is silently replaced with `{}`.)
 - **TOML is edited as text, then verified by parsing.** The standard library
   can read TOML (`tomllib`) but not write it. So sync removes the lines of its
-  own tables, appends the new ones, and then parses the result. The result must
-  equal the original parse with exactly sync's tables changed. If not, sync
-  exits with 2 and writes nothing. This fixes the known bug where
-  `[features] # comment` after a Jira table was deleted with it: the table
-  header scan is corrected to allow a trailing comment, and the verification
-  catches every case the scan still cannot handle (inline tables, dotted keys,
-  quoted names) instead of corrupting the file.
+  own tables and appends the new ones.
+  - Sync finds table headers by handing each line that starts with `[` to
+    `tomllib`. A header parses to nested empty tables, which gives its name.
+    This handles `[features] # comment`, `[ mcp_servers . "jira" ]`, and
+    `[[arrays]]` with no hand-written header parser. Today's scan misses the
+    first two, and deletes the following section or leaves a duplicate table.
+  - A removed table ends at its last key. Blank lines and comments between it
+    and the next header stay. Today a comment above the next section is deleted
+    with the Jira table.
+  - Then sync parses the result. Its values must equal the original values with
+    exactly sync's tables changed. An `mcp_servers` table left empty counts as
+    absent on both sides, so removing the last server passes. If the check
+    fails, sync exits with 2, writes nothing, and says which table it could not
+    edit. That covers shapes the line edit cannot handle, such as a server
+    written as an inline table or with dotted keys.
+  - The check compares values. It does not see comments, so the comment rule
+    above has its own test.
 
 ### Backups
 
@@ -135,11 +169,18 @@ As today, one blocked item stops the whole run before any write.
 ### Writing order and crashes
 
 Sync writes items first and `state.json` last, atomically. There is no journal.
-Every crash state fixes itself on the next run: a written item equals its
-desired content, so the "equals" row records it; a deleted item is "recorded,
-missing", so the record is dropped. One gap remains: sync crashes after
-creating an item, and I delete that same source before the next run. That item
-stays installed. This is rare enough to accept.
+If the next run wants the same content, every crash state fixes itself: a
+written item equals its desired content, so the "equals" row records it and
+refreshes a stale hash; a deleted item is "recorded, missing", so the record is
+dropped and its empty folders are pruned.
+
+If the desired content changed between the crash and the next run, the item sync
+wrote matches neither the old hash nor the new content. Sync then asks for the
+flag once and backs up its own earlier write. That is a nuisance, not a loss.
+The same happens to a Jira entry when `DISPLAY` or the D-Bus address differs on
+the next run, because those values are part of the entry. One real gap remains:
+sync crashes after creating an item, and I delete that same source before the
+next run. That item stays installed. This is rare enough to accept.
 
 ### First run
 
@@ -174,10 +215,13 @@ The new shape:
 Each step is a commit that leaves the tests passing.
 
 1. State file, `desired_items`, `decide`, `apply` for **files**. Central
-   backups and the new `--clean-backups`.
-2. **Entries**: hooks key and JSON MCP servers on the same table. Remove
-   `managed-mcp.json`.
-3. **TOML entries** with parse verification, including the header scan fix.
+   backups and the new `--clean-backups`. Shared files keep today's code path
+   and stay out of the state file.
+2. **Entries**: the hooks key and all Jira servers, JSON and TOML, move onto
+   the table and into the state file. Remove `managed-mcp.json`. TOML still
+   uses today's line edit.
+3. **TOML editing**: header detection through `tomllib`, comments kept, parse
+   verification.
 4. `AGENTS.md`: rewrite "Using sync" and the MCP paragraph for the new rules.
    Update the docstring in `sync`.
 
@@ -199,10 +243,18 @@ kinds:
 - a symlink with matching content is still blocked
 - first run: identical files are recorded without a flag; `--check` returns 1,
   then 0 after apply
-- a hand-written `jira` server is not overwritten without the flag
+- a parent that is a file blocks the run before any write
+- a clean entry update needs no flag, keeps the other keys of the file, and
+  leaves a backup of the shared file
+- a hand-written `jira` server is not overwritten without the flag; one equal
+  to the desired value is recorded
 - disabling hooks leaves an unrecorded `hooks` key alone
-- TOML: `[features] # comment` after the Jira table survives; an unsupported
-  shape exits with 2 and writes nothing
+- TOML: `[features] # comment` after the Jira table survives; so does a comment
+  line above the next section; a `[mcp_servers."jira"]` header is replaced, not
+  duplicated; removing the only server works; a server written as an inline
+  table exits with 2 and writes nothing
+- an interrupted run: files and entries written, old state left in place; the
+  next apply needs no flag and refreshes the hashes
 - a malformed `state.json` exits with 2
 - `--clean-backups` empties the central folder only
 
@@ -214,6 +266,8 @@ kinds:
   `.backup-*` exists anywhere, and `state.json` no longer lists it.
 - Not covered by tests: the first run against my real home folder. I run
   `./sync` (preview) there and read the output before applying.
+- Not covered by tests: the "changed during sync" stop. The tests run sync as a
+  subprocess and cannot change a file between its two reads.
 
 ## Follow-up, not in this change
 
