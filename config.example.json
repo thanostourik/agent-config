@@ -4,6 +4,7 @@
     "claude-review": { "enabled": true },
     "codex-review": { "enabled": true },
     "file-pr": { "enabled": true },
+    "modernize": { "enabled": true },
     "render-plan": { "enabled": true }
   },
   "hooks": {
