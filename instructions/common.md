@@ -26,6 +26,10 @@
 - When giving me setup or test instructions, give exact, complete steps. Do not assume I know the tool.
 - Anything that can run longer than ~5 minutes: set an explicit timeout or run it in the background
   with progress checks. Never sit silently on a foreground command.
+- Follow-up feedback is a new requirement on the whole task, not a patch on the last diff.
+  Rework what this task already built, code and plan, so the result reads as if written once
+  with everything known. Special cases, flags, or wrappers around your own earlier code mean
+  you are patching. If the rework changes the agreed plan, tell me the new design first.
 
 ## Plans & AI workflow artifacts
 
