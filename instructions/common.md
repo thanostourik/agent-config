@@ -78,6 +78,7 @@ for any of these steps. Reading and answering questions is the only work that ha
   want to see the branch on the remote at all times.
 - Conventional commit messages, always: `type(scope): summary (ISSUE-123)` (feat, fix, refactor,
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
+- Never add Co-authored-by trailers to commit messages.
 - Open the PR as soon as the implementation is committed, using the `file-pr` skill. Do not wait
   for verification to finish: the PR description says what is verified and what is not, and you
   update it as that changes. Give me the PR link.
