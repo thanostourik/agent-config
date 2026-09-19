@@ -1,7 +1,6 @@
 ---
 name: modernize
 description: Use when the user asks to rebase the current branch onto main.
-disable-model-invocation: true
 ---
 
 # Modernize
