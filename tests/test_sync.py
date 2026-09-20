@@ -329,10 +329,20 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(parent.read_text(), "a file where the skill folder goes")
         self.assertFalse((self.home / ".claude").exists())
 
+    def test_parent_of_a_shared_file_that_is_a_file_blocks_all_writes(self):
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        parent = self.home / ".config/opencode"
+        parent.parent.mkdir(parents=True)
+        parent.write_text("a file where the folder goes")
+        self.run_sync("--check", expected=2)
+        self.run_sync("--apply", "--replace-existing", expected=2)
+        self.assertFalse((self.home / ".claude.json").exists())
+
     def test_malformed_state_blocks_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New rules")
         self.state.parent.mkdir(parents=True)
         for contents in ("{", '{"files": {"../outside": "0"}, "entries": {}}',
+                         '{"files": {".grok#/../../outside": "0"}, "entries": {}}',
                          '{"files": {"/etc/passwd": "0"}, "entries": {}}', '{"files": {}}'):
             with self.subTest(contents=contents):
                 self.state.write_text(contents)

@@ -304,9 +304,7 @@ def read_shared(home, relative):
     A symlink is followed: the file belongs to the tool and the user, so it
     stays where they put it.
     """
-    path = home / relative
-    if path.is_symlink():
-        path = path.resolve()
+    path = Path(os.path.realpath(home / relative))
     if not path.exists():
         return path, None, {}
     if not path.is_file():
@@ -338,7 +336,7 @@ def digest(data):
 def load_state(home):
     """Read what earlier runs installed: item -> hash of what sync wrote."""
     path = home / STATE
-    if not path.is_file():
+    if not path.exists():
         return {"files": {}, "entries": {}}
     state = json.loads(path.read_text())
     if not isinstance(state, dict) or set(state) != {"files", "entries"}:
@@ -347,8 +345,9 @@ def load_state(home):
         if not isinstance(section, dict) or not all(
                 isinstance(value, str) for value in section.values()):
             raise ValueError(f"{path} sections must map items to hashes")
+    for name, section in state.items():
         for key in section:
-            relative = PurePosixPath(key.partition("#")[0])
+            relative = PurePosixPath(key.partition("#")[0] if name == "entries" else key)
             if relative.is_absolute() or ".." in relative.parts or not relative.parts:
                 raise ValueError(f"{path}: {key!r} is not a path inside the home folder")
     if not all(key.partition("#")[2] for key in state["entries"]):
@@ -450,6 +449,8 @@ def prune(home, target):
                 return
             try:
                 folder.rmdir()
+            except FileNotFoundError:
+                continue
             except OSError:
                 return
 
@@ -631,6 +632,12 @@ def main():
             relative, _, dotted = key.partition("#")
             changes.setdefault(relative, {})[tuple(dotted.split("."))] = entries.get(
                 key, MISSING)
+    for relative in changes:
+        path, raw, _data = shared[relative]
+        parent = blocking_parent(home, path, set()) if raw is None else None
+        if parent:
+            print(f"BLOCKED (parent is not a folder): {parent}")
+            blocked = True
     # Every shared file is rendered before the first write, so a file sync
     # cannot edit safely stops the run with nothing written.
     rewrites = {}
