@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -55,10 +56,11 @@ TOOLS = {
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-MANAGED_MCP = ".config/agent-config/managed-mcp.json"
+LEGACY_STATE = ".config/agent-config/managed-mcp.json"
 STATE = ".config/agent-config/state.json"
 BACKUPS = ".config/agent-config/backups"
 BLOCKED = object()
+MISSING = object()
 MCP_JSON = (
     (".cursor/mcp.json", "mcpServers", "stdio"),
     (".claude.json", "mcpServers", "stdio"),
@@ -178,30 +180,6 @@ def opencode_server(helper, url, env):
     }
 
 
-def merge_json_mcp(path, bucket_key, flavor, helper, servers, previous):
-    data = json.loads(path.read_text()) if path.is_file() else {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must be a JSON object")
-    bucket = data.get(bucket_key)
-    if not isinstance(bucket, dict):
-        bucket = {}
-    desired = {name for name, _url in servers}
-    for name in previous:
-        if name not in desired:
-            bucket.pop(name, None)
-    env = mcp_gui_env()
-    for name, url in servers:
-        if flavor == "opencode":
-            bucket[name] = opencode_server(helper, url, env)
-        else:
-            bucket[name] = stdio_server(helper, url, env)
-    if bucket:
-        data[bucket_key] = bucket
-    else:
-        data.pop(bucket_key, None)
-    return (json.dumps(data, indent=2) + "\n").encode()
-
-
 def toml_scalar(value):
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -214,19 +192,20 @@ def toml_scalar(value):
     return json.dumps(value)
 
 
-def render_toml_mcp(name, helper, url, env):
-    lines = [
-        f"[mcp_servers.{name}]",
-        f"command = {toml_scalar(str(helper))}",
-        f"args = {toml_scalar([url])}",
-        "startup_timeout_sec = 180",
-        "enabled = true",
-        "",
-        f"[mcp_servers.{name}.env]",
-    ]
-    for key, value in env.items():
-        lines.append(f"{key} = {toml_scalar(value)}")
-    return "\n".join(lines) + "\n"
+def toml_server(helper, url, env):
+    return {"command": str(helper), "args": [url], "startup_timeout_sec": 180,
+            "enabled": True, "env": env}
+
+
+def render_toml_table(header, value):
+    lines = [f"[{header}]"]
+    lines += [f"{key} = {toml_scalar(item)}" for key, item in value.items()
+              if not isinstance(item, dict)]
+    text = "\n".join(lines) + "\n"
+    for key, item in value.items():
+        if isinstance(item, dict):
+            text += "\n" + render_toml_table(f"{header}.{key}", item)
+    return text
 
 
 def strip_toml_mcp(text, names):
@@ -248,33 +227,61 @@ def strip_toml_mcp(text, names):
     return "".join(out)
 
 
-def merge_toml_mcp(path, helper, servers, previous):
-    text = path.read_text() if path.is_file() else ""
-    text = strip_toml_mcp(text, set(previous) | {name for name, _url in servers})
-    chunks = []
-    if text.strip():
-        chunks.append(text.rstrip() + "\n")
-    env = mcp_gui_env()
-    for name, url in servers:
-        chunks.append(render_toml_mcp(name, helper, url, env))
-    if not chunks:
-        return b""
-    return "".join(chunks).encode()
+def edit_toml(text, changes):
+    """Replace or remove sync's [mcp_servers.<name>] tables; keep the rest."""
+    text = strip_toml_mcp(text, [keys[-1] for keys in changes])
+    chunks = [text.rstrip() + "\n"] if text.strip() else []
+    for keys, value in changes.items():
+        if value is not MISSING:
+            chunks.append(render_toml_table(".".join(keys), value))
+    return "\n".join(chunks)
 
 
-def read_managed_jira(home):
-    path = home / MANAGED_MCP
+def edit_json(data, changes):
+    for keys, value in changes.items():
+        bucket = data
+        for key in keys[:-1]:
+            bucket = bucket.setdefault(key, {})
+        if value is not MISSING:
+            bucket[keys[-1]] = value
+            continue
+        bucket.pop(keys[-1], None)
+        if not bucket and len(keys) > 1:
+            del data[keys[0]]
+    return json.dumps(data, indent=2) + "\n"
+
+
+def read_shared(home, relative):
+    """Read a tool-owned file that holds sync entries.
+
+    A symlink is followed: the file belongs to the tool and the user, so it
+    stays where they put it.
+    """
+    path = home / relative
+    if path.is_symlink():
+        path = path.resolve()
+    if not path.exists():
+        return path, None, {}
     if not path.is_file():
-        return []
-    data = json.loads(path.read_text())
+        raise ValueError(f"{path} is not a file")
+    raw = path.read_bytes()
+    data = tomllib.loads(raw.decode()) if relative.endswith(".toml") else json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError(f"{path} must be a JSON object")
-    names = data.get("jira")
-    if names is None:
-        return []
-    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-        raise ValueError(f"{path} jira must be a list of names")
-    return names
+    return path, raw, data
+
+
+def entry_value(path, data, keys):
+    for key in keys[:-1]:
+        data = data.get(key, {})
+        if not isinstance(data, dict):
+            raise ValueError(f"{path}: {key} must be an object")
+    return data.get(keys[-1], MISSING)
+
+
+def canonical(value):
+    """One text form for hashing and comparing entry values, never Python ==."""
+    return json.dumps(value, sort_keys=True, default=str)
 
 
 def digest(data):
@@ -297,6 +304,8 @@ def load_state(home):
             relative = PurePosixPath(key.partition("#")[0])
             if relative.is_absolute() or ".." in relative.parts or not relative.parts:
                 raise ValueError(f"{path}: {key!r} is not a path inside the home folder")
+    if not all(key.partition("#")[2] for key in state["entries"]):
+        raise ValueError(f"{path} entries must be named <file>#<key>")
     return state
 
 
@@ -344,10 +353,10 @@ def blocking_parent(home, target, removed):
     return None
 
 
-def back_up(home, target, stamp):
-    backup = home / BACKUPS / stamp / target.relative_to(home)
+def back_up(home, relative, stamp, source=None):
+    backup = home / BACKUPS / stamp / relative
     backup.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(target, backup, follow_symlinks=False)
+    shutil.copy2(source or home / relative, backup, follow_symlinks=False)
     print(f"BACKUP: {backup}")
 
 
@@ -477,39 +486,23 @@ def desired_files(config, home):
     return files, executable
 
 
-def shared_files(config, home):
-    """Return the new contents of the tool-owned files sync merges its entries into."""
-    files = {}
+def desired_entries(config, home):
+    """Return the values sync owns inside tool-owned files, as <file>#<key> -> value."""
+    entries = {}
     hooks_file = ROOT / "hooks/claude-code.json"
-    target = home / TOOLS["claude-code"]["hooks"]
-    if hooks_file.is_file():
+    if hooks_file.is_file() and is_enabled(config, "hooks", "claude-code"):
         # Claude Code keeps hooks inside settings.json next to unrelated
-        # settings, so replace only the "hooks" key and keep the rest.
-        settings = json.loads(target.read_text()) if target.is_file() else {}
-        if is_enabled(config, "hooks", "claude-code"):
-            settings["hooks"] = json.loads(hooks_file.read_text())
-            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-        elif "hooks" in settings:
-            del settings["hooks"]
-            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-
+        # settings, so sync owns only the "hooks" key.
+        entries[f"{TOOLS['claude-code']['hooks']}#hooks"] = json.loads(hooks_file.read_text())
     helper = home / ".local/bin/mcp-atlassian-start"
-    previous_jira = read_managed_jira(home)
-    servers = jira_servers(config)
-    if servers or previous_jira:
+    env = mcp_gui_env()
+    for name, url in jira_servers(config):
         for relative, bucket, flavor in MCP_JSON:
-            target = home / relative
-            if servers or target.is_file():
-                files[target] = merge_json_mcp(
-                    target, bucket, flavor, helper, servers, previous_jira)
+            server = opencode_server if flavor == "opencode" else stdio_server
+            entries[f"{relative}#{bucket}.{name}"] = server(helper, url, env)
         for relative in MCP_TOML:
-            target = home / relative
-            if servers or target.is_file():
-                files[target] = merge_toml_mcp(target, helper, servers, previous_jira)
-        files[home / MANAGED_MCP] = (
-            json.dumps({"jira": [name for name, _url in servers]}, indent=2) + "\n"
-        ).encode()
-    return files
+            entries[f"{relative}#mcp_servers.{name}"] = toml_server(helper, url, env)
+    return entries
 
 
 def main():
@@ -537,7 +530,7 @@ def main():
 
     config = load_config()
     files, executable = desired_files(config, home)
-    shared = shared_files(config, home)
+    entries = desired_entries(config, home)
     state = load_state(home)
     wanted = {target.relative_to(home).as_posix(): digest(contents)
               for target, contents in files.items()}
@@ -546,6 +539,19 @@ def main():
         if (verb == "keep" and home / key in executable
                 and not (home / key).stat().st_mode & 0o111):
             verbs[key] = "chmod"
+
+    shared = {}
+
+    def entry_hash(key):
+        relative, _, dotted = key.partition("#")
+        if relative not in shared:
+            shared[relative] = read_shared(home, relative)
+        path, _raw, data = shared[relative]
+        value = entry_value(path, data, dotted.split("."))
+        return None if value is MISSING else digest(canonical(value).encode())
+
+    wanted_entries = {key: digest(canonical(value).encode()) for key, value in entries.items()}
+    entry_verbs = decide(wanted_entries, state["entries"], entry_hash)
 
     blocked = False
     removed = {home / key for key, verb in verbs.items() if verb.startswith("delete")}
@@ -564,33 +570,30 @@ def main():
             continue
         blocked = True
 
-    shared_changes = []
-    for target, contents in shared.items():
-        exists = target.exists() or target.is_symlink()
-        if target.is_file() and target.read_bytes() == contents:
-            continue
-        if exists and not (target.is_file() or target.is_symlink()):
-            print(f"BLOCKED (destination is not a file): {target}")
+    rewrites = {}
+    for key, verb in entry_verbs.items():
+        if verb.endswith("+backup") and not args.replace_existing:
+            print(f"BLOCKED (requires --replace-existing): {home / key}")
             blocked = True
-        elif exists and not args.replace_existing:
-            print(f"BLOCKED (requires --replace-existing): {target}")
-            blocked = True
-        else:
-            print(f"{'REPLACE + BACKUP' if exists else 'CREATE'}: {target}")
-        shared_changes.append((target, contents, exists))
+        elif verb not in ("keep", "forget"):
+            print(f"{verb.replace('+', ' + ').upper()}: {home / key}")
+            relative, _, dotted = key.partition("#")
+            rewrites.setdefault(relative, {})[tuple(dotted.split("."))] = entries.get(
+                key, MISSING)
 
-    new_state = {"files": wanted, "entries": state["entries"]}
-    adopted = sum(1 for key, verb in verbs.items()
-                  if verb in ("keep", "chmod") and state["files"].get(key) != wanted[key])
+    new_state = {"files": wanted, "entries": wanted_entries}
+    adopted = sum(1 for section, found in (("files", verbs), ("entries", entry_verbs))
+                  for key, verb in found.items()
+                  if verb in ("keep", "chmod") and state[section].get(key) != new_state[section][key])
     if adopted:
-        print(f"RECORD: {adopted} installed file(s) that already match")
+        print(f"RECORD: {adopted} installed item(s) that already match")
 
     if blocked:
         print("No files written. Review destinations before using --replace-existing.")
         return 2
     changes = [key for key, verb in verbs.items() if verb != "keep"]
-    if not changes and not shared_changes and new_state == state:
-        print("No changes needed." if files or shared else
+    if not changes and not rewrites and new_state == state:
+        print("No changes needed." if files or entries else
               "No populated sources; empty placeholders skipped.")
         return 0
     if args.check:
@@ -600,12 +603,25 @@ def main():
         return 0
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    for relative, changes_here in rewrites.items():
+        path, raw, data = shared[relative]
+        # The tools rewrite these files while they run. Do not write over a
+        # change that arrived after sync read the file.
+        if (path.read_bytes() if path.is_file() else None) != raw:
+            raise ValueError(f"{path} changed during sync; run again")
+        if raw is not None:
+            back_up(home, relative, stamp, path)
+        if relative.endswith(".toml"):
+            contents = edit_toml(raw.decode() if raw else "", changes_here)
+        else:
+            contents = edit_json(data, changes_here)
+        write_file(path, contents.encode(), stamp)
     # Deletions come first so a file that became a folder of the same name works.
     for key, verb in verbs.items():
         target = home / key
         if verb.startswith("delete"):
             if verb == "delete+backup":
-                back_up(home, target, stamp)
+                back_up(home, key, stamp)
             target.unlink()
         if verb.startswith("delete") or verb == "forget":
             prune(home, target)
@@ -615,16 +631,13 @@ def main():
             target.chmod(0o755)
         elif verb in ("create", "replace", "replace+backup"):
             if verb == "replace+backup":
-                back_up(home, target, stamp)
+                back_up(home, key, stamp)
             write_file(target, files[target], stamp, target in executable)
-    for target, contents, exists in shared_changes:
-        if exists:
-            back_up(home, target, stamp)
-        write_file(target, contents, stamp)
     # The state file goes last: after a crash the next run finds the written
     # items equal to what it wants and records them then.
     write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
-    print(f"Applied {len(changes) + len(shared_changes)} change(s). "
+    (home / LEGACY_STATE).unlink(missing_ok=True)
+    print(f"Applied {len(changes) + sum(map(len, rewrites.values()))} change(s). "
           "Restart sessions to load new instructions.")
     return 0
 

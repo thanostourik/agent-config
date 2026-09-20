@@ -455,7 +455,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply")
         self.assertEqual(json.loads(target.read_text())["mcpServers"]["jira"]["command"],
                          "keep-me")
-        self.assertFalse((self.home / ".config/agent-config/managed-mcp.json").exists())
+        self.assertFalse(self.state.exists())
 
     def test_empty_jira_instances_do_not_create_mcp_files(self):
         self.add_helper()
@@ -499,8 +499,8 @@ class SyncTest(unittest.TestCase):
         self.assertIn("[features]", codex)
         self.assertIn("memories = false", codex)
         self.assertIn("[mcp_servers.jira]", codex)
-        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
-                         {"jira": ["jira"]})
+        self.assertIn(".codex/config.toml#mcp_servers.jira",
+                      json.loads(self.state.read_text())["entries"])
         result = subprocess.run([helper], capture_output=True, text=True, timeout=5)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("usage:", result.stderr)
@@ -528,8 +528,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", "--replace-existing")
         cursor = json.loads(extra.read_text())["mcpServers"]
         self.assertEqual(cursor, {"unrelated": {"command": "keep"}})
-        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
-                         {"jira": []})
+        self.assertEqual(json.loads(self.state.read_text())["entries"], {})
 
     def test_one_jira_instance_then_two_replaces_the_jira_name(self):
         self.add_helper()
@@ -548,6 +547,70 @@ class SyncTest(unittest.TestCase):
         self.assertNotIn("[mcp_servers.jira]", grok)
         self.assertIn("[mcp_servers.work]", grok)
         self.assertIn("[mcp_servers.other]", grok)
+
+    def test_clean_entry_update_needs_no_flag_and_backs_up_the_shared_file(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        claude = self.home / ".claude.json"
+        claude.parent.mkdir(parents=True)
+        claude.write_text('{"theme": "dark"}')
+        legacy = self.home / ".config/agent-config/managed-mcp.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"jira": ["jira"]}')
+        self.run_sync("--apply")
+        self.assertFalse(legacy.exists())
+        shutil.rmtree(self.backups)
+        claude.write_text(claude.read_text().replace('"dark"', '"light"'))
+        self.jira_config({"work": {"url": "https://new.example.com"}})
+        self.run_sync("--apply")
+        data = json.loads(claude.read_text())
+        self.assertEqual(data["theme"], "light")
+        self.assertEqual(data["mcpServers"]["jira"]["args"], ["https://new.example.com"])
+        saved = [json.loads(path.read_text()) for path in self.backups.glob("*/.claude.json")]
+        self.assertEqual([item["mcpServers"]["jira"]["args"] for item in saved],
+                         [["https://jira.example.com"]])
+        self.run_sync("--check")
+
+    def test_hand_written_jira_server_needs_the_flag(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        cursor = self.home / ".cursor/mcp.json"
+        cursor.parent.mkdir(parents=True)
+        cursor.write_text('{"mcpServers": {"jira": {"command": "mine"}}}')
+        self.run_sync("--apply", expected=2)
+        self.assertEqual(json.loads(cursor.read_text())["mcpServers"]["jira"], {"command": "mine"})
+        self.assertFalse((self.home / ".claude.json").exists())
+        cursor.write_text('{"mcpServers": []}')
+        self.run_sync("--apply", "--replace-existing", expected=2)
+        cursor.write_text('{"mcpServers": {"jira": {"command": "mine"}}}')
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual(json.loads(cursor.read_text())["mcpServers"]["jira"]["args"],
+                         ["https://jira.example.com"])
+
+    def test_disabling_hooks_leaves_an_unrecorded_hooks_key_alone(self):
+        (self.repo / "hooks").mkdir()
+        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
+        self.write_config({"hooks": {"claude-code": {"enabled": False}}})
+        settings = self.home / ".claude/settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text('{"hooks": {"Stop": []}}')
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual(settings.read_text(), '{"hooks": {"Stop": []}}')
+
+    def test_interrupted_run_needs_no_flag_on_the_next_run(self):
+        self.add_helper()
+        self.add_skill(harness="grok")
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        before = self.state.read_text()
+        (self.repo / "skills/shared/example/SKILL.md").write_text("Updated skill")
+        self.jira_config({"work": {"url": "https://new.example.com"}})
+        self.run_sync("--apply")
+        after = self.state.read_text()
+        self.state.write_text(before)
+        self.run_sync("--check", expected=1)
+        self.run_sync("--apply")
+        self.assertEqual(self.state.read_text(), after)
 
     def test_invalid_jira_instances_block_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")
