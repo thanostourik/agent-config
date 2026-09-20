@@ -9,25 +9,30 @@ Examples:
   ./sync --clean-backups
   ./sync --home /tmp/agent-config-test --apply
 
-Empty Markdown placeholders are skipped. Existing files are replaced only
-with --replace-existing and are backed up alongside the destination first.
+Empty Markdown placeholders are skipped. Sync records what it installs in
+~/.config/agent-config/state.json and keeps those items equal to this
+repository: it adds, updates, and deletes them. Anything it did not write, or
+that changed since, is replaced or deleted only with --replace-existing, after
+a backup under ~/.config/agent-config/backups/. Anything else is never touched.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
 config.json (gitignored) can disable skills, agents, hooks, and MCP servers.
 Missing entries stay enabled. Copy config.example.json to start.
-Disabled items are removed from the destinations sync installed.
-Jira MCP URLs live only in config.json; sync merges server entries into each
-tool's MCP config and does not put secrets in those files.
+Disabled items are removed like any other item that left the repository.
+Jira MCP URLs live only in config.json; sync owns only its server entries in
+each tool's MCP config, and does not put secrets in those files.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import sys
+import tomllib
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parent
@@ -54,7 +59,11 @@ TOOLS = {
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-MANAGED_MCP = ".config/agent-config/managed-mcp.json"
+LEGACY_STATE = ".config/agent-config/managed-mcp.json"
+STATE = ".config/agent-config/state.json"
+BACKUPS = ".config/agent-config/backups"
+BLOCKED = object()
+MISSING = object()
 MCP_JSON = (
     (".cursor/mcp.json", "mcpServers", "stdio"),
     (".claude.json", "mcpServers", "stdio"),
@@ -174,30 +183,6 @@ def opencode_server(helper, url, env):
     }
 
 
-def merge_json_mcp(path, bucket_key, flavor, helper, servers, previous):
-    data = json.loads(path.read_text()) if path.is_file() else {}
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must be a JSON object")
-    bucket = data.get(bucket_key)
-    if not isinstance(bucket, dict):
-        bucket = {}
-    desired = {name for name, _url in servers}
-    for name in previous:
-        if name not in desired:
-            bucket.pop(name, None)
-    env = mcp_gui_env()
-    for name, url in servers:
-        if flavor == "opencode":
-            bucket[name] = opencode_server(helper, url, env)
-        else:
-            bucket[name] = stdio_server(helper, url, env)
-    if bucket:
-        data[bucket_key] = bucket
-    else:
-        data.pop(bucket_key, None)
-    return (json.dumps(data, indent=2) + "\n").encode()
-
-
 def toml_scalar(value):
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -210,78 +195,264 @@ def toml_scalar(value):
     return json.dumps(value)
 
 
-def render_toml_mcp(name, helper, url, env):
-    lines = [
-        f"[mcp_servers.{name}]",
-        f"command = {toml_scalar(str(helper))}",
-        f"args = {toml_scalar([url])}",
-        "startup_timeout_sec = 180",
-        "enabled = true",
-        "",
-        f"[mcp_servers.{name}.env]",
-    ]
-    for key, value in env.items():
-        lines.append(f"{key} = {toml_scalar(value)}")
-    return "\n".join(lines) + "\n"
+def toml_server(helper, url, env):
+    return {"command": str(helper), "args": [url], "startup_timeout_sec": 180,
+            "enabled": True, "env": env}
 
 
-def strip_toml_mcp(text, names):
-    names = set(names)
-    out = []
-    skipping = False
+def render_toml_table(header, value):
+    lines = [f"[{header}]"]
+    lines += [f"{key} = {toml_scalar(item)}" for key, item in value.items()
+              if not isinstance(item, dict)]
+    text = "\n".join(lines) + "\n"
+    for key, item in value.items():
+        if isinstance(item, dict):
+            text += "\n" + render_toml_table(f"{header}.{key}", item)
+    return text
+
+
+def toml_header(line):
+    """Return the name parts of a [table] or [[table]] line, or None for other lines.
+
+    tomllib reads the line, so quoted names, spaces, and trailing comments work.
+    """
+    if not line.lstrip().startswith("["):
+        return None
+    try:
+        data = tomllib.loads(line)
+    except tomllib.TOMLDecodeError:
+        return None
+    parts = []
+    while isinstance(data, dict) and len(data) == 1:
+        (key, data), = data.items()
+        parts.append(key)
+        if isinstance(data, list):
+            data = data[0]
+    return parts
+
+
+def edit_toml(path, text, changes):
+    """Replace or remove sync's [mcp_servers.<name>] tables by editing lines.
+
+    The standard library cannot write TOML. So the result is parsed and must
+    equal the original values with only these tables changed; otherwise nothing
+    is written.
+    """
+    kept, table = [], None
+
+    def close_table():
+        # A removed table ends at its last key: the blank lines and comments
+        # below it belong to whatever follows.
+        end = len(table)
+        while end and (not table[end - 1].strip() or table[end - 1].lstrip().startswith("#")):
+            end -= 1
+        kept.extend(table[end:])
+
     for line in text.splitlines(True):
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            header = stripped[1:-1].strip()
-            skipping = False
-            for name in names:
-                key = f"mcp_servers.{name}"
-                if header == key or header.startswith(key + "."):
-                    skipping = True
-                    break
-        if not skipping:
-            out.append(line)
-    return "".join(out)
+        header = toml_header(line)
+        if header is not None:
+            if table is not None:
+                close_table()
+            table = [] if tuple(header[:2]) in changes else None
+        (kept if table is None else table).append(line)
+    if table is not None:
+        close_table()
+    rest = "".join(kept).strip()
+    chunks = [rest + "\n"] if rest else []
+    for keys, value in changes.items():
+        if value is not MISSING:
+            chunks.append(render_toml_table(".".join(keys), value))
+    result = "\n".join(chunks)
+
+    expected = tomllib.loads(text)
+    for (bucket, name), value in changes.items():
+        if value is MISSING:
+            expected.get(bucket, {}).pop(name, None)
+        else:
+            expected.setdefault(bucket, {})[name] = value
+    try:
+        actual = tomllib.loads(result)
+    except tomllib.TOMLDecodeError:
+        actual = None
+    for data in (expected, actual or {}):
+        if data.get("mcp_servers") == {}:
+            del data["mcp_servers"]
+    if actual is None or canonical(actual) != canonical(expected):
+        names = ", ".join(".".join(keys) for keys in changes)
+        raise ValueError(f"{path}: cannot safely edit {names}. Write each one as its own "
+                         "[mcp_servers.<name>] table, or remove it by hand, then run again.")
+    return result
 
 
-def merge_toml_mcp(path, helper, servers, previous):
-    text = path.read_text() if path.is_file() else ""
-    text = strip_toml_mcp(text, set(previous) | {name for name, _url in servers})
-    chunks = []
-    if text.strip():
-        chunks.append(text.rstrip() + "\n")
-    env = mcp_gui_env()
-    for name, url in servers:
-        chunks.append(render_toml_mcp(name, helper, url, env))
-    if not chunks:
-        return b""
-    return "".join(chunks).encode()
+def edit_json(data, changes):
+    for keys, value in changes.items():
+        bucket = data
+        for key in keys[:-1]:
+            bucket = bucket.setdefault(key, {})
+        if value is not MISSING:
+            bucket[keys[-1]] = value
+            continue
+        bucket.pop(keys[-1], None)
+        if not bucket and len(keys) > 1:
+            del data[keys[0]]
+    return json.dumps(data, indent=2) + "\n"
 
 
-def read_managed_jira(home):
-    path = home / MANAGED_MCP
+def read_shared(home, relative):
+    """Read a tool-owned file that holds sync entries.
+
+    A symlink is followed: the file belongs to the tool and the user, so it
+    stays where they put it.
+    """
+    path = Path(os.path.realpath(home / relative))
+    if not path.exists():
+        return path, None, {}
     if not path.is_file():
-        return []
-    data = json.loads(path.read_text())
+        raise ValueError(f"{path} is not a file")
+    raw = path.read_bytes()
+    data = tomllib.loads(raw.decode()) if relative.endswith(".toml") else json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError(f"{path} must be a JSON object")
-    names = data.get("jira")
-    if names is None:
-        return []
-    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-        raise ValueError(f"{path} jira must be a list of names")
-    return names
+    return path, raw, data
 
 
-def remove_backup(backup):
-    if backup.is_dir() and not backup.is_symlink():
-        shutil.rmtree(backup)
-    else:
-        backup.unlink()
+def entry_value(path, data, keys):
+    for key in keys[:-1]:
+        data = data.get(key, {})
+        if not isinstance(data, dict):
+            raise ValueError(f"{path}: {key} must be an object")
+    return data.get(keys[-1], MISSING)
 
 
-def backup_path(target, stamp):
-    return target.with_name(f"{target.name}.backup-{stamp}")
+def canonical(value):
+    """One text form for hashing and comparing entry values, never Python ==."""
+    return json.dumps(value, sort_keys=True, default=str)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def load_state(home):
+    """Read what earlier runs installed: item -> hash of what sync wrote."""
+    path = home / STATE
+    if not path.exists():
+        return {"files": {}, "entries": {}}
+    state = json.loads(path.read_text())
+    if not isinstance(state, dict) or set(state) != {"files", "entries"}:
+        raise ValueError(f"{path} must hold exactly files and entries")
+    for section in state.values():
+        if not isinstance(section, dict) or not all(
+                isinstance(value, str) for value in section.values()):
+            raise ValueError(f"{path} sections must map items to hashes")
+    for name, section in state.items():
+        for key in section:
+            relative = PurePosixPath(key.partition("#")[0] if name == "entries" else key)
+            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+                raise ValueError(f"{path}: {key!r} is not a path inside the home folder")
+    if not all(key.partition("#")[2] for key in state["entries"]):
+        raise ValueError(f"{path} entries must be named <file>#<key>")
+    return state
+
+
+def file_hash(target):
+    """None when missing, BLOCKED for a directory. A symlink never matches a hash."""
+    if target.is_symlink():
+        return "symlink"
+    if target.is_file():
+        return digest(target.read_bytes())
+    return BLOCKED if target.exists() else None
+
+
+def decide(wanted, recorded, probe):
+    """Apply the ownership rule to every wanted or recorded item.
+
+    An item is clean when it equals what sync wants or what sync recorded.
+    Sync changes clean items freely; anything else needs a backup. Items that
+    are neither wanted nor recorded are never looked at.
+    """
+    verbs = {}
+    for key in sorted(wanted.keys() | recorded.keys()):
+        found = probe(key)
+        if found is BLOCKED:
+            verbs[key] = "blocked"
+        elif key in wanted:
+            if found is None:
+                verbs[key] = "create"
+            elif found == wanted[key]:
+                verbs[key] = "keep"
+            else:
+                verbs[key] = "replace" if found == recorded.get(key) else "replace+backup"
+        elif found is None:
+            verbs[key] = "forget"
+        else:
+            verbs[key] = "delete" if found == recorded[key] else "delete+backup"
+    return verbs
+
+
+def announce(home, verbs, replace_existing, parents):
+    """Print what happens to each item. Return True when something blocks the run."""
+    blocked = False
+    for key, verb in verbs.items():
+        if verb == "blocked":
+            print(f"BLOCKED (destination is not a file): {home / key}")
+        elif key in parents:
+            print(f"BLOCKED (parent is not a folder): {parents[key]}")
+        elif verb.endswith("+backup") and not replace_existing:
+            print(f"BLOCKED (requires --replace-existing): {home / key}")
+        else:
+            if verb not in ("keep", "forget"):
+                print(f"{verb.replace('+', ' + ').upper()}: {home / key}")
+            continue
+        blocked = True
+    return blocked
+
+
+def blocking_parent(home, target, removed):
+    for parent in target.parents:
+        if parent == home:
+            return None
+        if (parent.is_symlink() or parent.exists()) and not parent.is_dir():
+            return None if parent in removed else parent
+    return None
+
+
+def back_up(home, relative, stamp, source=None):
+    backup = home / BACKUPS / stamp / relative
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source or home / relative, backup, follow_symlinks=False)
+    print(f"BACKUP: {backup}")
+
+
+def write_file(target, contents, stamp, executable=False):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Replace the directory entry, never write through an existing symlink.
+    temporary = target.with_name(f".{target.name}.sync-{stamp}")
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(contents)
+        if executable:
+            temporary.chmod(0o755)
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def prune(home, target):
+    """Remove the emptied folders of a skill, never the skills folder itself."""
+    for destinations in TOOLS.values():
+        root = home / destinations["skills"]
+        if root not in target.parents:
+            continue
+        for folder in target.parents:
+            if folder == root or folder.is_symlink():
+                return
+            try:
+                folder.rmdir()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return
 
 
 def default_skill_harnesses(default):
@@ -324,26 +495,11 @@ def skill_harnesses(entry, default):
     return harnesses if harnesses is not None else default_skill_harnesses(default)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--apply", action="store_true", help="write the previewed changes")
-    mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
-    mode.add_argument("--clean-backups", action="store_true",
-                      help="delete backups next to installed files, then exit")
-    parser.add_argument("--replace-existing", action="store_true",
-                        help="allow replacement of existing destinations, keeping backups")
-    parser.add_argument("--home", type=Path, default=Path.home(),
-                        help="destination home directory (useful for testing)")
-    args = parser.parse_args()
-    home = args.home.expanduser().resolve()
+def desired_files(config, home):
+    """Return the files the repository wants installed, and which are executable."""
     files = {}
-    executable_files = set()
+    executable = set()
     skill_sources = {}
-    deletes = []
-    backup_roots = set()
-    config = load_config()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
@@ -356,131 +512,155 @@ def main():
                 files[home / destinations["instructions"]] = (contents + "\n").encode()
 
         skills_dir = ROOT / "skills" / tool
-        if "skills" in destinations and skills_dir.is_dir():
+        if skills_dir.is_dir():
             for skill in sorted(skills_dir.iterdir()):
                 entry = skill / "SKILL.md"
                 if not entry.is_file() or not entry.read_text().strip():
                     continue
-                enabled = is_enabled(config, "skills", skill.name)
                 for harness in skill_harnesses(entry, tool):
                     destination = home / TOOLS[harness]["skills"] / skill.name
                     if destination in skill_sources:
                         raise ValueError(f"Duplicate skill destination {destination}: "
                                          f"{skill_sources[destination]} and {skill}")
                     skill_sources[destination] = skill
-                    backup_roots.add(destination)
-                    if not enabled:
-                        if destination.exists() or destination.is_symlink():
-                            deletes.append((destination, True))
+                    if not is_enabled(config, "skills", skill.name):
                         continue
                     for file in sorted(skill.rglob("*")):
                         if file.is_file():
                             target = destination / file.relative_to(skill)
                             files[target] = file.read_bytes()
                             if file.stat().st_mode & 0o111:
-                                executable_files.add(target)
+                                executable.add(target)
 
         agents_dir = ROOT / "agents" / tool
         if "agents" in destinations and agents_dir.is_dir():
             for agent in sorted(agents_dir.iterdir()):
-                if not (agent.is_file() and agent.read_text().strip()):
-                    continue
-                target = home / destinations["agents"] / agent.name
-                backup_roots.add(target)
-                if not is_enabled(config, "agents", agent.stem):
-                    if target.exists() or target.is_symlink():
-                        deletes.append((target, False))
-                    continue
-                files[target] = agent.read_bytes()
+                if (agent.is_file() and agent.read_text().strip()
+                        and is_enabled(config, "agents", agent.stem)):
+                    files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
         hooks_file = ROOT / "hooks" / f"{tool}.json"
-        if "hooks" in destinations and hooks_file.is_file():
-            target = home / destinations["hooks"]
-            backup_roots.add(target)
-            if not is_enabled(config, "hooks", tool):
-                if tool == "claude-code":
-                    if target.is_file():
-                        settings = json.loads(target.read_text())
-                        if "hooks" in settings:
-                            del settings["hooks"]
-                            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-                elif target.exists() or target.is_symlink():
-                    deletes.append((target, False))
-                continue
-            if tool == "claude-code":
-                # Claude Code keeps hooks inside settings.json next to unrelated
-                # settings, so replace only the "hooks" key and keep the rest.
-                settings = json.loads(target.read_text()) if target.is_file() else {}
-                settings["hooks"] = json.loads(hooks_file.read_text())
-                files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-            else:
-                files[target] = hooks_file.read_bytes()
+        if ("hooks" in destinations and tool != "claude-code" and hooks_file.is_file()
+                and is_enabled(config, "hooks", tool)):
+            files[home / destinations["hooks"]] = hooks_file.read_bytes()
 
     for script in sorted((ROOT / "bin").glob("*")):
         if script.is_file():
             target = home / ".local/bin" / script.name
             files[target] = script.read_bytes()
-            executable_files.add(target)
+            executable.add(target)
+    return files, executable
 
+
+def desired_entries(config, home):
+    """Return the values sync owns inside tool-owned files, as <file>#<key> -> value."""
+    entries = {}
+    hooks_file = ROOT / "hooks/claude-code.json"
+    if hooks_file.is_file() and is_enabled(config, "hooks", "claude-code"):
+        # Claude Code keeps hooks inside settings.json next to unrelated
+        # settings, so sync owns only the "hooks" key.
+        entries[f"{TOOLS['claude-code']['hooks']}#hooks"] = json.loads(hooks_file.read_text())
     helper = home / ".local/bin/mcp-atlassian-start"
-    previous_jira = read_managed_jira(home)
-    servers = jira_servers(config)
-    if servers or previous_jira:
+    env = mcp_gui_env()
+    for name, url in jira_servers(config):
         for relative, bucket, flavor in MCP_JSON:
-            target = home / relative
-            if servers or target.is_file():
-                files[target] = merge_json_mcp(
-                    target, bucket, flavor, helper, servers, previous_jira)
+            server = opencode_server if flavor == "opencode" else stdio_server
+            entries[f"{relative}#{bucket}.{name}"] = server(helper, url, env)
         for relative in MCP_TOML:
-            target = home / relative
-            if servers or target.is_file():
-                files[target] = merge_toml_mcp(target, helper, servers, previous_jira)
-        files[home / MANAGED_MCP] = (
-            json.dumps({"jira": [name for name, _url in servers]}, indent=2) + "\n"
-        ).encode()
+            entries[f"{relative}#mcp_servers.{name}"] = toml_server(helper, url, env)
+    return entries
 
-    backup_roots.update(files)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="write the previewed changes")
+    mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
+    mode.add_argument("--clean-backups", action="store_true",
+                      help="delete the backups sync has saved, then exit")
+    parser.add_argument("--replace-existing", action="store_true",
+                        help="allow replacing or deleting content sync did not write, "
+                             "keeping backups")
+    parser.add_argument("--home", type=Path, default=Path.home(),
+                        help="destination home directory (useful for testing)")
+    args = parser.parse_args()
+    home = args.home.expanduser().resolve()
+
     if args.clean_backups:
-        backups = [b for target in backup_roots for b in target.parent.glob(f"{target.name}.backup-*")]
-        for backup in backups:
-            remove_backup(backup)
-            print(f"DELETED: {backup}")
-        print(f"Deleted {len(backups)} backup(s).")
+        backups = home / BACKUPS
+        count = len(list(backups.iterdir())) if backups.is_dir() else 0
+        shutil.rmtree(backups, ignore_errors=True)
+        print(f"Deleted {count} backup run(s).")
         return 0
 
-    changes = []
-    blocked = False
-    for target, contents in files.items():
-        exists = target.exists() or target.is_symlink()
-        if (target.is_file() and target.read_bytes() == contents
-                and (target not in executable_files or target.stat().st_mode & 0o111)):
-            continue
-        if exists and not (target.is_file() or target.is_symlink()):
-            print(f"BLOCKED (destination is not a file): {target}")
-            blocked = True
-            continue
-        if exists and not args.replace_existing:
-            print(f"BLOCKED (requires --replace-existing): {target}")
-            blocked = True
-        else:
-            print(f"{'REPLACE + BACKUP' if exists else 'CREATE'}: {target}")
-        changes.append((target, contents, exists))
+    config = load_config()
+    files, executable = desired_files(config, home)
+    entries = desired_entries(config, home)
+    state = load_state(home)
+    wanted = {target.relative_to(home).as_posix(): digest(contents)
+              for target, contents in files.items()}
+    verbs = decide(wanted, state["files"], lambda key: file_hash(home / key))
+    for key, verb in verbs.items():
+        if (verb == "keep" and home / key in executable
+                and not (home / key).stat().st_mode & 0o111):
+            verbs[key] = "chmod"
 
-    removals = []
-    for target, directory in deletes:
-        if target.is_symlink() or (not directory and target.is_file()) or (
-                directory and target.is_dir()):
-            print(f"DELETE: {target}")
-            removals.append((target, directory))
-            continue
-        print(f"BLOCKED (destination is not a sync-owned {'directory' if directory else 'file'}): {target}")
-        blocked = True
+    shared = {}
+
+    def entry_hash(key):
+        relative, _, dotted = key.partition("#")
+        if relative not in shared:
+            shared[relative] = read_shared(home, relative)
+        path, _raw, data = shared[relative]
+        value = entry_value(path, data, dotted.split("."))
+        return None if value is MISSING else digest(canonical(value).encode())
+
+    wanted_entries = {key: digest(canonical(value).encode()) for key, value in entries.items()}
+    entry_verbs = decide(wanted_entries, state["entries"], entry_hash)
+
+    removed = {home / key for key, verb in verbs.items() if verb.startswith("delete")}
+    parents = {key: blocking_parent(home, home / key, removed)
+               for key, verb in verbs.items() if verb == "create"}
+    blocked = announce(home, verbs, args.replace_existing,
+                       {key: parent for key, parent in parents.items() if parent})
+    blocked |= announce(home, entry_verbs, args.replace_existing, {})
+
+    changes = {}
+    for key, verb in entry_verbs.items():
+        if verb not in ("keep", "forget"):
+            relative, _, dotted = key.partition("#")
+            changes.setdefault(relative, {})[tuple(dotted.split("."))] = entries.get(
+                key, MISSING)
+    for relative in changes:
+        path, raw, _data = shared[relative]
+        parent = blocking_parent(home, path, set()) if raw is None else None
+        if parent:
+            print(f"BLOCKED (parent is not a folder): {parent}")
+            blocked = True
+    # Every shared file is rendered before the first write, so a file sync
+    # cannot edit safely stops the run with nothing written.
+    rewrites = {}
+    for relative, changes_here in changes.items():
+        path, raw, data = shared[relative]
+        if relative.endswith(".toml"):
+            rewrites[relative] = edit_toml(path, raw.decode() if raw else "", changes_here)
+        else:
+            rewrites[relative] = edit_json(data, changes_here)
+
+    new_state = {"files": wanted, "entries": wanted_entries}
+    adopted = sum(1 for section, found in (("files", verbs), ("entries", entry_verbs))
+                  for key, verb in found.items()
+                  if verb in ("keep", "chmod") and state[section].get(key) != new_state[section][key])
+    if adopted:
+        print(f"RECORD: {adopted} installed item(s) that already match")
 
     if blocked:
         print("No files written. Review destinations before using --replace-existing.")
         return 2
-    if not changes and not removals:
-        print("No changes needed." if files or deletes else
+    writes = [key for key, verb in verbs.items() if verb not in ("keep", "forget")]
+    if not writes and not rewrites and new_state == state:
+        print("No changes needed." if files or entries else
               "No populated sources; empty placeholders skipped.")
         return 0
     if args.check:
@@ -490,33 +670,37 @@ def main():
         return 0
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    for target, contents, exists in changes:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if exists:
-            backup = backup_path(target, stamp)
-            shutil.copy2(target, backup, follow_symlinks=False)
-            print(f"BACKUP: {backup}")
-        # Replace the directory entry, never write through an existing symlink.
-        temporary = target.with_name(f".{target.name}.sync-{stamp}")
-        try:
-            with temporary.open("xb") as stream:
-                stream.write(contents)
-            if target in executable_files:
-                temporary.chmod(0o755)
-            temporary.replace(target)
-        finally:
-            temporary.unlink(missing_ok=True)
-    for target, directory in removals:
-        backup = backup_path(target, stamp)
-        if target.is_symlink() or target.is_file():
-            shutil.copy2(target, backup, follow_symlinks=False)
+    for relative, contents in rewrites.items():
+        path, raw, _data = shared[relative]
+        # The tools rewrite these files while they run. Do not write over a
+        # change that arrived after sync read the file.
+        if (path.read_bytes() if path.is_file() else None) != raw:
+            raise ValueError(f"{path} changed during sync; run again")
+        if raw is not None:
+            back_up(home, relative, stamp, path)
+        write_file(path, contents.encode(), stamp)
+    # Deletions come first so a file that became a folder of the same name works.
+    for key, verb in verbs.items():
+        target = home / key
+        if verb.startswith("delete"):
+            if verb == "delete+backup":
+                back_up(home, key, stamp)
             target.unlink()
-        else:
-            shutil.copytree(target, backup, symlinks=True)
-            shutil.rmtree(target)
-        print(f"BACKUP: {backup}")
-        print(f"DELETED: {target}")
-    print(f"Applied {len(changes)} file change(s), {len(removals)} deletion(s). "
+        if verb.startswith("delete") or verb == "forget":
+            prune(home, target)
+    for key, verb in verbs.items():
+        target = home / key
+        if verb == "chmod":
+            target.chmod(0o755)
+        elif verb in ("create", "replace", "replace+backup"):
+            if verb == "replace+backup":
+                back_up(home, key, stamp)
+            write_file(target, files[target], stamp, target in executable)
+    # The state file goes last: after a crash the next run finds the written
+    # items equal to what it wants and records them then.
+    write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
+    (home / LEGACY_STATE).unlink(missing_ok=True)
+    print(f"Applied {len(writes) + sum(map(len, changes.values()))} change(s). "
           "Restart sessions to load new instructions.")
     return 0
 

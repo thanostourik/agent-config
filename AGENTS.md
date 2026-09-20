@@ -41,7 +41,8 @@ Two things to keep as they are:
   Jira MCP. Copy it to `config.json` (gitignored) and set `enabled` to `false`
   on what you do not want. Sync does not require an entry. Missing means on.
   `enabled: true` is the same as missing. Instructions and `bin/` always
-  install. Disabling an item removes the copies sync installed for it.
+  install. Disabling an item removes the copies sync installed for it, the
+  same way deleting its source does.
   `mcp.jira.instances` holds Jira URLs. The example uses a fake URL; copy it
   to `config.json` and replace that URL. One instance is installed as MCP
   server `jira`; two or more use the instance keys. Sync merges those servers
@@ -97,10 +98,14 @@ Sync merges Jira MCP into those MCP files without converting formats. Cursor and
 Claude Code get a `command` / `args` / `env` stdio server. Codex and Grok get a
 TOML `[mcp_servers.<name>]` section with `startup_timeout_sec = 180`. OpenCode
 gets `type: local` and a `command` array. Other servers and keys in those files
-stay. Sync records the names it installed in
-`~/.config/agent-config/managed-mcp.json` so a later disable or instance rename
-removes only those. It does not touch MCP files when `config.json` is missing
-or `instances` is empty and it has never installed Jira.
+stay. It does not touch MCP files when `config.json` is missing or `instances`
+is empty and it has never installed Jira.
+
+The standard library cannot write TOML, so sync edits the Codex and Grok files
+as lines and then parses the result. If anything besides its own tables
+changed, it stops and writes nothing. A Jira server written as an inline table
+or with dotted keys causes that: rewrite it as a `[mcp_servers.<name>]` table
+or remove it by hand.
 
 Each tool wants its own agent file format. Most read Markdown; Codex reads
 TOML. Sync copies the file as it is and does not convert it.
@@ -108,8 +113,9 @@ TOML. Sync copies the file as it is and does not convert it.
 Codex and Cursor get their hook file copied as it is. Claude Code keeps hooks
 inside `settings.json` next to other settings, so `hooks/claude-code.json`
 holds only the value of the `hooks` key. Sync reads the installed
-`settings.json`, replaces that one key, and writes the file back. Because the
-file already exists, the first install needs `--replace-existing`.
+`settings.json`, replaces that one key, and writes the file back. If the file
+already has a `hooks` key that sync did not write, the first install needs
+`--replace-existing`.
 
 Cursor needs a short header at the top of its rules file, and sync adds it.
 Cursor only reads home-folder rules for projects under `~/Devel`. For a
@@ -120,17 +126,49 @@ project somewhere else, it may not see them.
 - `./sync` prints what it would change. It writes nothing.
 - `./sync --check` exits with 0 when nothing needs to change, 1 when something
   does, and 2 when a destination is blocked or a file error happens.
-- `./sync --apply` writes the changes. If a destination file exists with
-  different content, sync refuses. Add `--replace-existing` to allow it. Sync
-  then saves a timestamped backup next to the old file before replacing it.
-  Disabling a skill, agent, or hook deletes only that item's sync destinations
-  (Claude Code: the `hooks` key in `settings.json`, not the rest of the file).
-  Disabling Jira MCP removes only the Jira servers sync previously installed.
+- `./sync --apply` writes the changes. See "What sync owns" below for when it
+  needs `--replace-existing`.
 - `./sync --home /some/temporary/path` installs into that folder instead of
   the real home folder. Use this for testing. Sync still reads the source
   files from this repository.
-- `./sync --clean-backups` deletes every backup that sits next to an installed
-  file. It changes nothing else.
+- `./sync --clean-backups` deletes `~/.config/agent-config/backups/`. It
+  changes nothing else.
+
+### What sync owns
+
+Sync makes what it owns match this repository and `config.json`, and touches
+nothing else. It owns two kinds of items:
+
+- whole files: instructions, every file of a skill, agents, the Codex and
+  Cursor hook files, `bin/` scripts
+- entries inside a file that belongs to a tool: the `hooks` key in
+  `~/.claude/settings.json`, and each Jira server in the five MCP files
+
+`~/.config/agent-config/state.json` lists every item sync installed, with a
+hash of what it wrote. An item on disk is clean when it equals what sync wants
+to install, or when its hash equals the recorded one. One rule covers every
+item:
+
+- Sync creates, replaces, and deletes clean items freely, with no flag and no
+  backup. An item is deleted when it is recorded but no longer wanted: its
+  source was removed, a file was removed from its skill, its `harness` changed,
+  or `config.json` disabled it. Emptied skill folders go with it.
+- An item that is not clean was written or changed by someone else. Sync
+  refuses to replace or delete it without `--replace-existing`, and saves it
+  under `~/.config/agent-config/backups/<timestamp>/` first. A symlink where a
+  file belongs is never clean. A directory there always blocks.
+- Anything that is neither wanted nor recorded is never looked at.
+- One blocked item stops the whole run before any write.
+
+A file that holds entries is never blocked as a whole, and is backed up every
+time sync rewrites it, because the rest of it is not in git. If it is a
+symlink, sync follows it. Sync reads it again right before writing and stops if
+a tool changed it in the meantime; run sync again.
+
+The state file is written last. After an interrupted run, the next run finds
+the written items equal to what it wants and records them. On the first run
+with no state file, installed items that already match are recorded without a
+flag. `--check` returns 1 while the state file is out of date.
 
 Install into the real home folder only when the user asks. When you test a
 change to sync, always pass a temporary `--home` folder.

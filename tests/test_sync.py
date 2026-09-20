@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -23,6 +24,8 @@ class SyncTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.repo = self.root / "repo"
         self.home = self.root / "home"
+        self.backups = self.home / ".config/agent-config/backups"
+        self.state = self.home / ".config/agent-config/state.json"
         shutil.copytree(Path(__file__).resolve().parents[1], self.repo,
                         ignore=shutil.ignore_patterns(".git", ".generated", "__pycache__",
                                                       "config.json"))
@@ -77,25 +80,26 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(existing.read_text(), "Existing rule")
         self.assertNotIn("Cursor rules", (self.home / ".claude/CLAUDE.md").read_text())
         (self.repo / "instructions/cursor.md").write_text("Updated Cursor rules")
-        self.run_sync("--apply", expected=2)
-        self.run_sync("--apply", "--replace-existing")
+        self.run_sync("--apply")
         self.assertTrue(target.read_text().endswith("Updated Cursor rules\n"))
-        self.assertEqual(len(list(target.parent.glob("agent-config.mdc.backup-*"))), 1)
+        self.assertFalse(self.backups.exists())
         self.run_sync("--check")
 
     def test_conflicts_block_all_writes_and_replacement_backs_up_symlink(self):
         (self.repo / "instructions/common.md").write_text("New rules")
         original = self.root / "original.md"
-        original.write_text("Old rules")
+        original.write_text("New rules\n")
         target = self.home / ".codex/AGENTS.md"
         target.parent.mkdir(parents=True)
         target.symlink_to(original)
+        self.run_sync("--apply", expected=2)
+        original.write_text("Old rules")
         self.run_sync("--apply", expected=2)
         self.assertFalse((self.home / ".claude").exists())
         self.run_sync("--apply", "--replace-existing")
         self.assertFalse(target.is_symlink())
         self.assertEqual(original.read_text(), "Old rules")
-        backups = list(target.parent.glob("AGENTS.md.backup-*"))
+        backups = list(self.backups.glob("*/.codex/AGENTS.md"))
         self.assertEqual(len(backups), 1)
         self.assertTrue(backups[0].is_symlink())
 
@@ -213,10 +217,137 @@ class SyncTest(unittest.TestCase):
         target.parent.mkdir(parents=True)
         target.write_text("old")
         self.run_sync("--apply", "--replace-existing")
-        self.assertEqual(len(list(target.parent.glob("AGENTS.md.backup-*"))), 1)
+        self.assertEqual([path.read_text() for path in self.backups.glob("*/.codex/AGENTS.md")],
+                         ["old"])
         self.run_sync("--clean-backups")
-        self.assertEqual(list(target.parent.glob("AGENTS.md.backup-*")), [])
+        self.assertFalse(self.backups.exists())
         self.assertEqual(target.read_text(), "new\n")
+        self.run_sync("--check")
+
+    def add_skill(self, *files, harness=None):
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True, exist_ok=True)
+        metadata = f'metadata:\n  harness: "{harness}"\n' if harness else ""
+        (skill / "SKILL.md").write_text(f"---\nname: example\n{metadata}---\nExample skill\n")
+        for name in files:
+            (skill / name).parent.mkdir(parents=True, exist_ok=True)
+            (skill / name).write_text(name)
+        return skill
+
+    def test_file_removed_from_a_skill_is_deleted_and_unrecorded_files_stay(self):
+        skill = self.add_skill("agents/openai.yaml")
+        self.run_sync("--apply")
+        installed = self.home / ".codex/skills/example"
+        mine = installed / "notes.md"
+        mine.write_text("not from sync")
+        (skill / "agents/openai.yaml").unlink()
+        self.run_sync("--apply")
+        self.assertFalse((installed / "agents").exists())
+        self.assertTrue((installed / "SKILL.md").is_file())
+        self.assertEqual(mine.read_text(), "not from sync")
+        self.assertFalse(self.backups.exists())
+        self.assertNotIn("openai.yaml", self.state.read_text())
+        self.run_sync("--check")
+
+    def test_removed_sources_are_deleted(self):
+        skill = self.add_skill()
+        (self.repo / "agents/codex").mkdir(parents=True)
+        agent = self.repo / "agents/codex/runner.toml"
+        agent.write_text("name = 'runner'")
+        (self.repo / "bin").mkdir()
+        script = self.repo / "bin/hello"
+        script.write_text("#!/bin/sh\n")
+        other = self.home / ".local/bin/other"
+        other.parent.mkdir(parents=True)
+        other.write_text("not from sync")
+        self.run_sync("--apply")
+        shutil.rmtree(skill)
+        agent.unlink()
+        script.unlink()
+        self.run_sync("--apply")
+        for path in (".claude/skills/example", ".codex/agents/runner.toml", ".local/bin/hello"):
+            self.assertFalse((self.home / path).exists(), path)
+        self.assertTrue((self.home / ".claude/skills").is_dir())
+        self.assertEqual(other.read_text(), "not from sync")
+
+    def test_changed_harness_moves_the_skill(self):
+        self.add_skill(harness="grok")
+        self.run_sync("--apply")
+        self.add_skill(harness="opencode")
+        self.run_sync("--apply")
+        self.assertFalse((self.home / ".grok/skills/example").exists())
+        self.assertTrue((self.home / ".config/opencode/skill/example/SKILL.md").is_file())
+
+    def test_hand_edited_files_need_the_flag_and_are_backed_up(self):
+        skill = self.add_skill("extra.md", harness="grok")
+        self.run_sync("--apply")
+        installed = self.home / ".grok/skills/example"
+        (installed / "SKILL.md").write_text("my edit")
+        (installed / "extra.md").write_text("my other edit")
+        (skill / "SKILL.md").write_text("Updated skill")
+        (skill / "extra.md").unlink()
+        self.run_sync("--apply", expected=2)
+        self.assertEqual((installed / "SKILL.md").read_text(), "my edit")
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual((installed / "SKILL.md").read_text(), "Updated skill")
+        self.assertFalse((installed / "extra.md").exists())
+        saved = {path.name: path.read_text()
+                 for path in self.backups.glob("*/.grok/skills/example/*")}
+        self.assertEqual(saved, {"SKILL.md": "my edit", "extra.md": "my other edit"})
+
+    def test_missing_file_and_lost_executable_bit_are_repaired(self):
+        skill = self.add_skill("run.sh", harness="grok")
+        (skill / "run.sh").chmod(0o755)
+        self.run_sync("--apply")
+        installed = self.home / ".grok/skills/example"
+        (installed / "SKILL.md").unlink()
+        (installed / "run.sh").chmod(0o644)
+        self.run_sync("--check", expected=1)
+        self.run_sync("--apply")
+        self.assertTrue((installed / "SKILL.md").is_file())
+        self.assertTrue((installed / "run.sh").stat().st_mode & 0o111)
+        self.assertFalse(self.backups.exists())
+
+    def test_first_run_records_identical_files_without_a_flag(self):
+        self.add_skill(harness="grok")
+        self.run_sync("--apply")
+        self.state.unlink()
+        self.run_sync("--check", expected=1)
+        self.run_sync()
+        self.assertFalse(self.state.exists())
+        self.run_sync("--apply")
+        self.assertIn(".grok/skills/example/SKILL.md", json.loads(self.state.read_text())["files"])
+        self.run_sync("--check")
+
+    def test_parent_that_is_a_file_blocks_all_writes(self):
+        (self.repo / "instructions/common.md").write_text("New rules")
+        self.add_skill(harness="grok")
+        parent = self.home / ".grok/skills/example"
+        parent.parent.mkdir(parents=True)
+        parent.write_text("a file where the skill folder goes")
+        self.run_sync("--apply", "--replace-existing", expected=2)
+        self.assertEqual(parent.read_text(), "a file where the skill folder goes")
+        self.assertFalse((self.home / ".claude").exists())
+
+    def test_parent_of_a_shared_file_that_is_a_file_blocks_all_writes(self):
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        parent = self.home / ".config/opencode"
+        parent.parent.mkdir(parents=True)
+        parent.write_text("a file where the folder goes")
+        self.run_sync("--check", expected=2)
+        self.run_sync("--apply", "--replace-existing", expected=2)
+        self.assertFalse((self.home / ".claude.json").exists())
+
+    def test_malformed_state_blocks_all_writes(self):
+        (self.repo / "instructions/common.md").write_text("New rules")
+        self.state.parent.mkdir(parents=True)
+        for contents in ("{", '{"files": {"../outside": "0"}, "entries": {}}',
+                         '{"files": {".grok#/../../outside": "0"}, "entries": {}}',
+                         '{"files": {"/etc/passwd": "0"}, "entries": {}}', '{"files": {}}'):
+            with self.subTest(contents=contents):
+                self.state.write_text(contents)
+                self.run_sync("--apply", expected=2)
+                self.assertFalse((self.home / ".claude").exists())
 
     def write_config(self, data):
         (self.repo / "config.json").write_text(json.dumps(data))
@@ -280,9 +411,7 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertEqual(json.loads(settings.read_text()), {"theme": "dark"})
-        self.assertTrue(list((self.home / ".agents/skills").glob("example.backup-*")))
-        self.run_sync("--clean-backups")
-        self.assertFalse(list((self.home / ".agents/skills").glob("example.backup-*")))
+        self.assertFalse(list(self.backups.glob("*/.agents")))
 
     def test_missing_config_leaves_everything_enabled(self):
         skill = self.repo / "skills/shared/example"
@@ -337,7 +466,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply")
         self.assertEqual(json.loads(target.read_text())["mcpServers"]["jira"]["command"],
                          "keep-me")
-        self.assertFalse((self.home / ".config/agent-config/managed-mcp.json").exists())
+        self.assertFalse(self.state.exists())
 
     def test_empty_jira_instances_do_not_create_mcp_files(self):
         self.add_helper()
@@ -381,8 +510,8 @@ class SyncTest(unittest.TestCase):
         self.assertIn("[features]", codex)
         self.assertIn("memories = false", codex)
         self.assertIn("[mcp_servers.jira]", codex)
-        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
-                         {"jira": ["jira"]})
+        self.assertIn(".codex/config.toml#mcp_servers.jira",
+                      json.loads(self.state.read_text())["entries"])
         result = subprocess.run([helper], capture_output=True, text=True, timeout=5)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("usage:", result.stderr)
@@ -410,8 +539,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", "--replace-existing")
         cursor = json.loads(extra.read_text())["mcpServers"]
         self.assertEqual(cursor, {"unrelated": {"command": "keep"}})
-        self.assertEqual(json.loads((self.home / ".config/agent-config/managed-mcp.json").read_text()),
-                         {"jira": []})
+        self.assertEqual(json.loads(self.state.read_text())["entries"], {})
 
     def test_one_jira_instance_then_two_replaces_the_jira_name(self):
         self.add_helper()
@@ -430,6 +558,107 @@ class SyncTest(unittest.TestCase):
         self.assertNotIn("[mcp_servers.jira]", grok)
         self.assertIn("[mcp_servers.work]", grok)
         self.assertIn("[mcp_servers.other]", grok)
+
+    def test_clean_entry_update_needs_no_flag_and_backs_up_the_shared_file(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        claude = self.home / ".claude.json"
+        claude.parent.mkdir(parents=True)
+        claude.write_text('{"theme": "dark"}')
+        legacy = self.home / ".config/agent-config/managed-mcp.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"jira": ["jira"]}')
+        self.run_sync("--apply")
+        self.assertFalse(legacy.exists())
+        shutil.rmtree(self.backups)
+        claude.write_text(claude.read_text().replace('"dark"', '"light"'))
+        self.jira_config({"work": {"url": "https://new.example.com"}})
+        self.run_sync("--apply")
+        data = json.loads(claude.read_text())
+        self.assertEqual(data["theme"], "light")
+        self.assertEqual(data["mcpServers"]["jira"]["args"], ["https://new.example.com"])
+        saved = [json.loads(path.read_text()) for path in self.backups.glob("*/.claude.json")]
+        self.assertEqual([item["mcpServers"]["jira"]["args"] for item in saved],
+                         [["https://jira.example.com"]])
+        self.run_sync("--check")
+
+    def test_hand_written_jira_server_needs_the_flag(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        cursor = self.home / ".cursor/mcp.json"
+        cursor.parent.mkdir(parents=True)
+        cursor.write_text('{"mcpServers": {"jira": {"command": "mine"}}}')
+        self.run_sync("--apply", expected=2)
+        self.assertEqual(json.loads(cursor.read_text())["mcpServers"]["jira"], {"command": "mine"})
+        self.assertFalse((self.home / ".claude.json").exists())
+        cursor.write_text('{"mcpServers": []}')
+        self.run_sync("--apply", "--replace-existing", expected=2)
+        cursor.write_text('{"mcpServers": {"jira": {"command": "mine"}}}')
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual(json.loads(cursor.read_text())["mcpServers"]["jira"]["args"],
+                         ["https://jira.example.com"])
+
+    def test_disabling_hooks_leaves_an_unrecorded_hooks_key_alone(self):
+        (self.repo / "hooks").mkdir()
+        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
+        self.write_config({"hooks": {"claude-code": {"enabled": False}}})
+        settings = self.home / ".claude/settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text('{"hooks": {"Stop": []}}')
+        self.run_sync("--apply", "--replace-existing")
+        self.assertEqual(settings.read_text(), '{"hooks": {"Stop": []}}')
+
+    def test_interrupted_run_needs_no_flag_on_the_next_run(self):
+        self.add_helper()
+        self.add_skill(harness="grok")
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        before = self.state.read_text()
+        (self.repo / "skills/shared/example/SKILL.md").write_text("Updated skill")
+        self.jira_config({"work": {"url": "https://new.example.com"}})
+        self.run_sync("--apply")
+        after = self.state.read_text()
+        self.state.write_text(before)
+        self.run_sync("--check", expected=1)
+        self.run_sync("--apply")
+        self.assertEqual(self.state.read_text(), after)
+
+    def test_toml_edit_keeps_comments_and_replaces_a_quoted_table(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        codex = self.home / ".codex/config.toml"
+        codex.parent.mkdir(parents=True)
+        codex.write_text('[mcp_servers."jira"]\ncommand = "old"\n\n# about features\n'
+                         '[features] # trailing\nmemories = false\n')
+        self.run_sync("--apply", expected=2)
+        self.run_sync("--apply", "--replace-existing")
+        text = codex.read_text()
+        self.assertTrue(text.startswith("# about features\n[features] # trailing\n"), text)
+        data = tomllib.loads(text)
+        self.assertEqual(data["features"], {"memories": False})
+        self.assertEqual(data["mcp_servers"]["jira"]["args"], ["https://jira.example.com"])
+        self.run_sync("--check")
+
+    def test_removing_the_only_toml_server_works(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        self.jira_config({"work": {"url": "https://jira.example.com"}}, enabled=False)
+        self.run_sync("--apply")
+        self.assertEqual((self.home / ".grok/config.toml").read_text(), "")
+        self.run_sync("--check")
+
+    def test_toml_shape_sync_cannot_edit_blocks_all_writes(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        codex = self.home / ".codex/config.toml"
+        codex.parent.mkdir(parents=True)
+        original = '[mcp_servers]\njira = { command = "inline" }\n'
+        codex.write_text(original)
+        result = self.run_sync("--apply", "--replace-existing", expected=2)
+        self.assertEqual(codex.read_text(), original)
+        self.assertFalse((self.home / ".claude.json").exists())
+        self.assertFalse((self.home / ".local/bin").exists())
 
     def test_invalid_jira_instances_block_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")
