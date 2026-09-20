@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -611,6 +612,43 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--check", expected=1)
         self.run_sync("--apply")
         self.assertEqual(self.state.read_text(), after)
+
+    def test_toml_edit_keeps_comments_and_replaces_a_quoted_table(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        codex = self.home / ".codex/config.toml"
+        codex.parent.mkdir(parents=True)
+        codex.write_text('[mcp_servers."jira"]\ncommand = "old"\n\n# about features\n'
+                         '[features] # trailing\nmemories = false\n')
+        self.run_sync("--apply", expected=2)
+        self.run_sync("--apply", "--replace-existing")
+        text = codex.read_text()
+        self.assertTrue(text.startswith("# about features\n[features] # trailing\n"), text)
+        data = tomllib.loads(text)
+        self.assertEqual(data["features"], {"memories": False})
+        self.assertEqual(data["mcp_servers"]["jira"]["args"], ["https://jira.example.com"])
+        self.run_sync("--check")
+
+    def test_removing_the_only_toml_server_works(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        self.jira_config({"work": {"url": "https://jira.example.com"}}, enabled=False)
+        self.run_sync("--apply")
+        self.assertEqual((self.home / ".grok/config.toml").read_text(), "")
+        self.run_sync("--check")
+
+    def test_toml_shape_sync_cannot_edit_blocks_all_writes(self):
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        codex = self.home / ".codex/config.toml"
+        codex.parent.mkdir(parents=True)
+        original = '[mcp_servers]\njira = { command = "inline" }\n'
+        codex.write_text(original)
+        result = self.run_sync("--apply", "--replace-existing", expected=2)
+        self.assertEqual(codex.read_text(), original)
+        self.assertFalse((self.home / ".claude.json").exists())
+        self.assertFalse((self.home / ".local/bin").exists())
 
     def test_invalid_jira_instances_block_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")

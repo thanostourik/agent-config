@@ -208,33 +208,77 @@ def render_toml_table(header, value):
     return text
 
 
-def strip_toml_mcp(text, names):
-    names = set(names)
-    out = []
-    skipping = False
+def toml_header(line):
+    """Return the name parts of a [table] or [[table]] line, or None for other lines.
+
+    tomllib reads the line, so quoted names, spaces, and trailing comments work.
+    """
+    if not line.lstrip().startswith("["):
+        return None
+    try:
+        data = tomllib.loads(line)
+    except tomllib.TOMLDecodeError:
+        return None
+    parts = []
+    while isinstance(data, dict) and len(data) == 1:
+        (key, data), = data.items()
+        parts.append(key)
+        if isinstance(data, list):
+            data = data[0]
+    return parts
+
+
+def edit_toml(path, text, changes):
+    """Replace or remove sync's [mcp_servers.<name>] tables by editing lines.
+
+    The standard library cannot write TOML. So the result is parsed and must
+    equal the original values with only these tables changed; otherwise nothing
+    is written.
+    """
+    kept, table = [], None
+
+    def close_table():
+        # A removed table ends at its last key: the blank lines and comments
+        # below it belong to whatever follows.
+        end = len(table)
+        while end and (not table[end - 1].strip() or table[end - 1].lstrip().startswith("#")):
+            end -= 1
+        kept.extend(table[end:])
+
     for line in text.splitlines(True):
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            header = stripped[1:-1].strip()
-            skipping = False
-            for name in names:
-                key = f"mcp_servers.{name}"
-                if header == key or header.startswith(key + "."):
-                    skipping = True
-                    break
-        if not skipping:
-            out.append(line)
-    return "".join(out)
-
-
-def edit_toml(text, changes):
-    """Replace or remove sync's [mcp_servers.<name>] tables; keep the rest."""
-    text = strip_toml_mcp(text, [keys[-1] for keys in changes])
-    chunks = [text.rstrip() + "\n"] if text.strip() else []
+        header = toml_header(line)
+        if header is not None:
+            if table is not None:
+                close_table()
+            table = [] if tuple(header[:2]) in changes else None
+        (kept if table is None else table).append(line)
+    if table is not None:
+        close_table()
+    rest = "".join(kept).strip()
+    chunks = [rest + "\n"] if rest else []
     for keys, value in changes.items():
         if value is not MISSING:
             chunks.append(render_toml_table(".".join(keys), value))
-    return "\n".join(chunks)
+    result = "\n".join(chunks)
+
+    expected = tomllib.loads(text)
+    for (bucket, name), value in changes.items():
+        if value is MISSING:
+            expected.get(bucket, {}).pop(name, None)
+        else:
+            expected.setdefault(bucket, {})[name] = value
+    try:
+        actual = tomllib.loads(result)
+    except tomllib.TOMLDecodeError:
+        actual = None
+    for data in (expected, actual or {}):
+        if data.get("mcp_servers") == {}:
+            del data["mcp_servers"]
+    if actual is None or canonical(actual) != canonical(expected):
+        names = ", ".join(".".join(keys) for keys in changes)
+        raise ValueError(f"{path}: cannot safely edit {names}. Write each one as its own "
+                         "[mcp_servers.<name>] table, or remove it by hand, then run again.")
+    return result
 
 
 def edit_json(data, changes):
@@ -342,6 +386,24 @@ def decide(wanted, recorded, probe):
         else:
             verbs[key] = "delete" if found == recorded[key] else "delete+backup"
     return verbs
+
+
+def announce(home, verbs, replace_existing, parents):
+    """Print what happens to each item. Return True when something blocks the run."""
+    blocked = False
+    for key, verb in verbs.items():
+        if verb == "blocked":
+            print(f"BLOCKED (destination is not a file): {home / key}")
+        elif key in parents:
+            print(f"BLOCKED (parent is not a folder): {parents[key]}")
+        elif verb.endswith("+backup") and not replace_existing:
+            print(f"BLOCKED (requires --replace-existing): {home / key}")
+        else:
+            if verb not in ("keep", "forget"):
+                print(f"{verb.replace('+', ' + ').upper()}: {home / key}")
+            continue
+        blocked = True
+    return blocked
 
 
 def blocking_parent(home, target, removed):
@@ -553,33 +615,28 @@ def main():
     wanted_entries = {key: digest(canonical(value).encode()) for key, value in entries.items()}
     entry_verbs = decide(wanted_entries, state["entries"], entry_hash)
 
-    blocked = False
     removed = {home / key for key, verb in verbs.items() if verb.startswith("delete")}
-    for key, verb in verbs.items():
-        target = home / key
-        parent = blocking_parent(home, target, removed) if verb == "create" else None
-        if verb == "blocked":
-            print(f"BLOCKED (destination is not a file): {target}")
-        elif parent:
-            print(f"BLOCKED (parent is not a folder): {parent}")
-        elif verb.endswith("+backup") and not args.replace_existing:
-            print(f"BLOCKED (requires --replace-existing): {target}")
-        else:
-            if verb not in ("keep", "forget"):
-                print(f"{verb.replace('+', ' + ').upper()}: {target}")
-            continue
-        blocked = True
+    parents = {key: blocking_parent(home, home / key, removed)
+               for key, verb in verbs.items() if verb == "create"}
+    blocked = announce(home, verbs, args.replace_existing,
+                       {key: parent for key, parent in parents.items() if parent})
+    blocked |= announce(home, entry_verbs, args.replace_existing, {})
 
-    rewrites = {}
+    changes = {}
     for key, verb in entry_verbs.items():
-        if verb.endswith("+backup") and not args.replace_existing:
-            print(f"BLOCKED (requires --replace-existing): {home / key}")
-            blocked = True
-        elif verb not in ("keep", "forget"):
-            print(f"{verb.replace('+', ' + ').upper()}: {home / key}")
+        if verb not in ("keep", "forget"):
             relative, _, dotted = key.partition("#")
-            rewrites.setdefault(relative, {})[tuple(dotted.split("."))] = entries.get(
+            changes.setdefault(relative, {})[tuple(dotted.split("."))] = entries.get(
                 key, MISSING)
+    # Every shared file is rendered before the first write, so a file sync
+    # cannot edit safely stops the run with nothing written.
+    rewrites = {}
+    for relative, changes_here in changes.items():
+        path, raw, data = shared[relative]
+        if relative.endswith(".toml"):
+            rewrites[relative] = edit_toml(path, raw.decode() if raw else "", changes_here)
+        else:
+            rewrites[relative] = edit_json(data, changes_here)
 
     new_state = {"files": wanted, "entries": wanted_entries}
     adopted = sum(1 for section, found in (("files", verbs), ("entries", entry_verbs))
@@ -591,8 +648,8 @@ def main():
     if blocked:
         print("No files written. Review destinations before using --replace-existing.")
         return 2
-    changes = [key for key, verb in verbs.items() if verb != "keep"]
-    if not changes and not rewrites and new_state == state:
+    writes = [key for key, verb in verbs.items() if verb not in ("keep", "forget")]
+    if not writes and not rewrites and new_state == state:
         print("No changes needed." if files or entries else
               "No populated sources; empty placeholders skipped.")
         return 0
@@ -603,18 +660,14 @@ def main():
         return 0
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    for relative, changes_here in rewrites.items():
-        path, raw, data = shared[relative]
+    for relative, contents in rewrites.items():
+        path, raw, _data = shared[relative]
         # The tools rewrite these files while they run. Do not write over a
         # change that arrived after sync read the file.
         if (path.read_bytes() if path.is_file() else None) != raw:
             raise ValueError(f"{path} changed during sync; run again")
         if raw is not None:
             back_up(home, relative, stamp, path)
-        if relative.endswith(".toml"):
-            contents = edit_toml(raw.decode() if raw else "", changes_here)
-        else:
-            contents = edit_json(data, changes_here)
         write_file(path, contents.encode(), stamp)
     # Deletions come first so a file that became a folder of the same name works.
     for key, verb in verbs.items():
@@ -637,7 +690,7 @@ def main():
     # items equal to what it wants and records them then.
     write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
     (home / LEGACY_STATE).unlink(missing_ok=True)
-    print(f"Applied {len(changes) + sum(map(len, rewrites.values()))} change(s). "
+    print(f"Applied {len(writes) + sum(map(len, changes.values()))} change(s). "
           "Restart sessions to load new instructions.")
     return 0
 
