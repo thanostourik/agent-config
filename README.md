@@ -8,9 +8,9 @@ Grok, Cursor, and OpenCode, kept in one place.
 ```
 ./sync                                # show what would change, write nothing
 ./sync --check                        # same, but exit 1 when changes are pending
-./sync --apply                        # copy the files into each tool's config folder
-./sync --apply --replace-existing     # also overwrite files that differ, keeping a backup
-./sync --clean-backups                # delete the backups next to installed files
+./sync --apply                        # make each tool's config folder match this repository
+./sync --apply --replace-existing     # also replace content sync did not write, keeping a backup
+./sync --clean-backups                # delete the backups sync has saved
 ./sync --home /tmp/test --apply       # install into another folder, for testing
 ```
 
@@ -26,7 +26,8 @@ setup beyond copying files. Paste this into a new agent session:
 Follow SETUP.md in this repository and complete every setup the tools in this repo need.
 ```
 
-See [SETUP.md](SETUP.md). Sync refuses to overwrite a file that differs unless
-you pass `--replace-existing`. Backups are saved next to the replaced file as
-`<file>.backup-<timestamp>`. See [AGENTS.md](AGENTS.md) for the folder layout,
-install locations, and tests.
+See [SETUP.md](SETUP.md). Sync adds, updates, and deletes what it installed,
+and touches nothing else. It refuses to replace or delete content it did not
+write unless you pass `--replace-existing`, and then saves it under
+`~/.config/agent-config/backups/<timestamp>/` first. See [AGENTS.md](AGENTS.md)
+for the ownership rules, folder layout, install locations, and tests.

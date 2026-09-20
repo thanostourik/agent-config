@@ -9,15 +9,18 @@ Examples:
   ./sync --clean-backups
   ./sync --home /tmp/agent-config-test --apply
 
-Empty Markdown placeholders are skipped. Existing files are replaced only
-with --replace-existing and are backed up alongside the destination first.
+Empty Markdown placeholders are skipped. Sync records what it installs in
+~/.config/agent-config/state.json and keeps those items equal to this
+repository: it adds, updates, and deletes them. Anything it did not write, or
+that changed since, is replaced or deleted only with --replace-existing, after
+a backup under ~/.config/agent-config/backups/. Anything else is never touched.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
 config.json (gitignored) can disable skills, agents, hooks, and MCP servers.
 Missing entries stay enabled. Copy config.example.json to start.
-Disabled items are removed from the destinations sync installed.
-Jira MCP URLs live only in config.json; sync merges server entries into each
-tool's MCP config and does not put secrets in those files.
+Disabled items are removed like any other item that left the repository.
+Jira MCP URLs live only in config.json; sync owns only its server entries in
+each tool's MCP config, and does not put secrets in those files.
 """
 
 import argparse
