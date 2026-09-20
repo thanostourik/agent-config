@@ -86,14 +86,11 @@ for any of these steps. Reading and answering questions is the only work that ha
   description when the scope or the verification status changed.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
-- When asked to merge locally: rebase the branch onto main, then fast-forward merge. Never create
-  merge commits. Squash first only if I ask. If the branch is already pushed, the rebase may require
-  a force-push: tell me and stop.
-- After you rebase, tell me how it went: a clean rebase, or which files conflicted and how you
-  resolved them.
 - Never merge another branch into the working branch, and never rebase it, unless I say so
   explicitly. If it needs main's changes, stop and ask.
 - No force-push, ever. If a push is rejected, stop and tell me.
+- When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
+  create merge commits. Squash first only if I ask.
 
 ## Local environment
 
