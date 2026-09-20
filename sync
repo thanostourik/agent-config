@@ -21,13 +21,14 @@ tool's MCP config and does not put secrets in those files.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 ROOT = Path(__file__).resolve().parent
@@ -55,6 +56,9 @@ TOOLS = {
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 MANAGED_MCP = ".config/agent-config/managed-mcp.json"
+STATE = ".config/agent-config/state.json"
+BACKUPS = ".config/agent-config/backups"
+BLOCKED = object()
 MCP_JSON = (
     (".cursor/mcp.json", "mcpServers", "stdio"),
     (".claude.json", "mcpServers", "stdio"),
@@ -273,15 +277,107 @@ def read_managed_jira(home):
     return names
 
 
-def remove_backup(backup):
-    if backup.is_dir() and not backup.is_symlink():
-        shutil.rmtree(backup)
-    else:
-        backup.unlink()
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
 
 
-def backup_path(target, stamp):
-    return target.with_name(f"{target.name}.backup-{stamp}")
+def load_state(home):
+    """Read what earlier runs installed: item -> hash of what sync wrote."""
+    path = home / STATE
+    if not path.is_file():
+        return {"files": {}, "entries": {}}
+    state = json.loads(path.read_text())
+    if not isinstance(state, dict) or set(state) != {"files", "entries"}:
+        raise ValueError(f"{path} must hold exactly files and entries")
+    for section in state.values():
+        if not isinstance(section, dict) or not all(
+                isinstance(value, str) for value in section.values()):
+            raise ValueError(f"{path} sections must map items to hashes")
+        for key in section:
+            relative = PurePosixPath(key.partition("#")[0])
+            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+                raise ValueError(f"{path}: {key!r} is not a path inside the home folder")
+    return state
+
+
+def file_hash(target):
+    """None when missing, BLOCKED for a directory. A symlink never matches a hash."""
+    if target.is_symlink():
+        return "symlink"
+    if target.is_file():
+        return digest(target.read_bytes())
+    return BLOCKED if target.exists() else None
+
+
+def decide(wanted, recorded, probe):
+    """Apply the ownership rule to every wanted or recorded item.
+
+    An item is clean when it equals what sync wants or what sync recorded.
+    Sync changes clean items freely; anything else needs a backup. Items that
+    are neither wanted nor recorded are never looked at.
+    """
+    verbs = {}
+    for key in sorted(wanted.keys() | recorded.keys()):
+        found = probe(key)
+        if found is BLOCKED:
+            verbs[key] = "blocked"
+        elif key in wanted:
+            if found is None:
+                verbs[key] = "create"
+            elif found == wanted[key]:
+                verbs[key] = "keep"
+            else:
+                verbs[key] = "replace" if found == recorded.get(key) else "replace+backup"
+        elif found is None:
+            verbs[key] = "forget"
+        else:
+            verbs[key] = "delete" if found == recorded[key] else "delete+backup"
+    return verbs
+
+
+def blocking_parent(home, target, removed):
+    for parent in target.parents:
+        if parent == home:
+            return None
+        if (parent.is_symlink() or parent.exists()) and not parent.is_dir():
+            return None if parent in removed else parent
+    return None
+
+
+def back_up(home, target, stamp):
+    backup = home / BACKUPS / stamp / target.relative_to(home)
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(target, backup, follow_symlinks=False)
+    print(f"BACKUP: {backup}")
+
+
+def write_file(target, contents, stamp, executable=False):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Replace the directory entry, never write through an existing symlink.
+    temporary = target.with_name(f".{target.name}.sync-{stamp}")
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(contents)
+        if executable:
+            temporary.chmod(0o755)
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def prune(home, target):
+    """Remove the emptied folders of a skill, never the skills folder itself."""
+    for destinations in TOOLS.values():
+        root = home / destinations["skills"]
+        if root not in target.parents:
+            continue
+        for folder in target.parents:
+            if folder == root or folder.is_symlink():
+                return
+            try:
+                folder.rmdir()
+            except OSError:
+                return
 
 
 def default_skill_harnesses(default):
@@ -324,26 +420,11 @@ def skill_harnesses(entry, default):
     return harnesses if harnesses is not None else default_skill_harnesses(default)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--apply", action="store_true", help="write the previewed changes")
-    mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
-    mode.add_argument("--clean-backups", action="store_true",
-                      help="delete backups next to installed files, then exit")
-    parser.add_argument("--replace-existing", action="store_true",
-                        help="allow replacement of existing destinations, keeping backups")
-    parser.add_argument("--home", type=Path, default=Path.home(),
-                        help="destination home directory (useful for testing)")
-    args = parser.parse_args()
-    home = args.home.expanduser().resolve()
+def desired_files(config, home):
+    """Return the files the repository wants installed, and which are executable."""
     files = {}
-    executable_files = set()
+    executable = set()
     skill_sources = {}
-    deletes = []
-    backup_roots = set()
-    config = load_config()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
@@ -356,71 +437,61 @@ def main():
                 files[home / destinations["instructions"]] = (contents + "\n").encode()
 
         skills_dir = ROOT / "skills" / tool
-        if "skills" in destinations and skills_dir.is_dir():
+        if skills_dir.is_dir():
             for skill in sorted(skills_dir.iterdir()):
                 entry = skill / "SKILL.md"
                 if not entry.is_file() or not entry.read_text().strip():
                     continue
-                enabled = is_enabled(config, "skills", skill.name)
                 for harness in skill_harnesses(entry, tool):
                     destination = home / TOOLS[harness]["skills"] / skill.name
                     if destination in skill_sources:
                         raise ValueError(f"Duplicate skill destination {destination}: "
                                          f"{skill_sources[destination]} and {skill}")
                     skill_sources[destination] = skill
-                    backup_roots.add(destination)
-                    if not enabled:
-                        if destination.exists() or destination.is_symlink():
-                            deletes.append((destination, True))
+                    if not is_enabled(config, "skills", skill.name):
                         continue
                     for file in sorted(skill.rglob("*")):
                         if file.is_file():
                             target = destination / file.relative_to(skill)
                             files[target] = file.read_bytes()
                             if file.stat().st_mode & 0o111:
-                                executable_files.add(target)
+                                executable.add(target)
 
         agents_dir = ROOT / "agents" / tool
         if "agents" in destinations and agents_dir.is_dir():
             for agent in sorted(agents_dir.iterdir()):
-                if not (agent.is_file() and agent.read_text().strip()):
-                    continue
-                target = home / destinations["agents"] / agent.name
-                backup_roots.add(target)
-                if not is_enabled(config, "agents", agent.stem):
-                    if target.exists() or target.is_symlink():
-                        deletes.append((target, False))
-                    continue
-                files[target] = agent.read_bytes()
+                if (agent.is_file() and agent.read_text().strip()
+                        and is_enabled(config, "agents", agent.stem)):
+                    files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
         hooks_file = ROOT / "hooks" / f"{tool}.json"
-        if "hooks" in destinations and hooks_file.is_file():
-            target = home / destinations["hooks"]
-            backup_roots.add(target)
-            if not is_enabled(config, "hooks", tool):
-                if tool == "claude-code":
-                    if target.is_file():
-                        settings = json.loads(target.read_text())
-                        if "hooks" in settings:
-                            del settings["hooks"]
-                            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-                elif target.exists() or target.is_symlink():
-                    deletes.append((target, False))
-                continue
-            if tool == "claude-code":
-                # Claude Code keeps hooks inside settings.json next to unrelated
-                # settings, so replace only the "hooks" key and keep the rest.
-                settings = json.loads(target.read_text()) if target.is_file() else {}
-                settings["hooks"] = json.loads(hooks_file.read_text())
-                files[target] = (json.dumps(settings, indent=2) + "\n").encode()
-            else:
-                files[target] = hooks_file.read_bytes()
+        if ("hooks" in destinations and tool != "claude-code" and hooks_file.is_file()
+                and is_enabled(config, "hooks", tool)):
+            files[home / destinations["hooks"]] = hooks_file.read_bytes()
 
     for script in sorted((ROOT / "bin").glob("*")):
         if script.is_file():
             target = home / ".local/bin" / script.name
             files[target] = script.read_bytes()
-            executable_files.add(target)
+            executable.add(target)
+    return files, executable
+
+
+def shared_files(config, home):
+    """Return the new contents of the tool-owned files sync merges its entries into."""
+    files = {}
+    hooks_file = ROOT / "hooks/claude-code.json"
+    target = home / TOOLS["claude-code"]["hooks"]
+    if hooks_file.is_file():
+        # Claude Code keeps hooks inside settings.json next to unrelated
+        # settings, so replace only the "hooks" key and keep the rest.
+        settings = json.loads(target.read_text()) if target.is_file() else {}
+        if is_enabled(config, "hooks", "claude-code"):
+            settings["hooks"] = json.loads(hooks_file.read_text())
+            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
+        elif "hooks" in settings:
+            del settings["hooks"]
+            files[target] = (json.dumps(settings, indent=2) + "\n").encode()
 
     helper = home / ".local/bin/mcp-atlassian-start"
     previous_jira = read_managed_jira(home)
@@ -438,49 +509,88 @@ def main():
         files[home / MANAGED_MCP] = (
             json.dumps({"jira": [name for name, _url in servers]}, indent=2) + "\n"
         ).encode()
+    return files
 
-    backup_roots.update(files)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="write the previewed changes")
+    mode.add_argument("--check", action="store_true", help="exit nonzero when changes are needed")
+    mode.add_argument("--clean-backups", action="store_true",
+                      help="delete the backups sync has saved, then exit")
+    parser.add_argument("--replace-existing", action="store_true",
+                        help="allow replacing or deleting content sync did not write, "
+                             "keeping backups")
+    parser.add_argument("--home", type=Path, default=Path.home(),
+                        help="destination home directory (useful for testing)")
+    args = parser.parse_args()
+    home = args.home.expanduser().resolve()
+
     if args.clean_backups:
-        backups = [b for target in backup_roots for b in target.parent.glob(f"{target.name}.backup-*")]
-        for backup in backups:
-            remove_backup(backup)
-            print(f"DELETED: {backup}")
-        print(f"Deleted {len(backups)} backup(s).")
+        backups = home / BACKUPS
+        count = len(list(backups.iterdir())) if backups.is_dir() else 0
+        shutil.rmtree(backups, ignore_errors=True)
+        print(f"Deleted {count} backup run(s).")
         return 0
 
-    changes = []
+    config = load_config()
+    files, executable = desired_files(config, home)
+    shared = shared_files(config, home)
+    state = load_state(home)
+    wanted = {target.relative_to(home).as_posix(): digest(contents)
+              for target, contents in files.items()}
+    verbs = decide(wanted, state["files"], lambda key: file_hash(home / key))
+    for key, verb in verbs.items():
+        if (verb == "keep" and home / key in executable
+                and not (home / key).stat().st_mode & 0o111):
+            verbs[key] = "chmod"
+
     blocked = False
-    for target, contents in files.items():
+    removed = {home / key for key, verb in verbs.items() if verb.startswith("delete")}
+    for key, verb in verbs.items():
+        target = home / key
+        parent = blocking_parent(home, target, removed) if verb == "create" else None
+        if verb == "blocked":
+            print(f"BLOCKED (destination is not a file): {target}")
+        elif parent:
+            print(f"BLOCKED (parent is not a folder): {parent}")
+        elif verb.endswith("+backup") and not args.replace_existing:
+            print(f"BLOCKED (requires --replace-existing): {target}")
+        else:
+            if verb not in ("keep", "forget"):
+                print(f"{verb.replace('+', ' + ').upper()}: {target}")
+            continue
+        blocked = True
+
+    shared_changes = []
+    for target, contents in shared.items():
         exists = target.exists() or target.is_symlink()
-        if (target.is_file() and target.read_bytes() == contents
-                and (target not in executable_files or target.stat().st_mode & 0o111)):
+        if target.is_file() and target.read_bytes() == contents:
             continue
         if exists and not (target.is_file() or target.is_symlink()):
             print(f"BLOCKED (destination is not a file): {target}")
             blocked = True
-            continue
-        if exists and not args.replace_existing:
+        elif exists and not args.replace_existing:
             print(f"BLOCKED (requires --replace-existing): {target}")
             blocked = True
         else:
             print(f"{'REPLACE + BACKUP' if exists else 'CREATE'}: {target}")
-        changes.append((target, contents, exists))
+        shared_changes.append((target, contents, exists))
 
-    removals = []
-    for target, directory in deletes:
-        if target.is_symlink() or (not directory and target.is_file()) or (
-                directory and target.is_dir()):
-            print(f"DELETE: {target}")
-            removals.append((target, directory))
-            continue
-        print(f"BLOCKED (destination is not a sync-owned {'directory' if directory else 'file'}): {target}")
-        blocked = True
+    new_state = {"files": wanted, "entries": state["entries"]}
+    adopted = sum(1 for key, verb in verbs.items()
+                  if verb in ("keep", "chmod") and state["files"].get(key) != wanted[key])
+    if adopted:
+        print(f"RECORD: {adopted} installed file(s) that already match")
 
     if blocked:
         print("No files written. Review destinations before using --replace-existing.")
         return 2
-    if not changes and not removals:
-        print("No changes needed." if files or deletes else
+    changes = [key for key, verb in verbs.items() if verb != "keep"]
+    if not changes and not shared_changes and new_state == state:
+        print("No changes needed." if files or shared else
               "No populated sources; empty placeholders skipped.")
         return 0
     if args.check:
@@ -490,33 +600,31 @@ def main():
         return 0
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    for target, contents, exists in changes:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if exists:
-            backup = backup_path(target, stamp)
-            shutil.copy2(target, backup, follow_symlinks=False)
-            print(f"BACKUP: {backup}")
-        # Replace the directory entry, never write through an existing symlink.
-        temporary = target.with_name(f".{target.name}.sync-{stamp}")
-        try:
-            with temporary.open("xb") as stream:
-                stream.write(contents)
-            if target in executable_files:
-                temporary.chmod(0o755)
-            temporary.replace(target)
-        finally:
-            temporary.unlink(missing_ok=True)
-    for target, directory in removals:
-        backup = backup_path(target, stamp)
-        if target.is_symlink() or target.is_file():
-            shutil.copy2(target, backup, follow_symlinks=False)
+    # Deletions come first so a file that became a folder of the same name works.
+    for key, verb in verbs.items():
+        target = home / key
+        if verb.startswith("delete"):
+            if verb == "delete+backup":
+                back_up(home, target, stamp)
             target.unlink()
-        else:
-            shutil.copytree(target, backup, symlinks=True)
-            shutil.rmtree(target)
-        print(f"BACKUP: {backup}")
-        print(f"DELETED: {target}")
-    print(f"Applied {len(changes)} file change(s), {len(removals)} deletion(s). "
+        if verb.startswith("delete") or verb == "forget":
+            prune(home, target)
+    for key, verb in verbs.items():
+        target = home / key
+        if verb == "chmod":
+            target.chmod(0o755)
+        elif verb in ("create", "replace", "replace+backup"):
+            if verb == "replace+backup":
+                back_up(home, target, stamp)
+            write_file(target, files[target], stamp, target in executable)
+    for target, contents, exists in shared_changes:
+        if exists:
+            back_up(home, target, stamp)
+        write_file(target, contents, stamp)
+    # The state file goes last: after a crash the next run finds the written
+    # items equal to what it wants and records them then.
+    write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
+    print(f"Applied {len(changes) + len(shared_changes)} change(s). "
           "Restart sessions to load new instructions.")
     return 0
 
