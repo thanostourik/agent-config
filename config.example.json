@@ -1,6 +1,7 @@
 {
   "skills": {
     "agentic-test": { "enabled": true },
+    "bro": { "enabled": true },
     "claude-review": { "enabled": true },
     "codex-review": { "enabled": true },
     "file-pr": { "enabled": true },
