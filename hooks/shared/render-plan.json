@@ -1,0 +1,5 @@
+{
+  "event": "after-edit",
+  "command": "$HOME/.local/bin/render-plan --hook",
+  "timeout": 30
+}

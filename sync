@@ -40,8 +40,11 @@ ROOT = Path(__file__).resolve().parent
 #   instructions/<tool>.md  -> instructions (common.md is prepended)
 #   skills/<tool>/<name>/   -> skills
 #   agents/<tool>/<name>.*  -> agent definitions
-#   hooks/<tool>.json       -> hook configuration (copied as is; for Claude Code
-#                              it is the "hooks" value merged into settings.json)
+#   hooks/<tool>/<name>.json -> one hook in the tool's native shape: event -> items
+#   hooks/shared/<name>.json -> one hook in the neutral shape below, for every
+#                               tool with hooks unless "harness" says otherwise
+# Enabled hooks are merged per tool into one file, or for Claude Code into
+# the "hooks" key of settings.json.
 # skills/shared/ installs to every skills destination unless harness says otherwise.
 # bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
 TOOLS = {
@@ -56,6 +59,15 @@ TOOLS = {
     "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
     "shared": {"skills": ".agents/skills"},
+}
+# Neutral event name -> per tool (native event name, matcher). A shared hook is
+# {"event": ..., "command": ..., "timeout": seconds, "harness": "a, b"}.
+HOOK_EVENTS = {
+    "after-edit": {
+        "claude-code": ("PostToolUse", "Write|Edit|MultiEdit"),
+        "codex": ("PostToolUse", None),
+        "cursor": ("afterFileEdit", None),
+    },
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
@@ -495,6 +507,86 @@ def skill_harnesses(entry, default):
     return harnesses if harnesses is not None else default_skill_harnesses(default)
 
 
+def hook_harnesses(path, data):
+    """Read the optional "harness" list of a shared hook, like a skill's metadata."""
+    with_hooks = [name for name, destinations in TOOLS.items() if "hooks" in destinations]
+    harness = data.get("harness")
+    if harness is None:
+        return with_hooks
+    if not isinstance(harness, str):
+        raise ValueError(f'{path}: harness must be a string like "claude-code, cursor"')
+    harnesses = [name.strip() for name in harness.split(",")]
+    if any(name not in with_hooks for name in harnesses):
+        raise ValueError(f"{path}: harness names must be one of {', '.join(with_hooks)}")
+    if len(set(harnesses)) != len(harnesses):
+        raise ValueError(f"{path}: duplicate harness names")
+    return harnesses
+
+
+def native_hook(path, data, tool):
+    """Translate a shared hook into one tool's event -> items object."""
+    event = data.get("event")
+    if event not in HOOK_EVENTS:
+        raise ValueError(f"{path}: event must be one of {', '.join(HOOK_EVENTS)}")
+    command = data.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise ValueError(f"{path}: command must be a non-empty string")
+    timeout = data.get("timeout")
+    if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int)):
+        raise ValueError(f"{path}: timeout must be a whole number of seconds")
+    name, matcher = HOOK_EVENTS[event][tool]
+    if tool == "cursor":
+        return {name: [{"command": command}]}
+    item = {"type": "command", "command": command}
+    if timeout is not None:
+        item["timeout"] = timeout
+    group = {"hooks": [item]}
+    if matcher:
+        group = {"matcher": matcher, **group}
+    return {name: [group]}
+
+
+def read_hook(path):
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must be a JSON object")
+    return data
+
+
+def tool_hooks(config):
+    """Return tool -> merged event -> items object for the enabled hooks of each tool."""
+    sources = {}
+    hooks_dir = ROOT / "hooks"
+    for tool in TOOLS:
+        folder = hooks_dir / tool
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("*.json")):
+            data = read_hook(path)
+            if tool == "shared":
+                for harness in hook_harnesses(path, data):
+                    sources.setdefault((harness, path.stem), []).append(
+                        (path, native_hook(path, data, harness)))
+                continue
+            if "hooks" not in TOOLS[tool]:
+                raise ValueError(f"{path}: {tool} does not support hooks")
+            for event, items in data.items():
+                if not isinstance(items, list):
+                    raise ValueError(f"{path}: {event} must be a list of hook items")
+            sources.setdefault((tool, path.stem), []).append((path, data))
+    merged = {}
+    for (tool, name), candidates in sorted(sources.items()):
+        if len(candidates) > 1:
+            paths = " and ".join(str(path) for path, _ in candidates)
+            raise ValueError(f"Duplicate hook {name} for {tool}: {paths}")
+        if not is_enabled(config, "hooks", name):
+            continue
+        (_, hooks), = candidates
+        for event, items in hooks.items():
+            merged.setdefault(tool, {}).setdefault(event, []).extend(items)
+    return merged
+
+
 def desired_files(config, home):
     """Return the files the repository wants installed, and which are executable."""
     files = {}
@@ -539,10 +631,11 @@ def desired_files(config, home):
                         and is_enabled(config, "agents", agent.stem)):
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
-        hooks_file = ROOT / "hooks" / f"{tool}.json"
-        if ("hooks" in destinations and tool != "claude-code" and hooks_file.is_file()
-                and is_enabled(config, "hooks", tool)):
-            files[home / destinations["hooks"]] = hooks_file.read_bytes()
+    for tool, hooks in tool_hooks(config).items():
+        if tool == "claude-code":
+            continue
+        wrapper = {"version": 1, "hooks": hooks} if tool == "cursor" else {"hooks": hooks}
+        files[home / TOOLS[tool]["hooks"]] = (json.dumps(wrapper, indent=2) + "\n").encode()
 
     for script in sorted((ROOT / "bin").glob("*")):
         if script.is_file():
@@ -555,11 +648,11 @@ def desired_files(config, home):
 def desired_entries(config, home):
     """Return the values sync owns inside tool-owned files, as <file>#<key> -> value."""
     entries = {}
-    hooks_file = ROOT / "hooks/claude-code.json"
-    if hooks_file.is_file() and is_enabled(config, "hooks", "claude-code"):
+    hooks = tool_hooks(config).get("claude-code")
+    if hooks is not None:
         # Claude Code keeps hooks inside settings.json next to unrelated
         # settings, so sync owns only the "hooks" key.
-        entries[f"{TOOLS['claude-code']['hooks']}#hooks"] = json.loads(hooks_file.read_text())
+        entries[f"{TOOLS['claude-code']['hooks']}#hooks"] = hooks
     helper = home / ".local/bin/mcp-atlassian-start"
     env = mcp_gui_env()
     for name, url in jira_servers(config):

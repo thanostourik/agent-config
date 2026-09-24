@@ -133,21 +133,65 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".claude/CLAUDE.md").exists())
         self.run_sync("--check")
 
-    def test_hooks_are_copied_or_merged_into_claude_settings(self):
-        (self.repo / "hooks").mkdir()
-        (self.repo / "hooks/codex.json").write_text('{"hooks": {}}\n')
-        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
-        (self.repo / "hooks/grok.json").write_text('{"unsupported": true}')
+    def write_hook(self, tool, name, data):
+        folder = self.repo / "hooks" / tool
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{name}.json").write_text(json.dumps(data))
+
+    def test_hooks_are_wrapped_per_tool_or_merged_into_claude_settings(self):
+        self.write_hook("codex", "lint", {"PostToolUse": [{"hooks": [{"type": "command",
+                                                                       "command": "lint"}]}]})
+        self.write_hook("claude-code", "stop", {"Stop": [{"hooks": []}]})
+        self.write_hook("cursor", "edit", {"afterFileEdit": [{"command": "fmt"}]})
         settings = self.home / ".claude/settings.json"
         settings.parent.mkdir(parents=True)
         settings.write_text('{"theme": "dark", "hooks": {"Stop": []}}')
         self.run_sync("--apply", expected=2)
         self.run_sync("--apply", "--replace-existing")
-        self.assertEqual((self.home / ".codex/hooks.json").read_text(), '{"hooks": {}}\n')
+        self.assertEqual(json.loads((self.home / ".codex/hooks.json").read_text()),
+                         {"hooks": {"PostToolUse": [{"hooks": [{"type": "command",
+                                                                "command": "lint"}]}]}})
+        self.assertEqual(json.loads((self.home / ".cursor/hooks.json").read_text()),
+                         {"version": 1, "hooks": {"afterFileEdit": [{"command": "fmt"}]}})
         self.assertEqual(json.loads(settings.read_text()),
-                         {"theme": "dark", "hooks": {"PostToolUse": []}})
-        self.assertFalse((self.home / ".grok/hooks.json").exists())
+                         {"theme": "dark", "hooks": {"Stop": [{"hooks": []}]}})
         self.run_sync("--check")
+
+    def test_hook_for_a_tool_without_hooks_stops_sync(self):
+        self.write_hook("grok", "edit", {"afterFileEdit": []})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+
+    def test_shared_hook_is_translated_for_each_tool_and_merged_with_native_hooks(self):
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "render --hook",
+                                             "timeout": 30})
+        self.write_hook("shared", "cursor-only", {"event": "after-edit", "command": "fmt",
+                                                  "harness": "cursor"})
+        self.write_hook("codex", "lint", {"PostToolUse": [{"hooks": [{"type": "command",
+                                                                       "command": "lint"}]}]})
+        self.run_sync("--apply")
+        render = {"type": "command", "command": "render --hook", "timeout": 30}
+        self.assertEqual(
+            json.loads((self.home / ".claude/settings.json").read_text())["hooks"],
+            {"PostToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [render]}]})
+        self.assertEqual(
+            json.loads((self.home / ".codex/hooks.json").read_text())["hooks"],
+            {"PostToolUse": [{"hooks": [{"type": "command", "command": "lint"}]},
+                             {"hooks": [render]}]})
+        self.assertEqual(
+            json.loads((self.home / ".cursor/hooks.json").read_text())["hooks"],
+            {"afterFileEdit": [{"command": "fmt"}, {"command": "render --hook"}]})
+
+    def test_shared_hook_rejects_unknown_event_harness_and_duplicate_name(self):
+        self.write_hook("shared", "render", {"event": "on-boot", "command": "x"})
+        self.run_sync("--apply", expected=2)
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
+                                             "harness": "grok"})
+        self.run_sync("--apply", expected=2)
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
+        self.write_hook("codex", "render", {"PostToolUse": []})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
 
     def test_skill_metadata_overrides_folder_and_copies_resources(self):
         skill = self.repo / "skills/shared/example"
@@ -359,15 +403,14 @@ class SyncTest(unittest.TestCase):
         kept = self.repo / "skills/shared/kept"
         kept.mkdir(parents=True)
         (kept / "SKILL.md").write_text("Kept skill")
-        (self.repo / "hooks").mkdir()
-        (self.repo / "hooks/codex.json").write_text('{"hooks": {}}\n')
-        (self.repo / "hooks/cursor.json").write_text('{"hooks": {}}\n')
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "render"})
+        self.write_hook("cursor", "fmt", {"afterFileEdit": [{"command": "fmt"}]})
         (self.repo / "agents/codex").mkdir(parents=True)
         (self.repo / "agents/codex/runner.toml").write_text("name = 'runner'")
         (self.repo / "agents/codex/other.toml").write_text("name = 'other'")
         self.write_config({
             "skills": {"example": {"enabled": False}, "kept": {"enabled": True}},
-            "hooks": {"codex": {"enabled": False}},
+            "hooks": {"render": {"enabled": False}},
             "agents": {"runner": {"enabled": False}},
         })
         self.run_sync("--apply")
@@ -375,7 +418,9 @@ class SyncTest(unittest.TestCase):
             self.assertFalse((self.home / folder / "example").exists())
             self.assertTrue((self.home / folder / "kept/SKILL.md").is_file())
         self.assertFalse((self.home / ".codex/hooks.json").exists())
-        self.assertTrue((self.home / ".cursor/hooks.json").is_file())
+        self.assertFalse((self.home / ".claude/settings.json").exists())
+        self.assertEqual(json.loads((self.home / ".cursor/hooks.json").read_text())["hooks"],
+                         {"afterFileEdit": [{"command": "fmt"}]})
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertTrue((self.home / ".codex/agents/other.toml").is_file())
 
@@ -386,9 +431,7 @@ class SyncTest(unittest.TestCase):
         kept = self.repo / "skills/shared/kept"
         kept.mkdir(parents=True)
         (kept / "SKILL.md").write_text("Kept skill")
-        (self.repo / "hooks").mkdir()
-        (self.repo / "hooks/codex.json").write_text('{"hooks": {}}\n')
-        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "render"})
         (self.repo / "agents/codex").mkdir(parents=True)
         (self.repo / "agents/codex/runner.toml").write_text("name = 'runner'")
         settings = self.home / ".claude/settings.json"
@@ -400,7 +443,7 @@ class SyncTest(unittest.TestCase):
         extra.write_text("not from sync")
         self.write_config({
             "skills": {"example": {"enabled": False}},
-            "hooks": {"codex": {"enabled": False}, "claude-code": {"enabled": False}},
+            "hooks": {"render": {"enabled": False}},
             "agents": {"runner": {"enabled": False}},
         })
         self.run_sync("--apply", "--replace-existing")
@@ -439,7 +482,7 @@ class SyncTest(unittest.TestCase):
         example = json.loads((source / "config.example.json").read_text())
         skills = {path.parent.name for path in (source / "skills").glob("*/*/SKILL.md")
                   if path.read_text().strip()}
-        hooks = {path.stem for path in (source / "hooks").glob("*.json")}
+        hooks = {path.stem for path in (source / "hooks").glob("*/*.json")}
         self.assertEqual(set(example["skills"]), skills)
         self.assertEqual(set(example["hooks"]), hooks)
         for entry in (*example["skills"].values(), *example["hooks"].values()):
@@ -599,9 +642,8 @@ class SyncTest(unittest.TestCase):
                          ["https://jira.example.com"])
 
     def test_disabling_hooks_leaves_an_unrecorded_hooks_key_alone(self):
-        (self.repo / "hooks").mkdir()
-        (self.repo / "hooks/claude-code.json").write_text('{"PostToolUse": []}')
-        self.write_config({"hooks": {"claude-code": {"enabled": False}}})
+        self.write_hook("claude-code", "stop", {"Stop": []})
+        self.write_config({"hooks": {"stop": {"enabled": False}}})
         settings = self.home / ".claude/settings.json"
         settings.parent.mkdir(parents=True)
         settings.write_text('{"hooks": {"Stop": []}}')
