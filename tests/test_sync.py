@@ -180,16 +180,26 @@ class SyncTest(unittest.TestCase):
                              {"hooks": [render]}]})
         self.assertEqual(
             json.loads((self.home / ".cursor/hooks.json").read_text())["hooks"],
-            {"afterFileEdit": [{"command": "fmt"}, {"command": "render --hook"}]})
+            {"afterFileEdit": [{"command": "fmt"},
+                               {"command": "render --hook", "timeout": 30}]})
 
-    def test_shared_hook_rejects_unknown_event_harness_and_duplicate_name(self):
+    def test_shared_hook_rejects_unknown_event_harness_key_and_duplicate_name(self):
         self.write_hook("shared", "render", {"event": "on-boot", "command": "x"})
         self.run_sync("--apply", expected=2)
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
                                              "harness": "grok"})
         self.run_sync("--apply", expected=2)
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
+                                             "timeouts": 30})
+        self.run_sync("--apply", expected=2)
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
         self.write_hook("codex", "render", {"PostToolUse": []})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+
+    def test_config_naming_an_unknown_hook_stops_sync(self):
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
+        self.write_config({"hooks": {"cursor": {"enabled": False}}})
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
@@ -452,6 +462,7 @@ class SyncTest(unittest.TestCase):
         self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
         self.assertEqual(extra.read_text(), "not from sync")
         self.assertFalse((self.home / ".codex/hooks.json").exists())
+        self.assertFalse((self.home / ".cursor/hooks.json").exists())
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertEqual(json.loads(settings.read_text()), {"theme": "dark"})
         self.assertFalse(list(self.backups.glob("*/.agents")))

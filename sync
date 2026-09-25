@@ -525,6 +525,10 @@ def hook_harnesses(path, data):
 
 def native_hook(path, data, tool):
     """Translate a shared hook into one tool's event -> items object."""
+    unknown = set(data) - {"event", "command", "timeout", "harness"}
+    if unknown:
+        raise ValueError(f"{path}: unknown keys {', '.join(sorted(unknown))}; "
+                         "use event, command, timeout, harness")
     event = data.get("event")
     if event not in HOOK_EVENTS:
         raise ValueError(f"{path}: event must be one of {', '.join(HOOK_EVENTS)}")
@@ -535,11 +539,12 @@ def native_hook(path, data, tool):
     if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int)):
         raise ValueError(f"{path}: timeout must be a whole number of seconds")
     name, matcher = HOOK_EVENTS[event][tool]
-    if tool == "cursor":
-        return {name: [{"command": command}]}
-    item = {"type": "command", "command": command}
+    item = {"command": command}
     if timeout is not None:
         item["timeout"] = timeout
+    if tool == "cursor":
+        return {name: [item]}
+    item = {"type": "command", **item}
     group = {"hooks": [item]}
     if matcher:
         group = {"matcher": matcher, **group}
@@ -574,6 +579,11 @@ def tool_hooks(config):
                 if not isinstance(items, list):
                     raise ValueError(f"{path}: {event} must be a list of hook items")
             sources.setdefault((tool, path.stem), []).append((path, data))
+    names = {name for _, name in sources}
+    unknown = set(config.get("hooks") or {}) - names
+    if unknown:
+        raise ValueError(f"config.json hooks names no hook file: {', '.join(sorted(unknown))}. "
+                         f"Known hooks: {', '.join(sorted(names)) or 'none'}")
     merged = {}
     for (tool, name), candidates in sorted(sources.items()):
         if len(candidates) > 1:
