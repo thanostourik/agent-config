@@ -581,6 +581,12 @@ def tool_hooks(config):
             sources.setdefault((tool, path.stem), []).append((path, data))
     names = {name for _, name in sources}
     unknown = set(config.get("hooks") or {}) - names
+    legacy = unknown & {tool for tool in TOOLS if "hooks" in TOOLS[tool]}
+    if legacy:
+        raise ValueError(
+            f"config.json hooks still switches whole tools: {', '.join(sorted(legacy))}. "
+            "Hooks are now switched by name. Replace each tool key with the hook names "
+            "you want off, or keep a hook away from one tool with its \"harness\" field.")
     if unknown:
         # A stale entry must not block the run: its hook may just have been
         # removed from the repository and its installed copies need cleanup.
@@ -599,7 +605,7 @@ def tool_hooks(config):
     return merged
 
 
-def desired_files(config, home):
+def desired_files(config, home, hooks_by_tool):
     """Return the files the repository wants installed, and which are executable."""
     files = {}
     executable = set()
@@ -643,7 +649,7 @@ def desired_files(config, home):
                         and is_enabled(config, "agents", agent.stem)):
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
-    for tool, hooks in tool_hooks(config).items():
+    for tool, hooks in hooks_by_tool.items():
         if tool == "claude-code":
             continue
         wrapper = {"version": 1, "hooks": hooks} if tool == "cursor" else {"hooks": hooks}
@@ -657,10 +663,10 @@ def desired_files(config, home):
     return files, executable
 
 
-def desired_entries(config, home):
+def desired_entries(config, home, hooks_by_tool):
     """Return the values sync owns inside tool-owned files, as <file>#<key> -> value."""
     entries = {}
-    hooks = tool_hooks(config).get("claude-code")
+    hooks = hooks_by_tool.get("claude-code")
     if hooks is not None:
         # Claude Code keeps hooks inside settings.json next to unrelated
         # settings, so sync owns only the "hooks" key.
@@ -700,8 +706,9 @@ def main():
         return 0
 
     config = load_config()
-    files, executable = desired_files(config, home)
-    entries = desired_entries(config, home)
+    hooks_by_tool = tool_hooks(config)
+    files, executable = desired_files(config, home, hooks_by_tool)
+    entries = desired_entries(config, home, hooks_by_tool)
     state = load_state(home)
     wanted = {target.relative_to(home).as_posix(): digest(contents)
               for target, contents in files.items()}

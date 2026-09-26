@@ -133,8 +133,9 @@ which maps it to each tool's event name and item shape. Today that table
 holds only `after-edit`. Add a row when a hook needs another event. `timeout`
 is seconds. Keys other than these four stop sync. A name under `hooks` in
 `config.json` that matches no hook file only prints a warning, so a removed
-hook is still cleaned up and the old per-tool keys (`claude-code`, `codex`,
-`cursor`) just need replacing with hook names.
+hook is still cleaned up. The old per-tool keys (`claude-code`, `codex`,
+`cursor`) stop sync until you replace them: name the hooks you want off, and
+to keep one hook away from one tool, list the other tools in its `harness`.
 
 Sync merges the enabled hooks of each tool, sorted by name, into one object of
 event name to hook items. Codex gets it as `{"hooks": ...}` in its hook file,

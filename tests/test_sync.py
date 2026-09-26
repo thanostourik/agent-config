@@ -199,6 +199,12 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
+    def test_legacy_per_tool_hook_switch_stops_sync(self):
+        self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
+        self.write_config({"hooks": {"cursor": {"enabled": False}}})
+        self.run_sync("--apply", expected=2)
+        self.assertFalse(self.home.exists())
+
     def test_stale_config_hook_name_warns_and_removed_hook_is_cleaned_up(self):
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
         self.run_sync("--apply")
@@ -207,7 +213,8 @@ class SyncTest(unittest.TestCase):
         result = subprocess.run([str(self.repo / "sync"), "--home", str(self.home), "--apply"],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("WARNING: config.json hooks names no hook file: render", result.stderr)
+        self.assertEqual(result.stderr.count("WARNING: config.json hooks names no hook file: "
+                                             "render"), 1)
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertFalse((self.home / ".cursor/hooks.json").exists())
 
