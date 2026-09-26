@@ -186,6 +186,8 @@ class SyncTest(unittest.TestCase):
     def test_shared_hook_rejects_unknown_event_harness_key_and_duplicate_name(self):
         self.write_hook("shared", "render", {"event": "on-boot", "command": "x"})
         self.run_sync("--apply", expected=2)
+        self.write_hook("shared", "render", {"event": ["after-edit"], "command": "x"})
+        self.run_sync("--apply", expected=2)
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
                                              "harness": "grok"})
         self.run_sync("--apply", expected=2)
@@ -197,11 +199,17 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
-    def test_config_naming_an_unknown_hook_stops_sync(self):
+    def test_stale_config_hook_name_warns_and_removed_hook_is_cleaned_up(self):
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x"})
-        self.write_config({"hooks": {"cursor": {"enabled": False}}})
-        self.run_sync("--apply", expected=2)
-        self.assertFalse(self.home.exists())
+        self.run_sync("--apply")
+        (self.repo / "hooks/shared/render.json").unlink()
+        self.write_config({"hooks": {"render": {"enabled": False}}})
+        result = subprocess.run([str(self.repo / "sync"), "--home", str(self.home), "--apply"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WARNING: config.json hooks names no hook file: render", result.stderr)
+        self.assertFalse((self.home / ".codex/hooks.json").exists())
+        self.assertFalse((self.home / ".cursor/hooks.json").exists())
 
     def test_skill_metadata_overrides_folder_and_copies_resources(self):
         skill = self.repo / "skills/shared/example"

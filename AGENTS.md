@@ -131,8 +131,10 @@ A shared hook looks like this:
 hooks stops sync. `event` must be a key of the `HOOK_EVENTS` table in `sync`,
 which maps it to each tool's event name and item shape. Today that table
 holds only `after-edit`. Add a row when a hook needs another event. `timeout`
-is seconds. Keys other than these four stop sync, and so does a name under
-`hooks` in `config.json` that matches no hook file.
+is seconds. Keys other than these four stop sync. A name under `hooks` in
+`config.json` that matches no hook file only prints a warning, so a removed
+hook is still cleaned up and the old per-tool keys (`claude-code`, `codex`,
+`cursor`) just need replacing with hook names.
 
 Sync merges the enabled hooks of each tool, sorted by name, into one object of
 event name to hook items. Codex gets it as `{"hooks": ...}` in its hook file,

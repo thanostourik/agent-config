@@ -530,7 +530,7 @@ def native_hook(path, data, tool):
         raise ValueError(f"{path}: unknown keys {', '.join(sorted(unknown))}; "
                          "use event, command, timeout, harness")
     event = data.get("event")
-    if event not in HOOK_EVENTS:
+    if not isinstance(event, str) or event not in HOOK_EVENTS:
         raise ValueError(f"{path}: event must be one of {', '.join(HOOK_EVENTS)}")
     command = data.get("command")
     if not isinstance(command, str) or not command.strip():
@@ -582,8 +582,10 @@ def tool_hooks(config):
     names = {name for _, name in sources}
     unknown = set(config.get("hooks") or {}) - names
     if unknown:
-        raise ValueError(f"config.json hooks names no hook file: {', '.join(sorted(unknown))}. "
-                         f"Known hooks: {', '.join(sorted(names)) or 'none'}")
+        # A stale entry must not block the run: its hook may just have been
+        # removed from the repository and its installed copies need cleanup.
+        print(f"WARNING: config.json hooks names no hook file: {', '.join(sorted(unknown))}. "
+              f"Known hooks: {', '.join(sorted(names)) or 'none'}", file=sys.stderr)
     merged = {}
     for (tool, name), candidates in sorted(sources.items()):
         if len(candidates) > 1:
