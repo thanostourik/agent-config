@@ -30,8 +30,12 @@ Two things to keep as they are:
 - `skills/shared/<name>/`: a skill installed to every tool (and
   `~/.agents/skills/`) unless `harness` names a shorter list.
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
-- `hooks/<tool>.json`: hook configuration for one tool. Only Claude Code,
-  Codex, and Cursor support hooks. Grok and OpenCode get a skill instead.
+- `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
+  shape: an object of event name to list of hook items, the same object that
+  sits under the tool's `hooks` key. Only Claude Code, Codex, and Cursor
+  support hooks. Grok and OpenCode get a skill instead.
+- `hooks/shared/<name>.json`: one hook for every tool with hooks, written once
+  in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
@@ -55,7 +59,7 @@ Two things to keep as they are:
 
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
-When you add a skill, agent, or hooks file, add it to `config.example.json`
+When you add a skill, agent, or hook, add it to `config.example.json`
 so the menu stays complete. Do not put a real Jira URL in that example.
 
 Skills keep this directory layout. By default, a skill under `skills/<tool>/`
@@ -110,12 +114,40 @@ or remove it by hand.
 Each tool wants its own agent file format. Most read Markdown; Codex reads
 TOML. Sync copies the file as it is and does not convert it.
 
-Codex and Cursor get their hook file copied as it is. Claude Code keeps hooks
-inside `settings.json` next to other settings, so `hooks/claude-code.json`
-holds only the value of the `hooks` key. Sync reads the installed
-`settings.json`, replaces that one key, and writes the file back. If the file
-already has a `hooks` key that sync did not write, the first install needs
-`--replace-existing`.
+## Hooks
+
+A shared hook looks like this:
+
+```json
+{
+  "harness": "claude-code, cursor",
+  "event": "after-edit",
+  "command": "$HOME/.local/bin/render-plan --hook",
+  "timeout": 30
+}
+```
+
+`harness` is optional and means the same as in skills; naming a tool without
+hooks stops sync. `event` must be a key of the `HOOK_EVENTS` table in `sync`,
+which maps it to each tool's event name and item shape. Today that table
+holds only `after-edit`. Add a row when a hook needs another event. `timeout`
+is seconds. Keys other than these four stop sync. A name under `hooks` in
+`config.json` that matches no hook file only prints a warning, so a removed
+hook is still cleaned up. The old per-tool keys (`claude-code`, `codex`,
+`cursor`) stop sync until you replace them: name the hooks you want off, and
+to keep one hook away from one tool, list the other tools in its `harness`.
+
+Sync merges the enabled hooks of each tool, sorted by name, into one object of
+event name to hook items. Codex gets it as `{"hooks": ...}` in its hook file,
+Cursor as `{"version": 1, "hooks": ...}`. Claude Code keeps hooks inside
+`settings.json` next to other settings, so sync owns only the `hooks` key
+there: it reads the installed `settings.json`, replaces that one key, and
+writes the file back. If the file already has a `hooks` key that sync did not
+write, the first install needs `--replace-existing`. A tool with no enabled
+hook gets no file or key, and one installed earlier is removed.
+
+`config.json` switches hooks by name, like skills. A shared hook and a per-tool
+hook with the same name for the same tool stop sync before any write.
 
 Cursor needs a short header at the top of its rules file, and sync adds it.
 Cursor only reads home-folder rules for projects under `~/Devel`. For a

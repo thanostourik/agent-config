@@ -10,9 +10,7 @@
     "render-plan": { "enabled": true }
   },
   "hooks": {
-    "claude-code": { "enabled": true },
-    "codex": { "enabled": true },
-    "cursor": { "enabled": true }
+    "render-plan": { "enabled": true }
   },
   "mcp": {
     "jira": {
