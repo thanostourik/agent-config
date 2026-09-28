@@ -13,7 +13,6 @@ SKILL_DIRS = (
     ".grok/skills",
     ".config/opencode/skill",
     ".cursor/skills",
-    ".agents/skills",
 )
 
 
@@ -122,10 +121,11 @@ class SyncTest(unittest.TestCase):
         (self.repo / "profiles").mkdir()
         (self.repo / "profiles/fable-with-sol.md").write_text("Fable-only instructions")
         self.run_sync("--apply")
-        installed = self.home / ".agents/skills/example/run.sh"
+        installed = self.home / ".claude/skills/example/run.sh"
         subprocess.run([str(installed)], check=True, timeout=5)
         for folder in SKILL_DIRS:
             self.assertTrue((self.home / folder / "example/SKILL.md").is_file())
+        self.assertFalse((self.home / ".agents").exists())
         self.assertTrue((self.home / ".grok/skills/commit/SKILL.md").is_file())
         self.assertFalse((self.home / ".codex/skills/empty").exists())
         self.assertTrue((self.home / ".claude/agents/runner.md").is_file())
@@ -222,20 +222,20 @@ class SyncTest(unittest.TestCase):
         skill = self.repo / "skills/shared/example"
         skill.mkdir(parents=True)
         contents = ('---\nname: example\nmetadata:\n  author: someone\n'
-                    '  harness: "grok, opencode"\n---\nExample skill\n')
+                    '  harness: "grok, agents"\n---\nExample skill\n')
         (skill / "SKILL.md").write_text(contents)
         (skill / "run.sh").write_text("#!/bin/sh\necho skill\n")
         (skill / "run.sh").chmod(0o755)
         self.run_sync()
         self.assertFalse(self.home.exists())
         self.run_sync("--apply")
-        for folder in (".grok/skills", ".config/opencode/skill"):
+        for folder in (".grok/skills", ".agents/skills"):
             installed = self.home / folder / "example"
             self.assertEqual((installed / "SKILL.md").read_text(), contents)
             result = subprocess.run([str(installed / "run.sh")], capture_output=True,
                                     text=True, check=True, timeout=5)
             self.assertEqual(result.stdout, "skill\n")
-        self.assertFalse((self.home / ".agents").exists())
+        self.assertFalse((self.home / ".config/opencode").exists())
         self.run_sync("--check")
 
     def test_skill_metadata_ignores_other_fields_and_body_examples(self):
@@ -463,7 +463,7 @@ class SyncTest(unittest.TestCase):
         settings.parent.mkdir(parents=True)
         settings.write_text('{"theme": "dark", "hooks": {"Stop": []}}')
         self.run_sync("--apply", "--replace-existing")
-        extra = self.home / ".agents/skills/unrelated/SKILL.md"
+        extra = self.home / ".claude/skills/unrelated/SKILL.md"
         extra.parent.mkdir(parents=True)
         extra.write_text("not from sync")
         self.write_config({
@@ -474,13 +474,13 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", "--replace-existing")
         for folder in SKILL_DIRS:
             self.assertFalse((self.home / folder / "example").exists())
-        self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
+        self.assertTrue((self.home / ".claude/skills/kept/SKILL.md").is_file())
         self.assertEqual(extra.read_text(), "not from sync")
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertFalse((self.home / ".cursor/hooks.json").exists())
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertEqual(json.loads(settings.read_text()), {"theme": "dark"})
-        self.assertFalse(list(self.backups.glob("*/.agents")))
+        self.assertFalse(list(self.backups.glob("*/.claude/skills")))
 
     def test_missing_config_leaves_everything_enabled(self):
         skill = self.repo / "skills/shared/example"
@@ -634,11 +634,7 @@ class SyncTest(unittest.TestCase):
         claude = self.home / ".claude.json"
         claude.parent.mkdir(parents=True)
         claude.write_text('{"theme": "dark"}')
-        legacy = self.home / ".config/agent-config/managed-mcp.json"
-        legacy.parent.mkdir(parents=True)
-        legacy.write_text('{"jira": ["jira"]}')
         self.run_sync("--apply")
-        self.assertFalse(legacy.exists())
         shutil.rmtree(self.backups)
         claude.write_text(claude.read_text().replace('"dark"', '"light"'))
         self.jira_config({"work": {"url": "https://new.example.com"}})

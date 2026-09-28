@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parent
 #                               tool with hooks unless "harness" says otherwise
 # Enabled hooks are merged per tool into one file, or for Claude Code into
 # the "hooks" key of settings.json.
-# skills/shared/ installs to every skills destination unless harness says otherwise.
+#   skills/shared/<name>/   -> every tool's skills unless harness says otherwise
 # bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
 TOOLS = {
     "claude-code": {"instructions": ".claude/CLAUDE.md", "hooks": ".claude/settings.json",
@@ -58,8 +58,12 @@ TOOLS = {
                  "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
     "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
-    "shared": {"skills": ".agents/skills"},
 }
+# Skill harness names. ~/.agents/skills gets only skills whose harness names "agents".
+SKILL_DESTINATIONS = {**{tool: paths["skills"] for tool, paths in TOOLS.items()},
+                      "agents": ".agents/skills"}
+# Source folder for skills and hooks that go to every tool. It is not a destination.
+SHARED = "shared"
 # Neutral event name -> per tool (native event name, matcher). A shared hook is
 # {"event": ..., "command": ..., "timeout": seconds, "harness": "a, b"}.
 HOOK_EVENTS = {
@@ -71,7 +75,6 @@ HOOK_EVENTS = {
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-LEGACY_STATE = ".config/agent-config/managed-mcp.json"
 STATE = ".config/agent-config/state.json"
 BACKUPS = ".config/agent-config/backups"
 BLOCKED = object()
@@ -452,8 +455,8 @@ def write_file(target, contents, stamp, executable=False):
 
 def prune(home, target):
     """Remove the emptied folders of a skill, never the skills folder itself."""
-    for destinations in TOOLS.values():
-        root = home / destinations["skills"]
+    for relative in SKILL_DESTINATIONS.values():
+        root = home / relative
         if root not in target.parents:
             continue
         for folder in target.parents:
@@ -468,8 +471,8 @@ def prune(home, target):
 
 
 def default_skill_harnesses(default):
-    if default == "shared":
-        return [name for name, destinations in TOOLS.items() if "skills" in destinations]
+    if default == SHARED:
+        return list(TOOLS)
     return [default]
 
 
@@ -500,8 +503,9 @@ def skill_harnesses(entry, default):
         if harnesses is not None:
             raise ValueError(f"{entry}: duplicate metadata.harness")
         harnesses = [name.strip() for name in match[1].split(",")]
-        if any(name not in TOOLS for name in harnesses):
-            raise ValueError(f"{entry}: harness names must be one of {', '.join(TOOLS)}")
+        if any(name not in SKILL_DESTINATIONS for name in harnesses):
+            raise ValueError(
+                f"{entry}: harness names must be one of {', '.join(SKILL_DESTINATIONS)}")
         if len(set(harnesses)) != len(harnesses):
             raise ValueError(f"{entry}: duplicate harness names")
     return harnesses if harnesses is not None else default_skill_harnesses(default)
@@ -562,13 +566,13 @@ def tool_hooks(config):
     """Return tool -> merged event -> items object for the enabled hooks of each tool."""
     sources = {}
     hooks_dir = ROOT / "hooks"
-    for tool in TOOLS:
+    for tool in (*TOOLS, SHARED):
         folder = hooks_dir / tool
         if not folder.is_dir():
             continue
         for path in sorted(folder.glob("*.json")):
             data = read_hook(path)
-            if tool == "shared":
+            if tool == SHARED:
                 for harness in hook_harnesses(path, data):
                     sources.setdefault((harness, path.stem), []).append(
                         (path, native_hook(path, data, harness)))
@@ -613,41 +617,42 @@ def desired_files(config, home, hooks_by_tool):
     common = (ROOT / "instructions/common.md").read_text().strip()
 
     for tool, destinations in TOOLS.items():
-        if "instructions" in destinations:
-            specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
-            contents = "\n\n".join(part for part in [common, specific] if part)
-            if contents:
-                if tool == "cursor":
-                    contents = CURSOR_HEADER + contents
-                files[home / destinations["instructions"]] = (contents + "\n").encode()
-
-        skills_dir = ROOT / "skills" / tool
-        if skills_dir.is_dir():
-            for skill in sorted(skills_dir.iterdir()):
-                entry = skill / "SKILL.md"
-                if not entry.is_file() or not entry.read_text().strip():
-                    continue
-                for harness in skill_harnesses(entry, tool):
-                    destination = home / TOOLS[harness]["skills"] / skill.name
-                    if destination in skill_sources:
-                        raise ValueError(f"Duplicate skill destination {destination}: "
-                                         f"{skill_sources[destination]} and {skill}")
-                    skill_sources[destination] = skill
-                    if not is_enabled(config, "skills", skill.name):
-                        continue
-                    for file in sorted(skill.rglob("*")):
-                        if file.is_file():
-                            target = destination / file.relative_to(skill)
-                            files[target] = file.read_bytes()
-                            if file.stat().st_mode & 0o111:
-                                executable.add(target)
+        specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
+        contents = "\n\n".join(part for part in [common, specific] if part)
+        if contents:
+            if tool == "cursor":
+                contents = CURSOR_HEADER + contents
+            files[home / destinations["instructions"]] = (contents + "\n").encode()
 
         agents_dir = ROOT / "agents" / tool
-        if "agents" in destinations and agents_dir.is_dir():
+        if agents_dir.is_dir():
             for agent in sorted(agents_dir.iterdir()):
                 if (agent.is_file() and agent.read_text().strip()
                         and is_enabled(config, "agents", agent.stem)):
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
+
+    for tool in (*TOOLS, SHARED):
+        skills_dir = ROOT / "skills" / tool
+        if not skills_dir.is_dir():
+            continue
+        for skill in sorted(skills_dir.iterdir()):
+            entry = skill / "SKILL.md"
+            if not entry.is_file() or not entry.read_text().strip():
+                continue
+            for harness in skill_harnesses(entry, tool):
+                destination = home / SKILL_DESTINATIONS[harness] / skill.name
+                if destination in skill_sources:
+                    raise ValueError(f"Duplicate skill destination {destination}: "
+                                     f"{skill_sources[destination]} and {skill}")
+                skill_sources[destination] = skill
+                if not is_enabled(config, "skills", skill.name):
+                    continue
+                for file in sorted(skill.rglob("*")):
+                    if file.is_file():
+                        target = destination / file.relative_to(skill)
+                        files[target] = file.read_bytes()
+                        if file.stat().st_mode & 0o111:
+                            executable.add(target)
 
     for tool, hooks in hooks_by_tool.items():
         if tool == "claude-code":
@@ -811,7 +816,6 @@ def main():
     # The state file goes last: after a crash the next run finds the written
     # items equal to what it wants and records them then.
     write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
-    (home / LEGACY_STATE).unlink(missing_ok=True)
     print(f"Applied {len(writes) + sum(map(len, changes.values()))} change(s). "
           "Restart sessions to load new instructions.")
     return 0
