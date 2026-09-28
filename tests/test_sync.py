@@ -13,7 +13,6 @@ SKILL_DIRS = (
     ".grok/skills",
     ".config/opencode/skill",
     ".cursor/skills",
-    ".agents/skills",
 )
 
 
@@ -122,10 +121,11 @@ class SyncTest(unittest.TestCase):
         (self.repo / "profiles").mkdir()
         (self.repo / "profiles/fable-with-sol.md").write_text("Fable-only instructions")
         self.run_sync("--apply")
-        installed = self.home / ".agents/skills/example/run.sh"
+        installed = self.home / ".claude/skills/example/run.sh"
         subprocess.run([str(installed)], check=True, timeout=5)
         for folder in SKILL_DIRS:
             self.assertTrue((self.home / folder / "example/SKILL.md").is_file())
+        self.assertFalse((self.home / ".agents").exists())
         self.assertTrue((self.home / ".grok/skills/commit/SKILL.md").is_file())
         self.assertFalse((self.home / ".codex/skills/empty").exists())
         self.assertTrue((self.home / ".claude/agents/runner.md").is_file())
@@ -463,7 +463,7 @@ class SyncTest(unittest.TestCase):
         settings.parent.mkdir(parents=True)
         settings.write_text('{"theme": "dark", "hooks": {"Stop": []}}')
         self.run_sync("--apply", "--replace-existing")
-        extra = self.home / ".agents/skills/unrelated/SKILL.md"
+        extra = self.home / ".claude/skills/unrelated/SKILL.md"
         extra.parent.mkdir(parents=True)
         extra.write_text("not from sync")
         self.write_config({
@@ -474,13 +474,13 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", "--replace-existing")
         for folder in SKILL_DIRS:
             self.assertFalse((self.home / folder / "example").exists())
-        self.assertTrue((self.home / ".agents/skills/kept/SKILL.md").is_file())
+        self.assertTrue((self.home / ".claude/skills/kept/SKILL.md").is_file())
         self.assertEqual(extra.read_text(), "not from sync")
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertFalse((self.home / ".cursor/hooks.json").exists())
         self.assertFalse((self.home / ".codex/agents/runner.toml").exists())
         self.assertEqual(json.loads(settings.read_text()), {"theme": "dark"})
-        self.assertFalse(list(self.backups.glob("*/.agents")))
+        self.assertFalse(list(self.backups.glob("*/.claude/skills")))
 
     def test_missing_config_leaves_everything_enabled(self):
         skill = self.repo / "skills/shared/example"
