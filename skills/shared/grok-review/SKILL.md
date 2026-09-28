@@ -9,7 +9,7 @@ metadata:
 # Grok review
 
 Use the user's selected model, or `grok-4.7` when none is specified. Use the
-user's selected effort (`low`, `medium`, `high`, or `xhigh`), or `low` when none
+user's selected effort (`low`, `medium`, `high`, or `xhigh`), or `high` when none
 is specified. Start a fresh review session, without resuming the author's
 conversation. Review locally; do not post findings or edit the reviewed files.
 
