@@ -27,8 +27,10 @@ pstack's, so they don't collide with the plugin in Cursor.
 - `create-project-verification-skill`: a fork of poteto's generator. I run it
   once per project. It interviews the repo (including `PLATFORM.md` or other
   docs that name sibling repos), asks me only what it cannot observe, writes
-  the project files below, and proves one feature end to end before handing
-  over.
+  the project files below with a feature file for every user-facing feature,
+  and drives every one of them (the same full pass the audit runs) before
+  handing over. Poteto's version seeded 3-5 features and drove one; nothing
+  ever added the rest, so the map stayed partial.
 - `maintain-project-verification-skill`: I run it in a project. It does the
   project's full audit and also brings the project's two skills in line with
   what `create-project-verification-skill` would generate today, keeping the
@@ -86,7 +88,8 @@ these changes:
   agent inside WSL.
 
 `maintain-verify-<app>` is poteto's maintain skill, made project-local: a
-full audit of every feature, from source and live, run by hand by any
+full audit of every feature, from source and live, that also adds and drives
+features missing from the map, run by hand by any
 developer now and then. It is manual-only (`disable-model-invocation`, plus
 `agents/openai.yaml` for Codex).
 
@@ -113,7 +116,7 @@ and verify it with the `verify-<app>` skill."
 4. Check sync with a temporary `--home`: both skills reach Claude Code, Codex,
    Grok and Cursor, not OpenCode or `~/.agents/skills/`. Run the sync tests.
 5. Pilot in wovies, on a branch there: run the generator, replace
-   `.cursor/skills/verify-wovies/`, prove one feature, then make a small UI
+   `.cursor/skills/verify-wovies/`, drive every feature, then make a small UI
    change and check that a fresh agent picks the right feature on its own. Then add a
    new feature and check that the agent writes its feature file before
    driving it. Open a wovies PR.
