@@ -27,8 +27,9 @@ Two things to keep as they are:
   common file and the tool file into one installed file. The common part comes
   first.
 - `skills/<tool>/<name>/`: a skill for one tool.
-- `skills/shared/<name>/`: a skill installed to every tool (and
-  `~/.agents/skills/`) unless `harness` names a shorter list.
+- `skills/shared/<name>/`: a skill installed to every tool and to
+  `~/.agents/skills/`, unless its `harness` field says otherwise. See
+  "The harness field" below.
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
   shape: an object of event name to list of hook items, the same object that
@@ -47,10 +48,15 @@ Two things to keep as they are:
   `enabled: true` is the same as missing. Instructions and `bin/` always
   install. Disabling an item removes the copies sync installed for it, the
   same way deleting its source does.
+  Each entry is keyed by the item's name: a skill by its folder name, an agent
+  by its file name without the extension, a hook by its file name without
+  `.json`. One entry switches that item for every tool. For example,
+  `"skills": {"bro": {"enabled": false}}` removes `bro` from all tools.
   `mcp.jira.instances` holds Jira URLs. The example uses a fake URL; copy it
   to `config.json` and replace that URL. One instance is installed as MCP
-  server `jira`; two or more use the instance keys. Sync merges those servers
-  into each tool's MCP config and never writes credentials.
+  server `jira`; two or more use the instance keys. An instance key starts
+  with a letter and uses only letters, digits, `_`, and `-`. Sync merges those
+  servers into each tool's MCP config and never writes credentials.
 - `SETUP.md`: extra machine-setup steps for anything sync installs. Sync does
   not copy this file. Add a section when a tool needs something besides
   `./sync`.
@@ -62,24 +68,49 @@ If a skill or agent folder does not exist or is empty, sync skips it. Create
 When you add a skill, agent, or hook, add it to `config.example.json`
 so the menu stays complete. Do not put a real Jira URL in that example.
 
-Skills keep this directory layout. By default, a skill under `skills/<tool>/`
-installs to that tool, and a skill under `skills/shared/` installs to every
-skills destination. An optional field in the opening `SKILL.md` frontmatter
-overrides that destination with an explicit list:
+## The harness field
+
+`harness` lists where sync installs a skill or a shared hook. Each name is an
+install destination from the "Where sync installs each file" table, not a
+source folder. The names are `claude-code`, `codex`, `grok`, `opencode`,
+`cursor`, and `agents`.
+
+`agents` is not a tool. It is the folder `~/.agents/skills/`, which several
+tools read in addition to their own skills folder. `shared` is not a harness
+name: it is only the source folder `skills/shared/` or `hooks/shared/`.
+
+Without `harness`, the source folder decides:
+
+- `skills/<name>/` for a name in the table installs only there. For example,
+  `skills/grok/x/` goes to `~/.grok/skills/x/`, and `skills/agents/x/` goes to
+  `~/.agents/skills/x/`.
+- `skills/shared/x/` goes to all six skills destinations.
+- `hooks/shared/x.json` goes to the three tools with hooks.
+
+A `harness` list replaces that default completely. It does not add to it. For
+example, `codex-review` lives in `skills/shared/` and uses:
 
 ```yaml
 metadata:
-  harness: "grok, opencode"
+  harness: "claude-code, grok, opencode, cursor, agents"
 ```
 
-Use exactly two spaces before `harness`, double quotes, and a single-line,
-comma-separated string. Sync reads this restricted format without a YAML
-dependency. Other metadata fields are ignored. Names come from the table below;
-`shared` means `~/.agents/skills/`. Missing `harness` keeps those defaults.
-Unknown or repeated names, unsupported harness syntax, and two source skills
-targeting the same installed folder stop sync before writes. Metadata stays in
-the installed copies. For example, `skills/shared/render-plan/` uses the field
-above to install one source into Grok and OpenCode only.
+That keeps it out of `~/.codex/skills/`. Without `agents` in the list, it
+would not go to `~/.agents/skills/` either. A tool that reads
+`~/.agents/skills/` still finds a skill installed there, even when its own
+name is missing from the list.
+
+For a skill, the field sits in the opening `SKILL.md` frontmatter. Use exactly
+two spaces before `harness`, double quotes, and one line of comma-separated
+names. Sync reads this restricted format without a YAML dependency. Other
+metadata fields are ignored and stay in the installed copies. For a shared
+hook, `harness` is a JSON string of the same shape, and only `claude-code`,
+`codex`, and `cursor` are allowed.
+
+These stop sync before any write: an unknown or repeated name, other syntax,
+a hook `harness` that names a tool without hooks, and two source skills that
+target the same installed folder. Per-tool hooks (`hooks/<tool>/`) and agent
+definitions have no `harness` field. They go only to their own tool.
 
 ## Where sync installs each file
 
@@ -90,7 +121,7 @@ above to install one source into Grok and OpenCode only.
 | `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | none | `~/.grok/config.toml` (`mcp_servers`) |
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none | `~/.config/opencode/opencode.json` (`mcp`) |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` | `~/.cursor/mcp.json` (`mcpServers`) |
-| `shared` | none | `~/.agents/skills/` | none | none | none |
+| `agents` | none | `~/.agents/skills/` | none | none | none |
 
 `bin/` is not in the table. Every file in it goes to `~/.local/bin/`.
 
@@ -101,8 +132,10 @@ there.
 Sync merges Jira MCP into those MCP files without converting formats. Cursor and
 Claude Code get a `command` / `args` / `env` stdio server. Codex and Grok get a
 TOML `[mcp_servers.<name>]` section with `startup_timeout_sec = 180`. OpenCode
-gets `type: local` and a `command` array. Other servers and keys in those files
-stay. It does not touch MCP files when `config.json` is missing or `instances`
+gets `type: local` and a `command` array. Every server's environment holds
+`DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_RUNTIME_DIR`, taken from the
+shell that ran sync or from defaults, so `mcp-atlassian-start` can open its Bitwarden password
+window. Other servers and keys in those files stay. It does not touch MCP files when `config.json` is missing or `instances`
 is empty and it has never installed Jira.
 
 The standard library cannot write TOML, so sync edits the Codex and Grok files
@@ -127,8 +160,7 @@ A shared hook looks like this:
 }
 ```
 
-`harness` is optional and means the same as in skills; naming a tool without
-hooks stops sync. `event` must be a key of the `HOOK_EVENTS` table in `sync`,
+`harness` is optional. See "The harness field" above. `event` must be a key of the `HOOK_EVENTS` table in `sync`,
 which maps it to each tool's event name and item shape. Today that table
 holds only `after-edit`. Add a row when a hook needs another event. `timeout`
 is seconds. Keys other than these four stop sync. A name under `hooks` in
