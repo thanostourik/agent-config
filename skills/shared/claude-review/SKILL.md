@@ -9,7 +9,7 @@ metadata:
 # Claude review
 
 Use the user's selected model, or `claude-fable-5-1` when none is specified. Use the
-user's selected effort (`low`, `medium`, `high`, or `max`), or `low` when none is
+user's selected effort (`low`, `medium`, `high`, or `max`), or `high` when none is
 specified. Start a fresh review session, without resuming the author's
 conversation. Review locally; do not post findings or edit the reviewed files.
 
