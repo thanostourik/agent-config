@@ -222,20 +222,20 @@ class SyncTest(unittest.TestCase):
         skill = self.repo / "skills/shared/example"
         skill.mkdir(parents=True)
         contents = ('---\nname: example\nmetadata:\n  author: someone\n'
-                    '  harness: "grok, opencode"\n---\nExample skill\n')
+                    '  harness: "grok, agents"\n---\nExample skill\n')
         (skill / "SKILL.md").write_text(contents)
         (skill / "run.sh").write_text("#!/bin/sh\necho skill\n")
         (skill / "run.sh").chmod(0o755)
         self.run_sync()
         self.assertFalse(self.home.exists())
         self.run_sync("--apply")
-        for folder in (".grok/skills", ".config/opencode/skill"):
+        for folder in (".grok/skills", ".agents/skills"):
             installed = self.home / folder / "example"
             self.assertEqual((installed / "SKILL.md").read_text(), contents)
             result = subprocess.run([str(installed / "run.sh")], capture_output=True,
                                     text=True, check=True, timeout=5)
             self.assertEqual(result.stdout, "skill\n")
-        self.assertFalse((self.home / ".agents").exists())
+        self.assertFalse((self.home / ".config/opencode").exists())
         self.run_sync("--check")
 
     def test_skill_metadata_ignores_other_fields_and_body_examples(self):
