@@ -98,8 +98,9 @@ for any of these steps. Reading and answering questions is the only work that ha
 - Containers (databases, auth servers, etc.) started by the project's dev script
   (`dev_setup/dev.sh`) run in a branch-isolated environment. You may start, reset, and
   reseed them freely. If that script does not exist, treat containers as shared and ask first.
-- App servers (Next.js, Spring Boot, etc.): check whether one is already running and reuse it.
-  Ask before starting one yourself, and stop anything you started when you're done so I can run it from my IDE.
+- App servers (Next.js, Spring Boot, etc.): follow the project's verification skill for starting and
+  stopping them. Without one, check whether one is already running and reuse it, ask before starting
+  one yourself, and stop anything you started when you're done so I can run it from my IDE.
 - Never touch shared or remote services (deployed environments, remote databases).
 - Run focused tests, type checks, and lint checks appropriate to the change.
 - Avoid full builds unless needed to verify the change, and say why when one is.
