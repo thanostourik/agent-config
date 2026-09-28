@@ -52,7 +52,7 @@ Decide these now, with the user where needed, and write only the outcome into th
   - CLI/TUI: the command itself, or a tmux session for interactive screens.
   - anything else: the tool the repo already uses.
 
-  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library; `npx playwright cli run-code` covers many of those. Never write one script per feature: the steps live in the feature files.
+  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) to the skill's run folder, and load it with `npx playwright cli -s=<app> state-load <file>`. Never write one script per feature: the steps live in the feature files.
 - **Launch.** Attach to a healthy instance when doctor finds one; otherwise start it. Only ever stop what this skill started.
 
 ## 3. Write `verify-<app>`
@@ -64,7 +64,7 @@ Decide these now, with the user where needed, and write only the outcome into th
 - **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
 - **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order.
 - **Evidence:** what to capture for a proof and where it goes (`evidence/<feature>/` inside the skill, gitignored). Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
-- **Cleanup:** how to tear down what the run started. Never kill by process name; kill what you started. Leave running what was running before. Cleanup never deletes evidence.
+- **Cleanup:** how to tear down what the run started. Never kill by process name; kill what you started. Leave running what was running before. Launch the app once and check `git status` and the developer's config files afterwards: dev tools often rewrite local env files or generate files on start. Launch backs up what gets rewritten and restores it, and cleanup removes what the run generated. Cleanup never deletes evidence.
 - **Keep the map current:** when the change adds or alters a user-facing feature, run `maintain-verify-<app>` for that feature in the same branch before calling the work done.
 - **Helpers:** any script the skill ships is bash, executable, and its invocation is shown in the skill body. A helper the reader has to reverse-engineer is not a helper. Say that on Windows the agent must run inside WSL.
 
