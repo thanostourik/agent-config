@@ -1,11 +1,12 @@
 {
   "skills": {
-    "agentic-test": { "enabled": true },
     "bro": { "enabled": true },
     "claude-review": { "enabled": true },
     "codex-review": { "enabled": true },
+    "create-project-verification-skill": { "enabled": true },
     "file-pr": { "enabled": true },
     "grill-me": { "enabled": true },
+    "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true }
   },
