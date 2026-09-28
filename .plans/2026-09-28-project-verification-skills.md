@@ -74,22 +74,26 @@ these changes:
   data and never disturbs what the developer runs. The generator picks one
   of: use the project's existing disposable environment (like `dev.sh`),
   propose creating one for me to approve, or keep drives read-only.
-- **Keeping the map current.** When a change adds or alters a user-facing
-  feature, the agent runs `maintain-verify-<app>` for that feature in the
-  same branch before calling the work done.
+- **Map first, then drive.** Before driving, the agent makes the map match
+  the app after its change: a new feature gets a new feature file and index
+  entry, an altered one gets its file edited. The skill says this is part of
+  the change, like updating tests, so it is in scope even when the request
+  did not mention it. Then it drives each picked feature file once. A test
+  on 2026-09-28 showed why: with "run maintain at the end", Claude skipped
+  the map for a new feature as out of scope, while Codex moved the map
+  update ahead of the drive on its own.
 - **Platform.** Helpers are bash. The skill says Windows developers run their
   agent inside WSL.
 
-`maintain-verify-<app>` is poteto's maintain skill, made project-local, with
-two modes: one feature (the agent calls it after a change: read that
-feature's source, fix its map entry, drive it once) or a full audit (a
-developer calls it with no argument). Manual-only is not needed for the
-one-feature mode, so it stays model-invocable.
+`maintain-verify-<app>` is poteto's maintain skill, made project-local: a
+full audit of every feature, from source and live, run by hand by any
+developer now and then. It is manual-only (`disable-model-invocation`, plus
+`agents/openai.yaml` for Codex).
 
 The generator also adds one line to the project's `AGENTS.md`, inside an
 existing verification or testing section, or a new `## Verification`
-section: "Before calling user-facing work done, verify it with the
-`verify-<app>` skill."
+section: "Before calling user-facing work done, update its feature map entry
+and verify it with the `verify-<app>` skill."
 
 ### Global instructions
 
@@ -110,8 +114,9 @@ section: "Before calling user-facing work done, verify it with the
    Grok and Cursor, not OpenCode or `~/.agents/skills/`. Run the sync tests.
 5. Pilot in wovies, on a branch there: run the generator, replace
    `.cursor/skills/verify-wovies/`, prove one feature, then make a small UI
-   change and check that a fresh agent picks the right feature on its own and
-   runs the one-feature maintain. Open a wovies PR.
+   change and check that a fresh agent picks the right feature on its own. Then add a
+   new feature and check that the agent writes its feature file before
+   driving it. Open a wovies PR.
 6. Fix the global skills from what the pilot shows.
 7. Delete `skills/shared/agentic-test` and its `config.example.json` entry.
    Web-react's `tests/agentic/` stays until that project gets set up.

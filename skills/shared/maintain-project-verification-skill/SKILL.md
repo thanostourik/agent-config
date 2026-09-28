@@ -23,7 +23,7 @@ Read `create-project-verification-skill`: its `SKILL.md` and everything under it
 Compare the project against the spec and fix every difference, keeping what is project knowledge:
 
 - **Keep:** the feature files' content, launch and doctor commands, the chosen isolation option, sign-in, gotchas, helper scripts that still work. These were learned about this project; don't regenerate them.
-- **Bring up to date:** the file layout, frontmatter and descriptions, the sections `verify-<app>` must have and their rules, the feature file shape, `maintain-verify-<app>` (recopy from the reference, reapplying any project-specific adjustment it had), both Claude Code stubs, the `.gitignore`, and the line in `AGENTS.md`.
+- **Bring up to date:** the file layout, frontmatter and descriptions, the sections `verify-<app>` must have and their rules, the feature file shape, `maintain-verify-<app>` (recopy from the reference, reapplying any project-specific adjustment it had, with its `agents/openai.yaml`), both Claude Code stubs, the `.gitignore`, and the line in `AGENTS.md`.
 
 When the spec now asks for a decision the project never made (for example, a new section that depends on how the app runs), make it the way steps 1 and 2 of the generator describe, asking the user only what the repo can't answer.
 

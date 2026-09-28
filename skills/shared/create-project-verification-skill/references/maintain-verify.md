@@ -1,30 +1,18 @@
 ---
 name: maintain-verify-<app>
-description: "Keep the verify-<app> skill and its feature map honest. Use with one feature after a change adds or alters it, or with no argument for a full audit of every feature."
+description: "Full audit of the verify-<app> skill and its feature map: read every feature from source, drive every feature live, and ship one PR of proven corrections. Run it by hand now and then, with /maintain-verify-<app>."
+disable-model-invocation: true
 ---
 
 # Maintain verify-<app>
 
-A feature map rots the moment the app changes. This skill keeps `.agents/skills/verify-<app>/` true to the app. The unit of rigor is the feature, not every sentence: cover each feature from source and exercise it live, without terminalising every bullet.
-
-When the request names one or more features (or describes a new one), run the **feature pass**. When it names none, run the **full audit**.
+A feature map rots the moment the app changes. Each change updates its own features' entries as part of `verify-<app>`; this audit catches what those updates missed. The unit of rigor is the feature, not every sentence: cover each feature from source and exercise it live, without terminalising every bullet.
 
 ## Edit scope
 
 Only edit `.agents/skills/verify-<app>/` (its SKILL.md, features/, and helper scripts) and the matching stub in `.claude/skills/`. Never edit product code during a pass: a behavior the map describes that the app no longer does is either doc drift (fix the map) or a product regression (report it, don't paper over it in docs).
 
-## Feature pass
-
-Run this in the branch that changed the feature, as part of that work.
-
-1. **Read the change.** Diff the branch against its base and read the source behind the named feature: its routes, commands, or endpoints, as a user reaches them.
-2. **Update the map.** Edit the feature file so it matches the source: sub-features, entry points, commands, gotchas. For a new feature, create its file in the shape `features/README.md` describes and add it to the index. If the change removed a feature, delete its file and index entry.
-3. **Drive it.** Follow `verify-<app>`: doctor, launch if needed, drive the feature file, capture evidence, clean up. A step that fails because the map is wrong is fixed and re-driven; a step that fails because the app is wrong is a finding for the user.
-4. **Report** the feature, what changed in the map, and the evidence location. The map edits are committed with the branch's other work.
-
-## Full audit
-
-### Outcomes
+## Outcomes
 
 Pick one, and say which:
 
@@ -32,7 +20,7 @@ Pick one, and say which:
 - **changed**: one PR ships proven doc, harness, or map corrections.
 - **blocked**: coverage could not finish or a proven fix could not ship safely. Say exactly what blocked it.
 
-### Pass
+## Pass
 
 1. **Index hygiene.** Read the feature map README and glob its sibling files. Fix missing, extra, duplicate, or dead entries. Lightweight; no generated inventory.
 2. **Source wave.** One read-only subagent per feature file, launched concurrently where the agent supports subagents; otherwise read each feature in turn. Each explains "how does this user-facing feature work?" from source, flags likely doc drift with citations, and returns one concise live-verification recipe. Readers never drive the app and never edit files. Return shape: feature summary / source entry points / likely drift or none / one recipe.

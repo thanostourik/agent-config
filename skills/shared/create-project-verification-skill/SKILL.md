@@ -18,7 +18,7 @@ You write:
   features/README.md, features/<feature>.md     the feature map
   bin/                                          only if a helper is needed
   .gitignore                                    evidence/ and run state
-.agents/skills/maintain-verify-<app>/SKILL.md   keeps the map honest
+.agents/skills/maintain-verify-<app>/SKILL.md   full audit of the map, run by hand
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
 .claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
 ```
@@ -57,33 +57,33 @@ Decide these now, with the user where needed, and write only the outcome into th
 
 ## 3. Write `verify-<app>`
 
-`.agents/skills/verify-<app>/SKILL.md` starts with YAML frontmatter: `name: verify-<app>` and a `description` that names the app and the surface, and says to use it after changing that surface, to prove the change works before calling the work done. Without frontmatter the skill never registers. Then these sections, each grounded in what the interview found (no placeholders left):
+`.agents/skills/verify-<app>/SKILL.md` starts with YAML frontmatter: `name: verify-<app>` and a `description` that names the app and the surface, and says to use it after changing that surface, to update the feature map and prove the change works before calling the work done. Without frontmatter the skill never registers. Then these sections, each grounded in what the interview found (no placeholders left):
 
-- **Pick features:** read `features/README.md`, map the change to the user-facing features it can affect, and before driving, state each picked feature and why in one line. Drive whole feature files. A change with no user-visible effect is not driven; say so instead.
+- **Pick features:** read `features/README.md` and map the change to the user-facing features it affects: existing features it alters and new ones it adds. State each and why in one line. A change with no user-visible effect is not driven; say so instead.
+- **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape `features/README.md` describes, and an index entry. An altered feature gets its file edited. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
 - **Launch:** the exact commands that start the app and whatever it depends on, and how to tell it's ready (a log line, a port answering, a prompt). For a short-lived CLI or TUI there is no server to keep alive: launch means build once, then start each drive in its own isolated session.
 - **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
 - **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order.
 - **Evidence:** what to capture for a proof and where it goes (`evidence/<feature>/` inside the skill, gitignored). Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
 - **Cleanup:** how to tear down what the run started. Never kill by process name; kill what you started. Leave running what was running before. Launch the app once and check `git status` and the developer's config files afterwards: dev tools often rewrite local env files or generate files on start. Launch backs up what gets rewritten and restores it, and cleanup removes what the run generated. Cleanup never deletes evidence.
-- **Keep the map current:** when the change adds or alters a user-facing feature, run `maintain-verify-<app>` for that feature in the same branch before calling the work done.
 - **Helpers:** any script the skill ships is bash, executable, and its invocation is shown in the skill body. A helper the reader has to reverse-engineer is not a helper. Say that on Windows the agent must run inside WSL.
 
 ## 4. Seed the feature map
 
-Create `features/README.md` plus one file per user-facing feature you can identify (aim for the top 3-5 to start, from routes, commands, menus, or docs). Follow the shape in [`references/feature-map-example/`](references/feature-map-example/): a README index with baseline preconditions, driving conventions, proof rules, and the feature list, then one file per feature. Each file answers, from the user's point of view: what the feature is, how to reach it, how to drive it with exact commands, and what observable end state proves it works. The four H2s are `Sub-features`, `How to get to it (user POV)`, `Driving it with <tool>`, and `Gotchas`. Keep code paths out of the map: the agent maps a change to features by reasoning, and the maintain skill reads the source. The map is the repo's maintained verification source; a proof that drives one convenient entry point is incomplete when the map lists others.
+Create `features/README.md` plus one file per user-facing feature you can identify (aim for the top 3-5 to start, from routes, commands, menus, or docs). Follow the shape in [`references/feature-map-example/`](references/feature-map-example/): a README index with baseline preconditions, driving conventions, proof rules, and the feature list, then one file per feature. Each file answers, from the user's point of view: what the feature is, how to reach it, how to drive it with exact commands, and what observable end state proves it works. The four H2s are `Sub-features`, `How to get to it (user POV)`, `Driving it with <tool>`, and `Gotchas`. Keep code paths out of the map: the agent maps a change to features by reasoning, and the full audit reads the source. The map is the repo's maintained verification source; a proof that drives one convenient entry point is incomplete when the map lists others.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
-Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agents/skills/maintain-verify-<app>/SKILL.md` and replace `<app>`. Adjust only what this project needs (for example, how its PRs are opened).
+Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agents/skills/maintain-verify-<app>/SKILL.md` and replace `<app>`. Adjust only what this project needs (for example, how its PRs are opened). It is manual-only: copy this skill's own `agents/openai.yaml` next to it, so Codex doesn't start it on its own either.
 
-Write the two Claude Code stubs from [`references/claude-stub.md`](references/claude-stub.md). Their `name` and `description` must match the real skills exactly.
+Write the two Claude Code stubs from [`references/claude-stub.md`](references/claude-stub.md). Their `name` and `description` must match the real skills exactly, and the maintain stub also carries `disable-model-invocation: true`.
 
 ## 6. Point the project's instructions at it
 
 Add this line to the project's `AGENTS.md`, inside an existing section about verification or testing, or under a new `## Verification` section:
 
 ```
-Before calling user-facing work done, verify it with the `verify-<app>` skill.
+Before calling user-facing work done, update its feature map entry and verify it with the `verify-<app>` skill.
 ```
 
 If `CLAUDE.md` exists and does not import `AGENTS.md`, add the same line there.
@@ -94,4 +94,4 @@ Run its own instructions end to end once: launch, doctor, drive ONE mapped featu
 
 ## 8. Hand over
 
-Commit the skills, the stubs, and the instruction line following the repo's own branch and commit conventions. Tell the user which features the map covers, which feature was proven, what isolation option was chosen, and that `/maintain-project-verification-skill` audits the project and brings its skills up to date when this generator changes.
+Commit the skills, the stubs, and the instruction line following the repo's own branch and commit conventions. Tell the user which features the map covers, which feature was proven, what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
