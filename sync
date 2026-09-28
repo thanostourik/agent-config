@@ -75,7 +75,6 @@ HOOK_EVENTS = {
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-LEGACY_STATE = ".config/agent-config/managed-mcp.json"
 STATE = ".config/agent-config/state.json"
 BACKUPS = ".config/agent-config/backups"
 BLOCKED = object()
@@ -817,7 +816,6 @@ def main():
     # The state file goes last: after a crash the next run finds the written
     # items equal to what it wants and records them then.
     write_file(home / STATE, (json.dumps(new_state, indent=2) + "\n").encode(), stamp)
-    (home / LEGACY_STATE).unlink(missing_ok=True)
     print(f"Applied {len(writes) + sum(map(len, changes.values()))} change(s). "
           "Restart sessions to load new instructions.")
     return 0

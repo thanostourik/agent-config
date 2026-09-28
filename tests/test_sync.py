@@ -634,11 +634,7 @@ class SyncTest(unittest.TestCase):
         claude = self.home / ".claude.json"
         claude.parent.mkdir(parents=True)
         claude.write_text('{"theme": "dark"}')
-        legacy = self.home / ".config/agent-config/managed-mcp.json"
-        legacy.parent.mkdir(parents=True)
-        legacy.write_text('{"jira": ["jira"]}')
         self.run_sync("--apply")
-        self.assertFalse(legacy.exists())
         shutil.rmtree(self.backups)
         claude.write_text(claude.read_text().replace('"dark"', '"light"'))
         self.jira_config({"work": {"url": "https://new.example.com"}})
