@@ -29,7 +29,7 @@ Preconditions:
 - **Confirm persistence.** Return to the note list and reopen the note. Run `npx playwright cli -s=notes click "getByRole('link', { name: 'All notes' })"` and `npx playwright cli -s=notes click "getByRole('link', { name: 'Release checklist' })"`. The editor shows both saved values.
 - **Cancel draft.** Open a new note, enter `Discard me`, and choose `Cancel`. Run `npx playwright cli -s=notes click "getByRole('button', { name: 'New note' })"`, `npx playwright cli -s=notes fill "getByRole('textbox', { name: 'Title' })" "Discard me"`, and `npx playwright cli -s=notes click "getByRole('button', { name: 'Cancel' })"`. The note list returns and has no `Discard me` link.
 - **CLI entry.** Create a second note. Run `notes create --title "CLI note" --body "Created from terminal" --format json`. Exit code `0` and stdout contain the new note ID and title.
-- **Proof.** Reopen both saved notes from `All notes`. Run `npx playwright cli -s=notes snapshot --filename=artifacts/create-note/list.aria.txt` and `npx playwright cli -s=notes screenshot --filename=artifacts/create-note/list.png`. The artifacts show `Release checklist` and `CLI note`.
+- **Proof.** Reopen both saved notes from `All notes`. Run `npx playwright cli -s=notes snapshot --filename=.agents/skills/verify-notes/.cache/evidence/create-note/list.aria.txt` and `npx playwright cli -s=notes screenshot --filename=.agents/skills/verify-notes/.cache/evidence/create-note/list.png`. The artifacts show `Release checklist` and `CLI note`.
 
 ## Gotchas
 

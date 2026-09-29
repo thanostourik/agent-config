@@ -34,7 +34,7 @@ Preconditions:
 - **Clear query.** Choose `Clear search`. Run `npx playwright cli -s=notes click "getByRole('button', { name: 'Clear search' })"`. The searchbox is empty and the `Recent notes` region replaces the result list.
 - **CLI match.** Search from the terminal. Run `notes search "quarterly" --format json`. Exit code `0` and stdout contain one object whose title is `Quarterly plan`.
 - **CLI miss.** Search for an absent value. Run `notes search "volcano" --format json`. Exit code `0` and stdout are `[]`.
-- **Proof.** Capture the populated result state. Run `npx playwright cli -s=notes snapshot --filename=artifacts/search/results.aria.txt` and `npx playwright cli -s=notes screenshot --filename=artifacts/search/results.png`. Both artifacts identify Notes, the query, and `Quarterly plan`.
+- **Proof.** Capture the populated result state. Run `npx playwright cli -s=notes snapshot --filename=.agents/skills/verify-notes/.cache/evidence/search/results.aria.txt` and `npx playwright cli -s=notes screenshot --filename=.agents/skills/verify-notes/.cache/evidence/search/results.png`. Both artifacts identify Notes, the query, and `Quarterly plan`.
 
 ## Gotchas
 

@@ -10,6 +10,8 @@ disable-model-invocation: true
 
 Every serious project needs a scripted way to drive the real app and prove behavior: launch it, exercise a feature the way a user would, and capture evidence. This skill generates that as two project skills committed in the repo, so every developer's agent gets them without any global setup. You write the output for the next agent, not for a human: it will be read cold, mid-task, by an agent that has never seen the app.
 
+When you post a message anyway, you may add progress lines such as `setup: sign-in works`, `map 3/15: projects.md written`, or `drive 7/16: projects — pass`. Never change how you split, delegate, or order work to produce them, and never add a turn just to report.
+
 You write:
 
 ```
@@ -17,7 +19,8 @@ You write:
   SKILL.md
   features/README.md, features/<feature>.md     the feature map
   bin/                                          only if a helper is needed
-  .gitignore                                    evidence/ and run state
+  .gitignore                                    ignores .cache/
+  .cache/                                       evidence and run state
 .agents/skills/maintain-verify-<app>/SKILL.md   full audit of the map, run by hand
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
 .claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
@@ -47,13 +50,14 @@ Decide these now, with the user where needed, and write only the outcome into th
   2. propose creating one, show the user the files, and create it only if they approve;
   3. drives stay read-only, and the skill lists every control that writes and must not be used.
 - **Drive tool.** Every step must be a command an agent runs from a shell, so it works the same in every agent:
-  - web UI: Playwright's browser CLI, `npx playwright cli -s=<app> <command>`, from the project's own Playwright (built in since 1.63; add `playwright` as a pinned dev dependency if the project has none). Target elements with role locators such as `"getByRole('button', { name: 'Save' })"`. The CLI writes `.playwright-cli/` in the working directory; gitignore it or name the directory.
+  - web UI: Playwright's browser CLI, `npx playwright cli -s=<app> <command>`, from the project's own Playwright (built in since 1.63; add `playwright` as a pinned dev dependency if the project has none). Target elements with role locators such as `"getByRole('button', { name: 'Save' })"`. Run it with `PLAYWRIGHT_MCP_OUTPUT_DIR=.agents/skills/verify-<app>/.cache/cli`, so its per-command files land in the skill's `.cache/` instead of a `.playwright-cli/` folder at the repo root.
   - API: `curl` with the exact method, URL, headers, and body.
   - CLI/TUI: the command itself, or a tmux session for interactive screens.
   - anything else: the tool the repo already uses.
 
-  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) to the skill's run folder, and load it with `npx playwright cli -s=<app> state-load <file>`. Never write one script per feature: the steps live in the feature files.
+  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) under the skill's `.cache/`, and load it with `npx playwright cli -s=<app> state-load <file>`. Never write one script per feature: the steps live in the feature files.
 - **Launch.** Attach to a healthy instance when doctor finds one; otherwise start it. Only ever stop what this skill started.
+- **Run output.** Everything a run writes (evidence, CLI files, sessions, pids, logs) goes under `.agents/skills/verify-<app>/.cache/`, gitignored, the same path in every project and never outside the repo. Dev servers that reload on file changes ignore `.cache` folders or never watch this one. Check it on your first drive: if a write there reloads the page, stop and ask the user.
 
 ## 3. Write `verify-<app>`
 
@@ -65,13 +69,13 @@ Decide these now, with the user where needed, and write only the outcome into th
 - **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
 - **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order.
 - **When a drive fails:** a feature file holds two kinds of content: how to drive (commands, locators, waits) and what should happen (expected results). Fix how to drive only when the user-visible result stays the same, for example an ambiguous locator for an unchanged button, and re-drive that step. Never change an expected result to make a drive pass. For a feature the change touched, the expected results were written from the request before driving, so a failure means the code is wrong: fix the code. For a feature the change did not touch, report the mismatch (the map expects X, the app does Y) and leave the file alone; the full audit settles it.
-- **Evidence:** what to capture for a proof and where it goes (`evidence/<feature>/` inside the skill, gitignored). Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
+- **Evidence:** what to capture for a proof; it goes to `.agents/skills/verify-<app>/.cache/evidence/<feature>/`. The final report gives one line per driven feature: the result and the path of the file that shows it, relative to the repo root, for a failure the failing step's screenshot, for example `trash — fail at "empty to trash" — .agents/skills/verify-<app>/.cache/evidence/trash/empty.png`. Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
 - **Cleanup:** how to tear down what the run started. Never kill by process name; kill what you started. Leave running what was running before. Launch the app once and check `git status` and the developer's config files afterwards: dev tools often rewrite local env files or generate files on start. Launch backs up what gets rewritten and restores it, and cleanup removes what the run generated. Cleanup never deletes evidence.
 - **Helpers:** any script the skill ships is bash, executable, and its invocation is shown in the skill body. A helper the reader has to reverse-engineer is not a helper. Say that on Windows the agent must run inside WSL.
 
 ## 4. Seed the feature map
 
-Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. Follow the shape in [`references/feature-map-example/`](references/feature-map-example/): a README index with baseline preconditions, driving conventions, proof rules, and the feature list, then one file per feature. Each file answers, from the user's point of view: what the feature is, how to reach it, how to drive it with exact commands, and what observable end state proves it works. The four H2s are `Sub-features`, `How to get to it (user POV)`, `Driving it with <tool>`, and `Gotchas`. Keep code paths out of the map: the agent maps a change to features by reasoning, and the full audit reads the source. The map is the repo's maintained verification source; a proof that drives one convenient entry point is incomplete when the map lists others. Post one line as each feature file is written.
+Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. Follow the shape in [`references/feature-map-example/`](references/feature-map-example/): a README index with baseline preconditions, driving conventions, proof rules, and the feature list, then one file per feature. Each file answers, from the user's point of view: what the feature is, how to reach it, how to drive it with exact commands, and what observable end state proves it works. The four H2s are `Sub-features`, `How to get to it (user POV)`, `Driving it with <tool>`, and `Gotchas`. Keep code paths out of the map: the agent maps a change to features by reasoning, and the full audit reads the source. The map is the repo's maintained verification source; a proof that drives one convenient entry point is incomplete when the map lists others.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 

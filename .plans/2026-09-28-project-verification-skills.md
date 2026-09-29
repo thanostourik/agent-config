@@ -77,8 +77,15 @@ these changes:
   the code is wrong, for one it didn't it reports the mismatch. Creation and
   the audit change no product code, so they fix any wrong map content and
   re-drive it, and report real bugs instead of writing them into the map.
-- **Progress.** Creation and the audit post one line per feature read,
-  written or corrected, and driven, without changing how they read sources.
+- **Progress.** Messages the agent posts anyway may carry progress lines
+  (`drive 7/16: projects — pass`). They never change how it splits,
+  delegates, or orders work.
+- **Run output.** Everything a run writes goes under
+  `.agents/skills/verify-<app>/.cache/`, gitignored: the same path in every
+  project, never outside the repo. Dev servers that reload on file changes
+  ignore `.cache` folders (Lakebed) or don't watch it (Next, Vite). The first
+  drive checks; a reload there means asking me. The final report gives each
+  driven feature's result and the path of its proof file.
 - **Isolation.** One rule, decided once at setup and written into the skill
   as a single path: verification never writes to the developer's persistent
   data and never disturbs what the developer runs. The generator picks one
