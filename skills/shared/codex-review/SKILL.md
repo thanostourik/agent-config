@@ -8,7 +8,7 @@ metadata:
 
 # Codex review
 
-Use the user's selected model, or `gpt-6-astra` when none is specified. Use the
+Use the user's selected model, or `gpt-6.1-sol` when none is specified. Use the
 user's selected effort (`low`, `medium`, `high`, or `xhigh`), or `high` when none
 is specified. Review locally; do not post findings, edit the reviewed files, or
 delegate again.
