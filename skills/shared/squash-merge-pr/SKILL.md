@@ -29,6 +29,9 @@ the merge and cleanup checks. Never delete `main`.
 
 ## Merge and update main
 
+Confirm the PR is mergeable and its required checks have passed. If checks
+are pending or failing, or the merge status is unknown or blocked, stop.
+
 Squash merge with `gh pr merge "$pr_url" --squash --match-head-commit "$pr_head"`,
 using the recorded PR URL and head commit. Do not use `--delete-branch`:
 branch cleanup comes after updating main.
