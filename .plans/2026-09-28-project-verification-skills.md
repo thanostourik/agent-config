@@ -45,12 +45,14 @@ Both are manual-only (`disable-model-invocation: true`, plus
 
 ```
 .agents/skills/verify-<app>/          source of truth, read by Codex, Cursor, Grok, OpenCode
-  SKILL.md                            launch, doctor, drive, evidence, cleanup, keep-map-current
-  features/README.md                  baseline, conventions, proof rules, feature index
+  SKILL.md                            pick, update map, isolation, launch, doctor, drive,
+                                      failed drives, evidence, report, cleanup, helpers
+  features/README.md                  baseline, driving conventions, feature index
   features/<feature>.md               one per user-facing feature
-  bin/                                bash helpers, only where a command is not enough
-  .gitignore                          evidence/ and run state
-.agents/skills/maintain-verify-<app>/SKILL.md
+  bin/                                helpers (pw.sh for web apps, launch, doctor, cleanup)
+  .gitignore                          ignores .cache/
+  .cache/                             everything a run writes
+.agents/skills/maintain-verify-<app>/ the full audit (Pass, then Ship), manual-only
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
 .claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
 ```

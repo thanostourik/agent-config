@@ -18,10 +18,12 @@ You write:
 .agents/skills/verify-<app>/                    the verification skill
   SKILL.md
   features/README.md, features/<feature>.md     the feature map
-  bin/                                          only if a helper is needed
+  bin/                                          helpers
   .gitignore                                    ignores .cache/
-  .cache/                                       evidence and run state
-.agents/skills/maintain-verify-<app>/SKILL.md   full audit of the map, run by hand
+  .cache/                                       everything a run writes
+.agents/skills/maintain-verify-<app>/           the full audit, run by hand
+  SKILL.md
+  agents/openai.yaml
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
 .claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
 ```
@@ -35,11 +37,10 @@ Answer these from the codebase and only ask the user what you cannot observe:
 - **Surface:** what does a user actually touch? A web UI, a CLI/TUI, a desktop app, an API, a mobile app, firmware, a library? A repo can have several; pick the primary one and note the rest.
 - **Run:** how does the app start locally? Prefer the repo's own documented dev command (package scripts, Makefile, README quickstart). Note ports, env vars, seed data, auth.
 - **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and any docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service that lives in another repo, learn how to start it from that repo; ask the user where its checkout is if you need to read it.
-- **Drive:** how can an agent interact with it from a shell? See step 2.
+- **Side effects of starting:** launch the app once, then check `git status` and the developer's config files. Dev tools often rewrite local env files or generate files on start. Also write a file into `.agents/skills/verify-<app>/.cache/` while a page is open and check that the page does not reload.
 - **Observe:** what evidence can be captured? Screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, DB state.
-- **Isolate:** where does data go when a drive writes? See step 2.
 
-If the checkout doesn't build or start as-is, fix that first (or report it precisely) before generating; a skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, clearly marked as verification scaffolding, and remove it in cleanup.
+If the checkout doesn't build or start as-is, fix that first (or report it precisely) before generating; a skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, clearly marked as verification scaffolding, and remove it in cleanup. If a write into `.cache/` reloads the page, stop and ask the user.
 
 ## 2. Decide once, write one path
 
@@ -50,36 +51,45 @@ Decide these now, with the user where needed, and write only the outcome into th
   2. propose creating one, show the user the files, and create it only if they approve;
   3. drives stay read-only, and the skill lists every control that writes and must not be used.
 - **Drive tool.** Every step must be a command an agent runs from a shell, so it works the same in every agent:
-  - web UI: Playwright's browser CLI, `npx playwright cli -s=<app> <command>`, from the project's own Playwright (built in since 1.63; add `playwright` as a pinned dev dependency if the project has none). Target elements with role locators such as `"getByRole('button', { name: 'Save' })"`. Run it with `PLAYWRIGHT_MCP_OUTPUT_DIR=.agents/skills/verify-<app>/.cache/cli`, so its per-command files land in the skill's `.cache/` instead of a `.playwright-cli/` folder at the repo root.
+  - web UI: Playwright's browser CLI, from the project's own Playwright (built in since 1.63; add `playwright` as a pinned dev dependency if the project has none, or use a pinned `npx playwright@<version>` if the repo forbids new dependencies). Ship `bin/pw.sh`, which runs `npx playwright cli -s=<app> "$@"` with `PLAYWRIGHT_MCP_OUTPUT_DIR` set to the skill's `.cache/cli/`; agents' shells don't keep environment variables between commands, so the wrapper sets it every time. Target elements with role locators such as `"getByRole('button', { name: 'Save' })"`.
   - API: `curl` with the exact method, URL, headers, and body.
   - CLI/TUI: the command itself, or a tmux session for interactive screens.
   - anything else: the tool the repo already uses.
 
-  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) under the skill's `.cache/`, and load it with `npx playwright cli -s=<app> state-load <file>`. Never write one script per feature: the steps live in the feature files.
-- **Launch.** Attach to a healthy instance when doctor finds one; otherwise start it. Only ever stop what this skill started.
-- **Run output.** Everything a run writes (evidence, CLI files, sessions, pids, logs) goes under `.agents/skills/verify-<app>/.cache/`, gitignored, the same path in every project and never outside the repo. Dev servers that reload on file changes ignore `.cache` folders or never watch this one. Check it on your first drive: if a write there reloads the page, stop and ask the user.
+  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) under `.cache/`, and load it with `bin/pw.sh state-load <file>`. Never write one script per feature: the steps live in the feature files.
 
 ## 3. Write `verify-<app>`
 
-`.agents/skills/verify-<app>/SKILL.md` starts with YAML frontmatter: `name: verify-<app>` and a `description` that names the app and the surface, and says to use it after changing that surface, to update the feature map and prove the change works before calling the work done. Without frontmatter the skill never registers. Then these sections, each grounded in what the interview found (no placeholders left):
+`.agents/skills/verify-<app>/SKILL.md` starts with YAML frontmatter: `name: verify-<app>` and a `description` that names the app and the surface, and says to use it after changing that surface, to update the feature map and prove the change works before calling the work done. Without frontmatter the skill never registers. Then these sections, in this order, each grounded in what the interview found (no placeholders left):
 
 - **Pick features:** read `features/README.md` and map the change to the user-facing features it affects: existing features it alters and new ones it adds. State each and why in one line. A change with no user-visible effect is not driven; say so instead.
-- **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape `features/README.md` describes, and an index entry. An altered feature gets its file edited, or a new one if it was never mapped. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
-- **Launch:** the exact commands that start the app and whatever it depends on, and how to tell it's ready (a log line, a port answering, a prompt). For a short-lived CLI or TUI there is no server to keep alive: launch means build once, then start each drive in its own isolated session.
+- **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape step 4 describes, and an index entry. An altered feature gets its file edited, or a new one if it was never mapped. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
+- **Isolation:** the option chosen in step 2, and what it means for drives. For read-only drives, the list of controls that write and must not be used.
+- **Launch:** the exact commands that start the app and whatever it depends on, and how to tell it's ready (a log line, a port answering, a prompt). Attach to a healthy instance when doctor finds one; otherwise start one. Launch backs up any file that starting rewrites and restores it once the app is up; it records any file that starting generates, for cleanup. For a short-lived CLI or TUI there is no server to keep alive: launch means build once, then start each drive in its own isolated session.
 - **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
 - **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order.
 - **When a drive fails:** a feature file holds two kinds of content: how to drive (commands, locators, waits) and what should happen (expected results). Fix how to drive only when the user-visible result stays the same, for example an ambiguous locator for an unchanged button, and re-drive that step. Never change an expected result to make a drive pass. For a feature the change touched, the expected results were written from the request before driving, so a failure means the code is wrong: fix the code. For a feature the change did not touch, report the mismatch (the map expects X, the app does Y) and leave the file alone; the full audit settles it.
-- **Evidence:** what to capture for a proof; it goes to `.agents/skills/verify-<app>/.cache/evidence/<feature>/`. The final report gives one line per driven feature: the result and the path of the file that shows it, relative to the repo root, for a failure the failing step's screenshot, for example `trash — fail at "empty to trash" — .agents/skills/verify-<app>/.cache/evidence/trash/empty.png`. Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
-- **Cleanup:** how to tear down what the run started. Never kill by process name; kill what you started. Leave running what was running before. Launch the app once and check `git status` and the developer's config files afterwards: dev tools often rewrite local env files or generate files on start. Launch backs up what gets rewritten and restores it, and cleanup removes what the run generated. Cleanup never deletes evidence.
-- **Helpers:** any script the skill ships is bash, executable, and its invocation is shown in the skill body. A helper the reader has to reverse-engineer is not a helper. Say that on Windows the agent must run inside WSL.
+- **Evidence:** everything a run writes (evidence, CLI files, sessions, pids, logs) goes under `.agents/skills/verify-<app>/.cache/`, gitignored, the same path in every project and never outside the repo; proof for a feature goes to `.cache/evidence/<feature>/`. Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
+- **Report:** one line per driven feature: the result and the path of the file that shows it, relative to the repo root; for a failure, the failing step's screenshot. For example `trash — fail at "empty to trash" — .agents/skills/verify-<app>/.cache/evidence/trash/empty.png`. A feature that could not be reached gets its missing prerequisite instead.
+- **Cleanup:** tear down what the run started. Never kill by process name; kill what you started, and leave running what was running before. Restore what launch backed up and remove what starting generated. Cleanup never deletes evidence.
+- **Helpers:** every script in `bin/`, what it does and how to call it. Scripts are bash and executable; on Windows the agent runs inside WSL.
 
-## 4. Seed the feature map
+## 4. Map every feature
 
-Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. Follow the shape in [`references/feature-map-example/`](references/feature-map-example/): a README index with baseline preconditions, driving conventions, proof rules, and the feature list, then one file per feature. Each file answers, from the user's point of view: what the feature is, how to reach it, how to drive it with exact commands, and what observable end state proves it works. The four H2s are `Sub-features`, `How to get to it (user POV)`, `Driving it with <tool>`, and `Gotchas`. Keep code paths out of the map: the agent maps a change to features by reasoning, and the full audit reads the source. The map is the repo's maintained verification source; a proof that drives one convenient entry point is incomplete when the map lists others.
+Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. `features/README.md` holds the baseline every feature starts from, the driving conventions, and the index; follow [`references/feature-map-example/`](references/feature-map-example/).
+
+Each feature file starts with an H1 and one paragraph describing the user-visible behavior, then exactly four H2s in this order:
+
+1. `Sub-features`: short IDs, one line per behavior.
+2. `How to get to it (user POV)`: every entry point a user has.
+3. `Driving it with <tool>`: `Preconditions:`, then labeled bullets that pair each user action with an exact command and its observable result, ending with a proof step.
+4. `Gotchas`: traps that waste or invalidate a run.
+
+Keep code paths out of the map: the agent maps a change to features by reasoning, and the audit reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
-Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agents/skills/maintain-verify-<app>/SKILL.md` and replace `<app>`. Adjust only what this project needs (for example, how its PRs are opened). It is manual-only: copy this skill's own `agents/openai.yaml` next to it, so Codex doesn't start it on its own either.
+Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agents/skills/maintain-verify-<app>/SKILL.md` and [`references/maintain-verify-openai.yaml`](references/maintain-verify-openai.yaml) to `.agents/skills/maintain-verify-<app>/agents/openai.yaml`, and replace `<app>`. Adjust only what this project needs (for example, how its PRs are opened).
 
 Write the two Claude Code stubs from [`references/claude-stub.md`](references/claude-stub.md). Their `name` and `description` must match the real skills exactly, and the maintain stub also carries `disable-model-invocation: true`.
 
@@ -91,12 +101,10 @@ Add this line to the project's `AGENTS.md`, inside an existing section about ver
 Before calling user-facing work done, update its feature map entry and verify it with the `verify-<app>` skill.
 ```
 
-If `CLAUDE.md` exists and does not import `AGENTS.md`, add the same line there.
+## 7. Prove it
 
-## 7. Prove the generated skill before handing it over
-
-Run the full pass from `maintain-verify-<app>` (its steps 1 to 5) on what you just wrote: every feature file checked against the source and driven live, fixes made under the same rules. Skip its step 6; the handover commits everything together. A feature that can't be reached is reported with its missing prerequisite, like the pass says. After the final cleanup, confirm the evidence still exists at the named location: a cleanup that eats the proof fails this step. Run the generated cleanup after every failed iteration too, so broken attempts don't strand processes and ports. A generated skill that was never executed is a draft, not a deliverable.
+Run the Pass from `maintain-verify-<app>` on what you just wrote: every feature file checked against the source and driven live, under the Pass's rules. A generated skill that was never executed is a draft, not a deliverable.
 
 ## 8. Hand over
 
-Commit the skills, the stubs, and the instruction line following the repo's own branch and commit conventions. Tell the user which features the map covers, which were driven and which were unreachable (and why), what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
+Commit everything following the repo's own branch and commit conventions. Report per the Report section, plus what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
