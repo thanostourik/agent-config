@@ -3,6 +3,7 @@
     "bro": { "enabled": true },
     "claude-review": { "enabled": true },
     "codex-review": { "enabled": true },
+    "create-jira-issue": { "enabled": true },
     "create-project-verification-skill": { "enabled": true },
     "file-pr": { "enabled": true },
     "grill-me": { "enabled": true },
