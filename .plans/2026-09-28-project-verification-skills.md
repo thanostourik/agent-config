@@ -70,9 +70,11 @@ these changes:
   features it picked and why, one line each. The unit is a whole feature file.
 - **Driving.** Steps live in the feature files as exact commands. The
   generator picks the tool per surface: Playwright CLI for web apps, `curl`
-  for APIs, a terminal for CLIs, whatever fits for anything else. A code
-  script only where a command can't do the job, such as a sign-in that needs
-  a library.
+  for APIs, a terminal for CLIs, whatever fits for anything else. Web apps get a
+  `bin/pw.sh` wrapper that keeps the CLI's files in `.cache/`, because agents'
+  shells don't keep environment variables between commands. Other scripts
+  only where a command can't do the job, such as a sign-in that needs a
+  library.
 - **Failed drives.** During a change, the agent may fix how a step drives
   (a locator, a wait) when the expected result stays the same, but never
   changes an expected result to make a drive pass: for a feature it touched
@@ -85,8 +87,9 @@ these changes:
 - **Run output.** Everything a run writes goes under
   `.agents/skills/verify-<app>/.cache/`, gitignored: the same path in every
   project, never outside the repo. Dev servers that reload on file changes
-  ignore `.cache` folders (Lakebed) or don't watch it (Next, Vite). The first
-  drive checks; a reload there means asking me. The final report gives each
+  ignore `.cache` folders (Lakebed) or don't watch it (Next, Vite). The
+  generator checks it while interviewing the repo; a reload there means
+  asking me. The final report gives each
   driven feature's result and the path of its proof file.
 - **Isolation.** One rule, decided once at setup and written into the skill
   as a single path: verification never writes to the developer's persistent

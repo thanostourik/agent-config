@@ -17,6 +17,15 @@ This directory is the maintained source for verifying the user-facing behavior o
 - For terminal steps, record the command, stdout, stderr, and exit code.
 - A feature that changes seeded data restores it before it ends.
 
+## Feature file shape
+
+Each feature file starts with an H1 and one paragraph describing the user-visible behavior, then exactly four H2s in this order:
+
+1. `Sub-features`: short IDs, one line per behavior.
+2. `How to get to it (user POV)`: every entry point a user has.
+3. `Driving it with <tool>`: `Preconditions:`, then labeled bullets that pair each user action with an exact command and its observable result, ending with a proof step.
+4. `Gotchas`: traps that waste or invalidate a run.
+
 ## Features
 
 - [Create a note](./create-note.md) covers browser and CLI creation, cancellation, persistence, and cleanup.

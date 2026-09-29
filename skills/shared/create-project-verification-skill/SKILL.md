@@ -37,10 +37,10 @@ Answer these from the codebase and only ask the user what you cannot observe:
 - **Surface:** what does a user actually touch? A web UI, a CLI/TUI, a desktop app, an API, a mobile app, firmware, a library? A repo can have several; pick the primary one and note the rest.
 - **Run:** how does the app start locally? Prefer the repo's own documented dev command (package scripts, Makefile, README quickstart). Note ports, env vars, seed data, auth.
 - **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and any docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service that lives in another repo, learn how to start it from that repo; ask the user where its checkout is if you need to read it.
-- **Side effects of starting:** launch the app once, then check `git status` and the developer's config files. Dev tools often rewrite local env files or generate files on start. Also write a file into `.agents/skills/verify-<app>/.cache/` while a page is open and check that the page does not reload.
+- **Side effects of starting:** launch the app once, then check `git status` and the developer's config files. Dev tools often rewrite local env files or generate files on start. Also create `.agents/skills/verify-<app>/.cache/`, write a file into it while a page is open, and check that the page does not reload; if it does, stop and ask the user.
 - **Observe:** what evidence can be captured? Screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, DB state.
 
-If the checkout doesn't build or start as-is, fix that first (or report it precisely) before generating; a skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, clearly marked as verification scaffolding, and remove it in cleanup. If a write into `.cache/` reloads the page, stop and ask the user.
+If the checkout doesn't build or start as-is, fix that first (or report it precisely) before generating; a skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, clearly marked as verification scaffolding, and remove it in cleanup.
 
 ## 2. Decide once, write one path
 
@@ -56,14 +56,14 @@ Decide these now, with the user where needed, and write only the outcome into th
   - CLI/TUI: the command itself, or a tmux session for interactive screens.
   - anything else: the tool the repo already uses.
 
-  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) under `.cache/`, and load it with `bin/pw.sh state-load <file>`. Never write one script per feature: the steps live in the feature files.
+  Reuse an existing harness (a sign-in helper, a seeding script) where it fits. Write a script only where a command cannot do the job, such as a sign-in that needs a library: have it save the browser session (Playwright `storageState`) under `.cache/`, and load it with `.agents/skills/verify-<app>/bin/pw.sh state-load <file>`. Never write one script per feature: the steps live in the feature files.
 
 ## 3. Write `verify-<app>`
 
 `.agents/skills/verify-<app>/SKILL.md` starts with YAML frontmatter: `name: verify-<app>` and a `description` that names the app and the surface, and says to use it after changing that surface, to update the feature map and prove the change works before calling the work done. Without frontmatter the skill never registers. Then these sections, in this order, each grounded in what the interview found (no placeholders left):
 
 - **Pick features:** read `features/README.md` and map the change to the user-facing features it affects: existing features it alters and new ones it adds. State each and why in one line. A change with no user-visible effect is not driven; say so instead.
-- **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape step 4 describes, and an index entry. An altered feature gets its file edited, or a new one if it was never mapped. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
+- **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape `features/README.md` describes, and an index entry. An altered feature gets its file edited, or a new one if it was never mapped. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
 - **Isolation:** the option chosen in step 2, and what it means for drives. For read-only drives, the list of controls that write and must not be used.
 - **Launch:** the exact commands that start the app and whatever it depends on, and how to tell it's ready (a log line, a port answering, a prompt). Attach to a healthy instance when doctor finds one; otherwise start one. Launch backs up any file that starting rewrites and restores it once the app is up; it records any file that starting generates, for cleanup. For a short-lived CLI or TUI there is no server to keep alive: launch means build once, then start each drive in its own isolated session.
 - **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
@@ -76,7 +76,7 @@ Decide these now, with the user where needed, and write only the outcome into th
 
 ## 4. Map every feature
 
-Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. `features/README.md` holds the baseline every feature starts from, the driving conventions, and the index; follow [`references/feature-map-example/`](references/feature-map-example/).
+Create `features/README.md` plus one file per user-facing feature the app has: every screen, route group, command, or endpoint group a user reaches, found from routes, navigation, commands, and docs. `features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape below, and the index; follow [`references/feature-map-example/`](references/feature-map-example/).
 
 Each feature file starts with an H1 and one paragraph describing the user-visible behavior, then exactly four H2s in this order:
 
@@ -107,4 +107,4 @@ Run the Pass from `maintain-verify-<app>` on what you just wrote: every feature 
 
 ## 8. Hand over
 
-Commit everything following the repo's own branch and commit conventions. Report per the Report section, plus what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
+Commit everything following the repo's own branch and commit conventions. Report per `verify-<app>`'s Report section, plus what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
