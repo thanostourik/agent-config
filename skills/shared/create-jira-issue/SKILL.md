@@ -13,25 +13,35 @@ another confirmation. Respect a request to create only the first issue of a
 batch. This skill does not authorize editing existing issues or creating Jira
 versions, sprints, components, or statuses.
 
+## Project
+
+If the user has not specified a project for these issues, ask which Jira
+project to use before resolving project fields or creating anything. Never
+default to a project or infer one from the repository, issue keys, or available
+Jira projects. Resolve the user-specified project to its key.
+
 ## Defaults
 
 Honor explicit user overrides. Otherwise use:
 
-- Project: `CHA`.
 - Title: `[Agent] <concise title describing the problem or requested outcome>`.
   Add the prefix exactly once.
 - Label: `agent-generated`. Keep any other requested labels too.
 - Assignee: Athanasios Tourikas, Jira username `ato`. Resolve this user in the
   selected instance and check that the project allows assigning to him. Do not
   substitute the authenticated user or a similarly named account.
-- Component in CHA: `Product platform & widget`. For another project, use its
-  relevant component if clear from the request and available metadata; ask if
-  the choice matters and remains unclear.
+- Component: omit unless the user explicitly requests one. If Jira requires
+  a component, ask the user which one to use.
 - Parent/epic: none; standalone issues.
 - Type: choose from the project's supported types. Use Bug for faulty existing
   behavior, Task for chores or decisions, and Story for new user functionality
   when that type is available. Honor a user-specified type.
-- Priority and initial status: Jira defaults unless specified.
+- Priority: choose from the priorities available for the selected project,
+  based on the issue's impact and urgency. Consider affected users, security
+  or data loss, blocked work, and available workarounds. Honor a user-specified
+  priority; otherwise select and set it explicitly rather than leaving Jira's
+  default. Do not assume every bug deserves the highest priority.
+- Initial status: Jira default unless specified.
 - Footer: one italic line, `Filed by <harness> <model>`, at the very bottom.
   The harness is the coding tool running the model, such as Claude Code or
   Codex. Use the actual harness and known model name; if the model name is
@@ -41,16 +51,17 @@ Honor explicit user overrides. Otherwise use:
 
 ## Resolve the current version and sprint
 
-Read the selected project's issue types, creation fields, components, versions,
-and relevant Scrum boards before creating. Resolve user-specified values too;
-do not carry IDs from another project or an earlier conversation.
+Read the selected project's issue types, available priorities, creation fields,
+versions, and relevant Scrum boards before creating. Look up components only
+when requested or required. Resolve user-specified values too; do not carry IDs
+from another project or an earlier conversation.
 
 - Sprint: get sprints with state `active` from the relevant project board. Use
   the sole relevant active sprint. If several boards or active sprints remain
   plausible, ask which one; do not choose a future or closed sprint. If none
   is active, ask whether to leave the issue outside a sprint.
 - Fix version: use an unreleased, unarchived version clearly associated with
-  that active sprint, for example version `1.2.0` for sprint `CHA-1.2.0`.
+  that active sprint, for example version `1.2.0` for sprint `PROJ-1.2.0`.
   Otherwise use the sole unreleased, unarchived numbered release. A catch-all
   such as `Ongoing` is not a numbered release. If several releases remain
   plausible or none exists, ask; Jira has no universal active-version flag.
@@ -91,12 +102,13 @@ can become Jira macros. Pass real newlines, not literal backslash-n text.
 ## Create and verify
 
 Resolve required fields before creating. Set the prefix, label, assignee,
-component, type, fix version, and description in the creation request. If the
-tool cannot set sprint during creation, add the returned issue key to the
-resolved active sprint afterwards.
+type, priority, fix version, and description in the creation request. Set a
+component only when the user specified it. If the tool cannot set sprint during
+creation, add the returned issue key to the resolved active sprint afterwards.
 
-Read back each created issue and verify its title, labels, assignee, component,
-type, fix version, description, parent/epic, and sprint membership. Check the
+Read back each created issue and verify its project, title, labels, assignee,
+type, priority, fix version, description, parent/epic, and sprint membership.
+Check that any component matches the user's explicit request. Check the
 rendered description through Jira's rendered fields or the browser when
 available: headings, lists, code blocks, italic footer, and no unknown macros
 or literal formatting syntax. A Markdown-normalized read-back alone does not

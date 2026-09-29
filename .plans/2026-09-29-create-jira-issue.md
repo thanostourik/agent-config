@@ -9,13 +9,16 @@ Turn the issue conventions agreed in T3 thread
 
 - Add `skills/shared/create-jira-issue/SKILL.md` for all five tools and an
   enabled entry in `config.example.json`.
-- Default to project CHA, component `Product platform & widget`, assignee
-  Athanasios Tourikas (`ato`), and standalone issues. Honor explicit overrides.
+- Ask which project to use if the user has not specified one. Never infer or
+  default to a project. Omit components unless the user explicitly requests one.
+- Default to assignee Athanasios Tourikas (`ato`) and standalone issues. Honor
+  explicit overrides.
 - Use title prefix `[Agent]`, label `agent-generated`, and an italic
   `Filed by <harness> <model>` footer with no extra provenance text.
 - Resolve the active sprint and current fix version from Jira at invocation
   time. Do not freeze the old version or sprint IDs into the skill.
-- Choose a supported issue type from the work unless the user specifies one.
+- Choose a supported issue type and priority from the work unless the user
+  specifies them. Set the chosen priority explicitly based on impact and urgency.
 - Use consistent descriptions for bugs and other work. Follow the connector's
   input format: mcp-atlassian converts Markdown into Jira wiki markup.
 - Require an actual instruction to create issues. Discussion permits drafting,
