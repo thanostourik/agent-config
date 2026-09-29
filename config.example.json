@@ -10,7 +10,8 @@
     "grok-review": { "enabled": true },
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
-    "render-plan": { "enabled": true }
+    "render-plan": { "enabled": true },
+    "squash-merge-pr": { "enabled": true }
   },
   "hooks": {
     "render-plan": { "enabled": true }
