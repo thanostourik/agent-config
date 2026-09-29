@@ -71,6 +71,14 @@ these changes:
   for APIs, a terminal for CLIs, whatever fits for anything else. A code
   script only where a command can't do the job, such as a sign-in that needs
   a library.
+- **Failed drives.** During a change, the agent may fix how a step drives
+  (a locator, a wait) when the expected result stays the same, but never
+  changes an expected result to make a drive pass: for a feature it touched
+  the code is wrong, for one it didn't it reports the mismatch. Creation and
+  the audit change no product code, so they fix any wrong map content and
+  re-drive it, and report real bugs instead of writing them into the map.
+- **Progress.** Creation and the audit post one line per feature read,
+  written or corrected, and driven, without changing how they read sources.
 - **Isolation.** One rule, decided once at setup and written into the skill
   as a single path: verification never writes to the developer's persistent
   data and never disturbs what the developer runs. The generator picks one
