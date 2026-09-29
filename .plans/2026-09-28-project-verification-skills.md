@@ -27,8 +27,10 @@ pstack's, so they don't collide with the plugin in Cursor.
 - `create-project-verification-skill`: a fork of poteto's generator. I run it
   once per project. It interviews the repo (including `PLATFORM.md` or other
   docs that name sibling repos), asks me only what it cannot observe, writes
-  the project files below, and proves one feature end to end before handing
-  over.
+  the project files below with a feature file for every user-facing feature,
+  and drives every one of them (the same full pass the audit runs) before
+  handing over. Poteto's version seeded 3-5 features and drove one; nothing
+  ever added the rest, so the map stayed partial.
 - `maintain-project-verification-skill`: I run it in a project. It does the
   project's full audit and also brings the project's two skills in line with
   what `create-project-verification-skill` would generate today, keeping the
@@ -43,12 +45,14 @@ Both are manual-only (`disable-model-invocation: true`, plus
 
 ```
 .agents/skills/verify-<app>/          source of truth, read by Codex, Cursor, Grok, OpenCode
-  SKILL.md                            launch, doctor, drive, evidence, cleanup, keep-map-current
-  features/README.md                  baseline, conventions, proof rules, feature index
+  SKILL.md                            pick, update map, isolation, launch, doctor, drive,
+                                      failed drives, evidence, report, cleanup, helpers
+  features/README.md                  baseline, driving conventions, feature index
   features/<feature>.md               one per user-facing feature
-  bin/                                bash helpers, only where a command is not enough
-  .gitignore                          evidence/ and run state
-.agents/skills/maintain-verify-<app>/SKILL.md
+  bin/                                helpers (pw.sh for web apps, launch, doctor, cleanup)
+  .gitignore                          ignores .cache/
+  .cache/                             everything a run writes
+.agents/skills/maintain-verify-<app>/ the full audit (Pass, then Ship), manual-only
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
 .claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
 ```
@@ -66,30 +70,53 @@ these changes:
   features it picked and why, one line each. The unit is a whole feature file.
 - **Driving.** Steps live in the feature files as exact commands. The
   generator picks the tool per surface: Playwright CLI for web apps, `curl`
-  for APIs, a terminal for CLIs, whatever fits for anything else. A code
-  script only where a command can't do the job, such as a sign-in that needs
-  a library.
+  for APIs, a terminal for CLIs, whatever fits for anything else. Web apps get a
+  `bin/pw.sh` wrapper that keeps the CLI's files in `.cache/`, because agents'
+  shells don't keep environment variables between commands. Other scripts
+  only where a command can't do the job, such as a sign-in that needs a
+  library.
+- **Failed drives.** During a change, the agent may fix how a step drives
+  (a locator, a wait) when the expected result stays the same, but never
+  changes an expected result to make a drive pass: for a feature it touched
+  the code is wrong, for one it didn't it reports the mismatch. Creation and
+  the audit change no product code, so they fix any wrong map content and
+  re-drive it, and report real bugs instead of writing them into the map.
+- **Progress.** Messages the agent posts anyway may carry progress lines
+  (`drive 7/16: projects — pass`). They never change how it splits,
+  delegates, or orders work.
+- **Run output.** Everything a run writes goes under
+  `.agents/skills/verify-<app>/.cache/`, gitignored: the same path in every
+  project, never outside the repo. Dev servers that reload on file changes
+  ignore `.cache` folders (Lakebed) or don't watch it (Next, Vite). The
+  generator checks it while interviewing the repo; a reload there means
+  asking me. The final report gives each
+  driven feature's result and the path of its proof file.
 - **Isolation.** One rule, decided once at setup and written into the skill
   as a single path: verification never writes to the developer's persistent
   data and never disturbs what the developer runs. The generator picks one
   of: use the project's existing disposable environment (like `dev.sh`),
   propose creating one for me to approve, or keep drives read-only.
-- **Keeping the map current.** When a change adds or alters a user-facing
-  feature, the agent runs `maintain-verify-<app>` for that feature in the
-  same branch before calling the work done.
+- **Map first, then drive.** Before driving, the agent makes the map match
+  the app after its change: a new feature gets a new feature file and index
+  entry, an altered one gets its file edited. The skill says this is part of
+  the change, like updating tests, so it is in scope even when the request
+  did not mention it. Then it drives each picked feature file once. A test
+  on 2026-09-28 showed why: with "run maintain at the end", Claude skipped
+  the map for a new feature as out of scope, while Codex moved the map
+  update ahead of the drive on its own.
 - **Platform.** Helpers are bash. The skill says Windows developers run their
   agent inside WSL.
 
-`maintain-verify-<app>` is poteto's maintain skill, made project-local, with
-two modes: one feature (the agent calls it after a change: read that
-feature's source, fix its map entry, drive it once) or a full audit (a
-developer calls it with no argument). Manual-only is not needed for the
-one-feature mode, so it stays model-invocable.
+`maintain-verify-<app>` is poteto's maintain skill, made project-local: a
+full audit of every feature, from source and live, that also adds and drives
+features missing from the map, run by hand by any
+developer now and then. It is manual-only (`disable-model-invocation`, plus
+`agents/openai.yaml` for Codex).
 
 The generator also adds one line to the project's `AGENTS.md`, inside an
 existing verification or testing section, or a new `## Verification`
-section: "Before calling user-facing work done, verify it with the
-`verify-<app>` skill."
+section: "Before calling user-facing work done, update its feature map entry
+and verify it with the `verify-<app>` skill."
 
 ### Global instructions
 
@@ -109,9 +136,10 @@ section: "Before calling user-facing work done, verify it with the
 4. Check sync with a temporary `--home`: both skills reach Claude Code, Codex,
    Grok and Cursor, not OpenCode or `~/.agents/skills/`. Run the sync tests.
 5. Pilot in wovies, on a branch there: run the generator, replace
-   `.cursor/skills/verify-wovies/`, prove one feature, then make a small UI
-   change and check that a fresh agent picks the right feature on its own and
-   runs the one-feature maintain. Open a wovies PR.
+   `.cursor/skills/verify-wovies/`, drive every feature, then make a small UI
+   change and check that a fresh agent picks the right feature on its own. Then add a
+   new feature and check that the agent writes its feature file before
+   driving it. Open a wovies PR.
 6. Fix the global skills from what the pilot shows.
 7. Delete `skills/shared/agentic-test` and its `config.example.json` entry.
    Web-react's `tests/agentic/` stays until that project gets set up.

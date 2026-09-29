@@ -1,45 +1,30 @@
 # Notes verification map
 
-This directory is the maintained source for verifying the user-facing behavior of Notes. Read the index before driving the app, then use the matching feature file as the recipe.
+This directory is the maintained source for verifying the user-facing behavior of Notes. Read the index, then use the matching feature file as the recipe.
 
-## Baseline preconditions
+## Baseline
 
-- Launch Notes at `http://127.0.0.1:4173` with a disposable data directory.
-- Set `NOTES_DATA_DIR=/tmp/notes-verify-$RUN_ID` so concurrent runs do not share state.
-- Seed notes titled `Quarterly plan` and `Grocery list`.
-- Put the `notes` CLI on `PATH`.
-- Run `bin/doctor.sh` and require the expected URL, data directory, and build revision.
-- Never drive an instance that was not started by this verification run.
+- `bin/doctor.sh` reports Notes healthy at `http://127.0.0.1:4173`, on the disposable data directory `bin/launch.sh` created, with the expected build revision.
+- The data directory holds notes titled `Quarterly plan` and `Grocery list`.
+- The `notes` CLI is on `PATH`.
 
 ## Driving conventions
 
-- Start every recipe from the baseline state unless its preconditions say otherwise.
-- Prefer ARIA roles and accessible names over CSS selectors or DOM position.
+- Every command runs from the repository root. `pw` means `.agents/skills/verify-notes/bin/pw.sh`, which runs `npx playwright cli -s=notes` with its files kept in the skill's `.cache/`.
+- Start every feature from the baseline unless its preconditions say otherwise.
+- Prefer roles and accessible names over CSS selectors or DOM position.
 - Treat every command as literal. Keep quoted names and flags unchanged.
-- Run browser actions through `npx playwright cli -s=notes`, one session per verification run.
-- Run terminal actions directly and record the command, stdout, stderr, and exit code.
-- Restore seeded data after a mutation. Do not remove proof artifacts during cleanup.
+- For terminal steps, record the command, stdout, stderr, and exit code.
+- A feature that changes seeded data restores it before it ends.
 
-## Proof and skip reporting
+## Feature file shape
 
-- Capture the user action and the resulting state, not only the final screen.
-- UI proof includes an ARIA snapshot and a screenshot with the app identity visible.
-- CLI proof includes the command, stdout, stderr, and exit code.
-- Mutation proof includes a read-only second view of the stored value.
-- Record the feature ID and entry point used with every artifact.
-- Report an unreachable path with the attempted command and the unmet precondition.
-- Do not report a skipped entry point as verified through a different path.
+Each feature file starts with an H1 and one paragraph describing the user-visible behavior, then exactly four H2s in this order:
 
-## Feature entry contract
-
-Each feature file starts with an H1 title and one paragraph describing the user-visible behavior. It then uses exactly four H2 sections in this order.
-
-1. `Sub-features` lists short IDs with one line for each behavior.
-2. `How to get to it (user POV)` lists every user entry point.
-3. `Driving it with <harness>` starts with `Preconditions:` and uses labeled bullets that pair each user action with an exact command and observable result.
-4. `Gotchas` lists traps that can waste or invalidate a verification run.
-
-Keep implementation details out of the map. Name only user paths, stable handles, required state, commands, and observable proof.
+1. `Sub-features`: short IDs, one line per behavior.
+2. `How to get to it (user POV)`: every entry point a user has.
+3. `Driving it with <tool>`: `Preconditions:`, then labeled bullets that pair each user action with an exact command and its observable result, ending with a proof step.
+4. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features
 
