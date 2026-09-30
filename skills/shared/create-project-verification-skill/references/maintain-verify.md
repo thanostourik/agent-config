@@ -1,39 +1,52 @@
 ---
 name: maintain-verify-<app>
-description: "Full audit of the verify-<app> skill and its feature map: read every feature from source, drive every feature live, and ship one PR of proven corrections. Run it by hand now and then, with /maintain-verify-<app>."
+description: "Maintain the verify-<app> feature map from source without driving the app. Use /maintain-verify-<app> for map updates, or explicitly request full audit to also drive every feature live."
 disable-model-invocation: true
 ---
 
 # Maintain verify-<app>
 
-A feature map rots the moment the app changes. Each change updates its own features' entries as part of `verify-<app>`; this audit catches what those updates missed. The unit of rigor is the feature, not every sentence: cover each feature from source and exercise it live, without re-proving every bullet.
+A feature map rots the moment the app changes. Each change updates its own features' entries as part of `verify-<app>`; maintenance catches what those updates missed.
+
+## Choose the mode
+
+- **Update map (default):** `/maintain-verify-<app>` reads source and updates the feature files and index. Do not launch or drive the app. Report these edits as source-reviewed, not live-verified.
+- **Full audit (explicit):** `/maintain-verify-<app> full audit`, or an explicit request to drive all features, updates the map and then drives every feature, including unchanged ones. Initial skill generation also requires this mode.
+
+Do not escalate map maintenance to a full audit because many files changed or a recipe needs live confirmation. Record that uncertainty for a later drive. Ordinary `verify-<app>` still drives the features affected by a product change.
 
 When you post a message anyway, you may add progress lines such as `read 2/5: search, theme — 1 wrong step` or `drive 7/16: projects — pass`. Never change how you split, delegate, or order work to produce them, and never add a turn just to report.
 
 ## Edit scope
 
-Only edit `.agents/skills/verify-<app>/` (its SKILL.md, features/, and helper scripts) and the matching stub in `.claude/skills/`. Never edit product code: a behavior the map describes that the app no longer does is either map drift (fix the map) or a product regression (report it, don't paper over it in the map).
+In update-map mode, edit only the feature files and index; report helper or lifecycle problems without attempting a live repair. In full-audit mode, corrections may also touch `verify-<app>/SKILL.md`, its helpers and its matching Claude Code stub. Never edit product code during maintenance.
 
-## Pass
+## Update the map
 
 1. **Index.** Read `features/README.md` and list its sibling files. Fix missing, extra, duplicate, or dead entries.
-2. **Read the source.** One read-only subagent per feature file, launched concurrently where the agent supports subagents; otherwise read each feature in turn. Each explains how the user-facing feature works from source, flags likely map drift with citations, and returns one concise recipe to drive it. Readers never drive the app and never edit files. Return shape: feature summary / source entry points / likely drift or none / one recipe.
-3. **Reconcile.** Every feature file has a returned summary. Spot-check cited drift; don't re-prove clean claims. Look for user-facing features missing from the map (routes, navigation, commands, recent changes); require a concrete source path before calling one missing, then write its feature file and index entry. Merge overlapping recipes into as few app states as practical.
-4. **Drive everything.** Required even when the source looks clean. You own all driving and follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, Evidence, and Cleanup sections. Drive every feature file, whole. When a step fails, decide which of three it is:
-   - **Map drift:** the file is wrong about the app (description, sub-features, entry points, steps, commands, expected results). Fix the file to match what the app does and re-drive the fixed steps.
-   - **Harness gap:** the app works but the skill can't drive it. Fix the skill or its helpers and re-drive.
-   - **Product gap:** the app is actually broken. Record it for the user and keep the expected result as it was; never write a bug into the map as expected behavior.
+2. **Read the source.** Cover each feature and inspect routes, navigation, commands or endpoints for missing features. When delegating, use small batches of read-only readers grouped by related features; do not require one agent per file. Readers never edit or drive. Return shape: feature summary / source entry points / likely drift or none / proposed recipe. Without subagents, read the groups yourself.
+3. **Reconcile.** Spot-check cited drift and update the files and index. Require concrete source evidence for additions and removals. Preserve expected behavior supported by a request, documented contract or established test; current code alone does not prove that a conflicting expectation is obsolete. Report possible product defects and unresolved expectations instead of writing them into the map as normal behavior. Include exact prerequisite setup and fixture cleanup so each recipe can run from the baseline without another feature's leftovers.
 
-   A feature that can't be reached is unreachable only with the concrete prerequisite (auth, entitlement, OS, external state) and the route attempted; if the map omits that prerequisite, that's drift. A doctor failure caused by the skill itself is a harness gap: fix it and retry once before calling the pass blocked.
+For update-map mode, continue directly to Ship. No browser, app startup or feature drive is needed to complete this mode.
 
-   Throughout, hold three invariants: doctor before the first drive and after any failed drive, and reset or relaunch when the app looks wedged even though doctor passes; evidence captured so far survives every cleanup, checked where it lives; nothing a drive started outlives its use. Tear down after the last drive, then check the evidence is still there.
+## Full audit only
+
+You own all driving. Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, Evidence and Cleanup sections, including operation deadlines and progress reporting. Create a fresh environment for the run; never attach to existing application services. One driver uses the run's environment at a time; readers remain read-only. Merge overlapping setup where practical, but exercise every feature's mapped checks and entry points. Keep a small progress table under `.cache/` with features reviewed, checks driven, results, omissions and evidence so an interrupted pass can resume without losing what was proved. After an aborted run, clean up its recorded leftovers and create a new environment for the remaining checks; retain evidence, not runtime state.
+
+Run doctor before the first drive and after a failed drive. Classify failures using `verify-<app>`'s When a drive fails section. Correct driving instructions or helpers and retry affected steps. Report development-environment defects separately from product defects. Change an expected result only when there is evidence that the contract changed, never simply because the app disagrees. Record uncertain expectations for a decision. A known product failure stays failed; a disabled dependency's failure path does not verify its success path.
+
+A blocked path needs its concrete missing prerequisite and the route or command attempted; add omitted prerequisites to the map. If doctor fails because of a helper defect, correct it and retry once before reporting the remaining blocker. When a healthy-looking app is wedged, clean up the run's resources and relaunch without resetting pre-existing resources.
+
+Always finish or abort through Cleanup, including when startup or a drive fails. Remove run-created data and resources, restore the original environment, and retain evidence. Do not add a destructive reset before the pass. Check cleanup completed and evidence still exists before reporting; retain ownership records and report leftovers if cleanup failed. Re-run only affected checks after corrections.
 
 ## Ship
 
-Pick one outcome and say which:
+Follow the repository's branch, commit and PR conventions as edits are made. Keep all corrections in one branch and PR. Re-read changed files before shipping. Report the maintenance outcome separately from feature results:
 
-- **clean:** every feature got source and live coverage; nothing to change. No branch, no PR.
-- **changed:** one branch and one PR of proven corrections, following the repo's conventions. Re-read every changed file first.
-- **blocked:** coverage could not finish, or a proven fix could not ship safely. Say exactly what blocked it.
+- **clean:** the selected mode finished and there were no corrections. No new PR is needed. This does not mean all product checks passed.
+- **changed:** the selected mode finished and corrections shipped in one PR.
+- **blocked:** the selected mode could not finish, cleanup failed, or corrections could not ship safely. Say what remains incomplete, including any partial changes already shipped.
 
-Report per `verify-<app>`'s Report section, one line per feature, plus the product gaps found. Keep working notes in `.agents/skills/verify-<app>/.cache/`, never in the repo's tracked files.
+For **update map**, name the mode, summarize additions, removals and corrections, and state `Source-reviewed; no live drives run`. Include unresolved expectations and helper problems. For **full audit**, also report per `verify-<app>`'s Report section: one line per feature with pass, fail, partial or blocked, omissions and verified evidence links, plus the classified findings and cleanup result. Incomplete live coverage makes the full audit blocked even if its map corrections shipped.
+
+Keep temporary working notes under `.agents/skills/verify-<app>/.cache/`, never in tracked files. Preserve the final progress/results table with the evidence and remove disposable working notes during cleanup.
