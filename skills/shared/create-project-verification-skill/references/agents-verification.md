@@ -8,11 +8,13 @@ need a live drive and when focused checks suffice. Unchanged intended behavior
 does not automatically exempt a refactor from verification.
 
 Use [maintain-verify-<app>](.agents/skills/maintain-verify-<app>/SKILL.md) to keep the
-map current. Its default mode reviews source and updates the map without
-launching or driving the app. Request `full audit` explicitly to also drive every
-feature, including unchanged ones. Use `/maintain-project-verification-skill` to
-update these skills to the current generator; that also defaults to map-only
-maintenance, with focused live checks for changed helpers.
+map current. `/maintain-verify-<app>` reviews source, updates the map and drives
+new or meaningfully changed recipes. Wording, index edits and deletions alone
+need no drives. `/maintain-verify-<app> map only` updates without launching or
+driving the app; `/maintain-verify-<app> full audit` drives every feature, including
+unchanged ones. Use `/maintain-project-verification-skill` to update these skills
+to the current generator with the same three modes. Global maintenance also
+runs focused live checks for changed helpers, even with `map only`.
 
 Follow the verification skill's Isolation, Launch, Doctor and Cleanup sections
 to create a fresh, disposable environment for each run. Never attach to existing
