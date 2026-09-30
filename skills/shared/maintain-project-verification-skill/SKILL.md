@@ -23,10 +23,12 @@ Read `create-project-verification-skill`: its `SKILL.md` and everything under it
 Compare the project against the spec. First identify its learned setup, isolation, lifecycle, feature prerequisites, ordering, commands and gotchas, then update the rules without losing that knowledge:
 
 - **Keep:** project-specific behavior and working commands that meet the current spec. Do not regenerate feature knowledge or remove an isolation guard just because the generic template does not name it.
-- **Bring up to date:** layout, frontmatter and descriptions, required sections and rules, feature shape, both maintenance modes, invocation metadata, Claude Code stubs, `.gitignore`, required helpers, output paths, evidence links in reports and the `AGENTS.md` instruction. Merge the maintenance reference with the project's valid adjustments instead of blindly replacing it.
+- **Bring up to date:** layout, frontmatter and descriptions, required sections and rules, feature shape, both maintenance modes, invocation metadata, Claude Code stubs, `.gitignore`, required helpers, output paths and evidence links in reports. Merge the maintenance reference with the project's valid adjustments instead of blindly replacing it.
 - **Replace obsolete behavior:** routine reset-before steps, cleanup that only stops run-owned resources while keeping their data, concurrent driving against shared state, and reports that call failed or incomplete checks passed. Generate project-specific commands implementing the generic lifecycle: preserve what pre-existed, remove what the run created, restore what it changed and retain evidence on success or failure. An old workaround is not a reason to preserve behavior that violates the current spec.
 
 When the spec now asks for a decision the project never made (for example, a new section that depends on how the app runs), make it the way steps 1 and 2 of the generator describe, asking the user only what the repo can't answer.
+
+Reconcile the project's `AGENTS.md` verification guidance using step 6 of the generator and its `references/agents-verification.md`. Replace the old one-line instruction with the complete section, merge existing relevant text, and check imported instructions for conflicts. Keep operational commands in the skill, preserve focused test commands and unrelated instructions, and report any older verification system that needs a retirement decision. This is part of an upgrade even when no feature is driven.
 
 ## 4. Check and maintain
 

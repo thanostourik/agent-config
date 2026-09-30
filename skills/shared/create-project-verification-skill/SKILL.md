@@ -104,13 +104,13 @@ Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agent
 
 Write the two Claude Code stubs from [`references/claude-stub.md`](references/claude-stub.md). Their `name` and `description` must match the real skills exactly, and the maintain stub also carries `disable-model-invocation: true`.
 
-## 6. Point the project's instructions at it
+## 6. Reconcile the project's verification instructions
 
-Add this line to the project's `AGENTS.md`, inside an existing section about verification or testing, or under a new `## Verification` section:
+Write a coherent `## Verification` section in the project's `AGENTS.md`, using [`references/agents-verification.md`](references/agents-verification.md) and replacing `<app>`. Integrate an existing verification section rather than appending a second one. For multiple apps, identify which surface each skill covers. Use links relative to `AGENTS.md`; the section must tell a new agent when to verify, where the map and skills live, which maintenance mode to choose, who manages the environment, and what evidence to report.
 
-```
-Before calling user-facing work done, update its feature map entry and verify it with the `verify-<app>` skill.
-```
+Read the rest of `AGENTS.md` and any instructions it imports for conflicting verification guidance. Replace superseded manual launch and cleanup recipes with references to the skill. Reconcile stale startup restrictions with the applicable user instructions and existing authorization; do not invent a new approval requirement or silently remove a deliberate restriction. If a conflict cannot be resolved from those instructions, ask about that specific conflict. Keep exact ports, resource names, dependency configuration and lifecycle commands in the skill, so there is only one maintained procedure.
+
+Preserve relevant test, lint and type-check guidance and add the exact focused commands found in the repo where missing. Do not turn every verification into a full build. If an older verification system exists, identify its overlapping coverage and conflicting instructions; do not delete it without explicit authorization. Keep this reconciliation limited to verification guidance, preserving unrelated project instructions.
 
 ## 7. Prove it
 
