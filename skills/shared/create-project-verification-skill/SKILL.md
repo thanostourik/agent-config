@@ -21,7 +21,7 @@ You write:
   bin/                                          helpers
   .gitignore                                    ignores .cache/
   .cache/                                       everything a run writes
-.agents/skills/maintain-verify-<app>/           the full audit, run by hand
+.agents/skills/maintain-verify-<app>/           map maintenance, optional full audit
   SKILL.md
   agents/openai.yaml
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
@@ -30,6 +30,8 @@ You write:
 
 `<app>` is a short lowercase name for the app. Codex, Cursor, Grok and OpenCode read `.agents/skills/`; Claude Code reads only `.claude/skills/`. The stubs exist for Claude Code and are invisible duplicates elsewhere. Never use symlinks: Windows checkouts turn them into plain files.
 
+From initial discovery through the final audit, helper agents may read source in small concurrent batches, grouping related features per reader. They return findings and proposed recipes, never edit files or drive the app. You integrate their findings and own all driving, with only one driver using the environment at a time. An environment already being driven by another session is unavailable; a different browser session or record prefix does not isolate shared data. Do not create one agent per feature by default.
+
 ## 1. Interview the repo, not the user
 
 Answer these from the codebase and only ask the user what you cannot observe:
@@ -37,19 +39,22 @@ Answer these from the codebase and only ask the user what you cannot observe:
 - **Surface:** what does a user actually touch? A web UI, a CLI/TUI, a desktop app, an API, a mobile app, firmware, a library? A repo can have several; pick the primary one and note the rest.
 - **Run:** how does the app start locally? Prefer the repo's own documented dev command (package scripts, Makefile, README quickstart). Note ports, env vars, seed data, auth.
 - **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and any docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service that lives in another repo, learn how to start it from that repo; ask the user where its checkout is if you need to read it.
-- **Side effects of starting:** launch the app once, then check `git status` and the developer's config files. Dev tools often rewrite local env files or generate files on start. Also create `.agents/skills/verify-<app>/.cache/`, write a file into it while a page is open, and check that the page does not reload; if it does, stop and ask the user.
+- **Side effects of starting:** inspect startup commands and configuration before launching. Identify files, data, processes and external systems startup may change. After choosing isolation and cleanup in step 2, launch once and compare against the recorded original state. Where the app has a watched page, write into `.agents/skills/verify-<app>/.cache/` while it is open and check that it does not reload; if it does, clean up and ask the user.
 - **Observe:** what evidence can be captured? Screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, DB state.
 
 If the checkout doesn't build or start as-is, fix that first (or report it precisely) before generating; a skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, clearly marked as verification scaffolding, and remove it in cleanup.
 
 ## 2. Decide once, write one path
 
-Decide these now, with the user where needed, and write only the outcome into the skill. The generated skill has no "if the project has X" branches: the one question it asks at run time is whether a healthy instance is already running.
+Decide these now, with the user where needed, and write the project's concrete path into the skill. At run time, check whether an existing instance is healthy, isolated and safe to reuse; health alone is not enough.
 
 - **Isolation.** A drive never writes to the developer's persistent data and never disturbs what the developer is running. Pick one:
-  1. the project already has a disposable environment (for example a `dev_setup/dev.sh` that runs Docker Compose under a per-branch project name): use it, and let drives write freely;
+  1. the project already supports disposable environments: use that mechanism, with explicit ownership of the run's resources and data;
   2. propose creating one, show the user the files, and create it only if they approve;
   3. drives stay read-only, and the skill lists every control that writes and must not be used.
+
+  Before startup or the first request, trace where startup and driving can send writes, including dependencies, gateways, storage, email and background jobs. Configure disposable destinations or disable the affected operations, then verify the effective configuration. A local URL, branch name or separate container project does not prove isolation. Check shared ports and resources too; if the environment cannot coexist with another run, require sequential use. Record any success paths made unreachable by isolation.
+- **Lifecycle.** Record what exists before the run and how to restore it. Register each resource as it is created, so cleanup also works after partial startup. Every run, including interview probes and ordinary verification, must restore that original state on success, failure or interruption. Remove its temporary data, sessions, files, databases, containers, volumes and networks where applicable; stop its processes; restore changed configuration. Preserve pre-existing resources and data, and keep evidence. Generate exact cleanup commands for this project, with failure handling in lifecycle helpers. Do not use a routine destructive reset before verification. If a previous run was abruptly killed, recover only resources its ownership record proves it left behind; never wipe an environment to hide missing cleanup.
 - **Drive tool.** Every step must be a command an agent runs from a shell, so it works the same in every agent:
   - web UI: Playwright's browser CLI, from the project's own Playwright (built in since 1.63; add `playwright` as a pinned dev dependency if the project has none, or use a pinned `npx playwright@<version>` if the repo forbids new dependencies). Ship `bin/pw.sh`, which runs `npx playwright cli -s=<app> "$@"` with `PLAYWRIGHT_MCP_OUTPUT_DIR` set to the skill's `.cache/cli/`; agents' shells don't keep environment variables between commands, so the wrapper sets it every time. Target elements with role locators such as `"getByRole('button', { name: 'Save' })"`.
   - API: `curl` with the exact method, URL, headers, and body.
@@ -65,13 +70,17 @@ Decide these now, with the user where needed, and write only the outcome into th
 - **Pick features:** read `features/README.md` and map the change to the user-facing features it affects: existing features it alters and new ones it adds. State each and why in one line. A change with no user-visible effect is not driven; say so instead.
 - **Update the map first:** before driving, make the map describe the app as it is after the change. A new feature gets a new feature file in the shape `features/README.md` describes, and an index entry. An altered feature gets its file edited, or a new one if it was never mapped. A removed feature's file and entry are deleted. This is part of the change, like updating tests next to the code, so it is in scope even when the request did not mention it. Then drive each picked feature file once, whole.
 - **Isolation:** the option chosen in step 2, and what it means for drives. For read-only drives, the list of controls that write and must not be used.
-- **Launch:** the exact commands that start the app and whatever it depends on, and how to tell it's ready (a log line, a port answering, a prompt). Attach to a healthy instance when doctor finds one; otherwise start one. Launch backs up any file that starting rewrites and restores it once the app is up; it records any file that starting generates, for cleanup. For a short-lived CLI or TUI there is no server to keep alive: launch means build once, then start each drive in its own isolated session.
-- **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build, port owned by the expected process, auth valid, dependencies answering. The agent runs it first and whenever anything looks off.
-- **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order.
-- **When a drive fails:** a feature file holds two kinds of content: how to drive (commands, locators, waits) and what should happen (expected results). Fix how to drive only when the user-visible result stays the same, for example an ambiguous locator for an unchanged button, and re-drive that step. Never change an expected result to make a drive pass. For a feature the change touched, the expected results were written from the request before driving, so a failure means the code is wrong: fix the code. For a feature the change did not touch, report the mismatch (the map expects X, the app does Y) and leave the file alone; the full audit settles it.
+- **Launch:** the exact commands that start the app and its dependencies, and how to tell each is ready. Reuse an instance only when doctor confirms health, isolation and exclusive use for driving; record that it pre-existed so cleanup preserves it. Otherwise create the run's disposable resources and baseline without resetting existing ones. Back up files startup rewrites and record resources as they are created, before waiting for readiness. If startup fails, clean up what already started. For a short-lived CLI or TUI, launch means build once, then start each drive in its own isolated session.
+- **Doctor:** one read-only check that answers "is this instance worth driving?": process up, right version/build and checkout, expected resource ownership, auth valid, baseline data present, dependencies answering and effective destinations isolated. Run it before the first drive and after a failed drive. A healthy process with the wrong data or configuration is not ready.
+- **Drive:** how to use the drive tool on this app: session name, sign-in, viewport, stable handles (roles and accessible names, data attributes, prompt strings, route paths) over coordinates and tab order. One agent owns all driving of the shared environment; source readers never operate it.
+- **When a drive fails:** record the action, expected result and its basis (the request, documented contract or established test), actual result, and relevant environment conditions. Diagnose before deciding what to fix:
+  - **Driving instructions or helper defect:** a command, locator, wait or helper is wrong. Correct it without changing the expected behavior, then retry the affected steps.
+  - **Development-environment defect or missing prerequisite:** setup, seed data or a dependency prevents the check. Report that separately from a product defect. Repair only within the authorized scope; a disabled dependency's error path does not prove its success path.
+  - **Product defect:** the real path contradicts supported expected behavior. Fix product code only when it is part of the requested change; otherwise report the mismatch and leave that expectation intact.
+  - **Uncertain expectation:** report the observation and the missing decision. Neither current code nor a failed assertion alone establishes what the product should do. Never rewrite an expectation merely to pass.
 - **Evidence:** everything a run writes (evidence, CLI files, sessions, pids, logs) goes under `.agents/skills/verify-<app>/.cache/`, gitignored, the same path in every project and never outside the repo; proof for a feature goes to `.cache/evidence/<feature>/`. Proof standards: exercise the real user path, not internal setters or test-only endpoints; capture the action and the resulting state, not just the final screen; verify side effects (files written, rows inserted, messages sent) alongside what's visible; mocks only where a production boundary already isolates the external system. When the safe path is a dry-run or test mode, verify what it actually skips by observing (files, network, git refs) rather than trusting its name.
-- **Report:** one line per driven feature: the result and the path of the file that shows it, relative to the repo root; for a failure, the failing step's screenshot. For example `trash — fail at "empty to trash" — .agents/skills/verify-<app>/.cache/evidence/trash/empty.png`. A feature that could not be reached gets its missing prerequisite instead.
-- **Cleanup:** tear down what the run started. Never kill by process name; kill what you started, and leave running what was running before. Restore what launch backed up and remove what starting generated. Cleanup never deletes evidence.
+- **Report:** one line per feature with **pass** (all mapped checks exercised and met), **fail** (an exercised check missed its expected result), **partial** (some checks exercised without failures, others unverified), or **blocked** (no meaningful drive possible). A failure stays failed even when known; also list any checks not exercised. Include the missing prerequisite and attempted route or command for blocked paths. Link the evidence with explicit Markdown links using absolute paths resolved from the current checkout, for example `trash — fail at "empty to trash" — [empty.png](/absolute/checkout/.agents/skills/verify-app/.cache/evidence/trash/empty.png)`. Never rely on a prefix stated elsewhere to complete a link. Check every linked file exists after cleanup; use a screenshot for a UI failure and request/response or terminal evidence for other surfaces. Report cleanup failures separately; a feature pass does not imply successful cleanup.
+- **Cleanup:** the exact commands implementing step 2's lifecycle, on completion, failure and interruption. Stop only recorded processes, never by name. Remove all run-owned resources and temporary state, not merely stop containers while retaining volumes. Restore changes to pre-existing resources without deleting them. Keep proof and diagnostic logs needed for the report under `evidence/`; remove disposable sessions and runtime files after cleanup succeeds. Check the original environment is restored and linked evidence survives. If cleanup fails, retain the ownership record, report exactly what remains and how to finish cleanup; do not claim completion.
 - **Helpers:** every script in `bin/`, what it does and how to call it. Scripts are bash and executable; on Windows the agent runs inside WSL.
 
 ## 4. Map every feature
@@ -82,10 +91,12 @@ Each feature file starts with an H1 and one paragraph describing the user-visibl
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:`, then labeled bullets that pair each user action with an exact command and its observable result, ending with a proof step.
+3. `Driving it with <tool>`: `Preconditions:` with exact setup, then labeled bullets that pair each user action with an exact command and its observable result, ending with proof and fixture cleanup.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 Keep code paths out of the map: the agent maps a change to features by reasoning, and the audit reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
+
+Make each recipe runnable from the documented baseline in a fresh session: provide setup for its data instead of relying on another feature having run, and keep variable creation and use in one command block or explicitly persist them under `.cache/`. State any unavoidable ordering. Restore fixtures so a feature can run again; when an operation is irreversible, use a disposable fixture the run can remove. Administrative setup and cleanup are allowed inside that isolated environment, but never substitute them for the user action being proved. The example map is for a fictional app; derive real commands from the project and exercise them.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
@@ -103,8 +114,10 @@ Before calling user-facing work done, update its feature map entry and verify it
 
 ## 7. Prove it
 
-Run the Pass from `maintain-verify-<app>` on what you just wrote: every feature file checked against the source and driven live, under the Pass's rules. A generated skill that was never executed is a draft, not a deliverable.
+Run `maintain-verify-<app>` in **full audit** mode on what you just wrote: every feature file checked against source and driven live under its rules. Generation always requires this mode even though later maintenance defaults to map-only. Drive the written recipes from a fresh session, not from unrecorded exploratory state. A feature that is partial, blocked or failing must be reported as such; writing the map does not complete this proof.
+
+Exercise the lifecycle too: run a representative state-changing feature, clean up, and run it again without a reset-before step. Where helpers start resources, exercise a controlled startup failure after a resource has been created and verify cleanup removes it. Check pre-existing resources remain unchanged and evidence survives. Re-run only affected checks after corrections; do not repeat a complete audit merely because it is the final step. A generated skill without live proof remains a draft, even if a PR is already open.
 
 ## 8. Hand over
 
-Commit everything following the repo's own branch and commit conventions. Report per `verify-<app>`'s Report section, plus what isolation option was chosen, that `/maintain-verify-<app>` is the project's full audit for any developer to run now and then, and that `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes.
+Commit everything following the repo's own branch and commit conventions. Report per `verify-<app>`'s Report section, plus the isolation choice and lifecycle checks. Explain that `/maintain-verify-<app>` updates the map without driving, `/maintain-verify-<app> full audit` also drives every feature, and `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes, with the same optional full audit.
