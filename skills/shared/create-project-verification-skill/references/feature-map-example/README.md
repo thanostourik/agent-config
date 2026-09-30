@@ -1,6 +1,6 @@
 # Notes verification map
 
-This directory is the maintained source for verifying the user-facing behavior of Notes. Read the index, then use the matching feature file as the recipe.
+This directory is the maintained source for verifying the browser and CLI behavior of Notes. Read the index, then use the matching feature file as the recipe.
 
 ## Baseline
 
@@ -25,7 +25,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 
 ## Feature file shape
 
-Each feature file starts with an H1 and one paragraph describing the user-visible behavior, then exactly four H2s in this order:
+Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly four H2s in this order:
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.

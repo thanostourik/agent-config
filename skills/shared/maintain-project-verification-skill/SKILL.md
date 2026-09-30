@@ -28,7 +28,7 @@ Compare the project against the spec. First identify its learned setup, isolatio
 
 When the spec now asks for a decision the project never made (for example, a new section that depends on how the app runs), make it the way steps 1 and 2 of the generator describe, asking the user only what the repo can't answer.
 
-Reconcile the project's `AGENTS.md` verification guidance using step 6 of the generator and its `references/agents-verification.md`. Replace the old one-line instruction with the complete section, merge existing relevant text, and check imported instructions for conflicts. Keep operational commands in the skill, preserve focused test commands and unrelated instructions, and report any older verification system that needs a retirement decision. This is part of an upgrade even when no feature is driven.
+Reconcile the project's `AGENTS.md` verification guidance using step 6 of the generator and its `references/agents-verification.md`. Replace the old one-line instruction with the complete section, merge existing relevant text, and check imported instructions for conflicts. Name the project's actual work scope in `AGENTS.md`; put concrete verification triggers in the skill's description and Pick features section. Replace vague "user-facing work" gates and automatic refactor exemptions with selection based on observable behavior the change could affect. Keep operational commands in the skill, preserve focused test commands and unrelated instructions, and report any older verification system that needs a retirement decision. This is part of an upgrade even when no feature is driven.
 
 ## 4. Check and maintain
 

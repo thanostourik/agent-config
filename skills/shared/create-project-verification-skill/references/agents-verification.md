@@ -1,10 +1,11 @@
 ## Verification
 
-Before calling a change to the app's user-facing behavior complete, use
-[verify-<app>](.agents/skills/verify-<app>/SKILL.md). Read the
-[feature map](.agents/skills/verify-<app>/features/README.md), update entries for
-the behavior added, changed or removed, and drive the affected features. A change
-with no user-facing effect needs the relevant focused checks, not an app drive.
+Before calling <work-scope> complete, use
+[verify-<app>](.agents/skills/verify-<app>/SKILL.md) to select and run the relevant
+checks. Update the [feature map](.agents/skills/verify-<app>/features/README.md)
+when behavior is added, changed or removed. The skill decides which features
+need a live drive and when focused checks suffice. Unchanged intended behavior
+does not automatically exempt a refactor from verification.
 
 Use [maintain-verify-<app>](.agents/skills/maintain-verify-<app>/SKILL.md) to keep the
 map current. Its default mode reviews source and updates the map without
