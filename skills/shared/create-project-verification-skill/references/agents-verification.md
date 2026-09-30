@@ -14,9 +14,11 @@ update these skills to the current generator; that also defaults to map-only
 maintenance, with focused live checks for changed helpers.
 
 Follow the verification skill's Isolation, Launch, Doctor and Cleanup sections
-for environment management. Preserve pre-existing services and data; never stop
-someone else's process to free a port. After completion or failure, remove the
-run's resources and temporary data, restore what it changed, and retain evidence.
+to create a fresh, disposable environment for each run. Never attach to existing
+application services or use their data; report occupied required resources as a
+blocker. After completion or failure, remove the run's resources and temporary
+data, restore what it changed, and retain evidence. Leave pre-existing services
+and data untouched.
 Do not reset an environment at startup to compensate for incomplete cleanup.
 
 Report actual coverage as pass, fail, partial or blocked, with omitted checks and

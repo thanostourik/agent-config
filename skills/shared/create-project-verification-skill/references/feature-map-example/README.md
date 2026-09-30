@@ -7,6 +7,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - `bin/doctor.sh` reports Notes healthy at `http://127.0.0.1:4173`, on the disposable data directory `bin/launch.sh` created, with the expected build revision.
 - Launch creates a new disposable data directory at `.agents/skills/verify-notes/.cache/data` with notes titled `Quarterly plan` (body `Draft budget`) and `Grocery list` (body `Milk`). It does not reset an existing directory.
 - The `notes` CLI is on `PATH`.
+- Every run starts a new Notes instance with its own data and browser session. A healthy Notes instance already running is not a verification target.
 
 ## Driving conventions
 
@@ -16,6 +17,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Treat every command as literal. Keep quoted names and flags unchanged.
 - For terminal steps, record the command, stdout, stderr, and exit code.
+- Wait for the named UI state or command result within the deadline documented by `verify-notes`. Long operations report progress while waiting; timeout captures diagnostics and triggers run cleanup.
 - A feature that changes seeded data restores it before it ends.
 - Only one agent drives this environment. Source readers never change its browser or data.
 - Every recipe supplies its own prerequisites and removes its fixtures. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
