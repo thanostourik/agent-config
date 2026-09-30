@@ -35,7 +35,12 @@ For plans, assess feasibility and missing decisions. Request an explicit
 statement if no substantive issues are found. Instruct it to review directly,
 without edits, commands, or further delegation.
 
-## Run
+## Run and monitor
+
+Start the command below using the calling tool's background or resumable
+execution mode, and retain its task or session ID so you can check its status
+and exit code. Do not set a review runtime limit or a tool timeout that kills
+the process. A short wait that returns control while leaving it running is fine.
 
 Set `REVIEW_REPO`, `REVIEW_MODEL`, `REVIEW_EFFORT`, and `REVIEW_DIR` to the
 absolute repository path, selected model, selected effort, and artifact
@@ -43,7 +48,7 @@ directory. Run from the repository:
 
 ```bash
 cd "$REVIEW_REPO"
-timeout 300 claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
+claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   --tools "Read,Glob,Grep" --allowedTools "Read,Glob,Grep" \
   --permission-mode dontAsk --disable-slash-commands --strict-mcp-config \
   --no-session-persistence --output-format text \
@@ -54,10 +59,20 @@ The restricted tool list permits source inspection but excludes shell execution,
 editing, and subagents; strict MCP configuration excludes configured external
 tools. This is a static review: the caller remains responsible for tests.
 
-Run in the background with progress checks if it may take several minutes.
-On failure or timeout, report the error and whether output is partial. Do not
-silently switch models or effort, or bypass permissions to make the invocation
-work.
+Check the running task and any new report or log output every 30–60 seconds.
+Give the user a brief progress update at least once a minute, even when there
+is no new output. Keep monitoring until it exits or the user cancels; do not
+end your turn with the review pending or wait for the user to ask you to check.
+
+If the review appears stuck, inspect its process state and logs. A running
+process alone does not prove progress; silence or elapsed time alone does not
+prove a hang and must not trigger cancellation. Report what you can establish
+and keep monitoring when the evidence is inconclusive.
+
+When the task exits, check its exit code and report. Report failures promptly
+and identify any partial output; never present an incomplete review as clean.
+Do not silently switch models or effort, or bypass permissions to make the
+invocation work.
 
 ## Assess the result
 
