@@ -21,7 +21,7 @@ You write:
   bin/                                          helpers
   .gitignore                                    ignores .cache/
   .cache/                                       everything a run writes
-.agents/skills/maintain-verify-<app>/           map maintenance, optional full audit
+.agents/skills/maintain-verify-<app>/           map maintenance with three drive modes
   SKILL.md
   agents/openai.yaml
 .claude/skills/verify-<app>/SKILL.md            stub for Claude Code
@@ -112,10 +112,10 @@ Preserve relevant test, lint and type-check guidance and add the exact focused c
 
 ## 7. Prove it
 
-Run `maintain-verify-<app>` in **full audit** mode on what you just wrote: every feature file checked against source and driven live under its rules. Generation always requires this mode even though later maintenance defaults to map-only. Drive the written recipes from a fresh session, not from unrecorded exploratory state. A feature that is partial, blocked or failing must be reported as such; writing the map does not complete this proof.
+Run `maintain-verify-<app>` in **full audit** mode on what you just wrote: every feature file checked against source and driven live under its rules. Generation always requires this mode even though later maintenance defaults to driving only new or meaningfully changed recipes. Drive the written recipes from a fresh session, not from unrecorded exploratory state. A feature that is partial, blocked or failing must be reported as such; writing the map does not complete this proof.
 
 Exercise the lifecycle too: run a representative state-changing feature, clean up, then run it in a newly created environment without a reset-before step. Where helpers start resources, exercise a controlled startup failure after a resource has been created and verify cleanup removes it. Check pre-existing resources remain unchanged and evidence survives. Check wait helpers with short controlled completion and timeout cases; feature drives still wait for the product's real outcome. Re-run only affected checks after corrections; do not repeat a complete audit merely because it is the final step. A generated skill without live proof remains a draft, even if a PR is already open.
 
 ## 8. Hand over
 
-Commit everything following the repo's own branch and commit conventions. Report per `verify-<app>`'s Report section, plus the isolation choice and lifecycle checks. Explain that `/maintain-verify-<app>` updates the map without driving, `/maintain-verify-<app> full audit` also drives every feature, and `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes, with the same optional full audit.
+Commit everything following the repo's own branch and commit conventions. Report per `verify-<app>`'s Report section, plus the isolation choice and lifecycle checks. Explain the three maintenance calls: `/maintain-verify-<app>` updates the map and drives new or meaningfully changed recipes; `/maintain-verify-<app> map only` updates without feature drives; `/maintain-verify-<app> full audit` drives every feature. `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes and accepts the same three modes, with focused checks for changed helpers in every mode.
