@@ -32,9 +32,22 @@ the merge and cleanup checks. Never delete `main`.
 Confirm the PR is mergeable and its required checks have passed. If checks
 are pending or failing, or the merge status is unknown or blocked, stop.
 
-Squash merge with `gh pr merge "$pr_url" --squash --match-head-commit "$pr_head"`,
+Set the commit message deliberately instead of leaving it to GitHub's default.
+Read the PR's title, number, and description with
+`gh pr view "$pr_url" --json title,number,body`. The subject is the title
+followed by ` (#<number>)`. The body is the description without its
+`## Verification` section, which is a snapshot of the PR and goes stale on main:
+
+- The section starts at the `## Verification` heading and runs to the next
+  heading. If there is none, it runs to the end, except that a final paragraph
+  starting with `Filed by ` stays.
+- Everything else, including the `Filed by ` line, stays unchanged.
+- If the description has no `## Verification` heading, use it unchanged.
+
+Write the body to a temporary file, then squash merge with
+`gh pr merge "$pr_url" --squash --match-head-commit "$pr_head" --subject "$subject" --body-file "$body_file"`,
 using the recorded PR URL and head commit. Do not use `--delete-branch`:
-branch cleanup comes after updating main.
+branch cleanup comes after updating main. Delete the temporary file afterward.
 
 Read the PR again and confirm its state is `MERGED` before continuing.
 If GitHub queued the merge, stop and report that cleanup is still pending.
