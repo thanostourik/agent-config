@@ -14,7 +14,7 @@ Aim for **full**. If the project has no disposable setup, propose one and implem
 
 ## Ownership
 
-An environment is **owned** when the ownership record in `.cache/` lists it and each of its resources carries a marker the project can check: a compose project name, a container label, a data directory path, a port the run picked. A local URL, a branch name or a separate container project name is not a marker.
+An environment is **owned** when the ownership record in `.cache/` lists it and each of its resources carries a marker the project can check: a compose project name, a container label, a data directory path, a port the run picked, an environment variable with the run id on each process (check it in `/proc/<pid>/environ`) plus recorded process-group ids. A local URL, a branch name or a separate container project name is not a marker.
 
 - Use the project's own disposable-environment setup when it creates owned resources (a dev script, a compose profile, a devcontainer). Do not invent a second mechanism next to it.
 - Each run starts from a known baseline. The default is to create a fresh environment. An owned environment left by an earlier run may be reused if every marker still checks out. Reseed it to the baseline first.

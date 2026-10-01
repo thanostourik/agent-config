@@ -29,3 +29,6 @@ generator.
 
 Run the focused tests, lint and type checks relevant to the change as well as any
 required feature drives. Follow the repository's commands below.
+
+- Tests: `<command>`
+- Lint and type checks: `<command>`

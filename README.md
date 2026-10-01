@@ -34,7 +34,7 @@ Start a skill like this:
 
 | Skill | When | Modes |
 |---|---|---|
-| `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write, then fully audit<br>`quick`: write, then a smoke proof. Features are marked `draft`. |
+| `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write, then fully audit<br>`quick`: write, then a smoke proof of one feature per surface. Features not driven stay `draft`. |
 | `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive new, changed and `draft` steps<br>`map only`: no drives<br>`full audit`: drive every step<br>`quick`: like none, one feature per surface |
 
 After generation, the project's own skills are the daily tools:
@@ -44,7 +44,7 @@ After generation, the project's own skills are the daily tools:
 | `verify-<app>` | Agents use it on their own before calling work done. You can also ask for it by name. |
 | `/maintain-verify-<app>` | Keeps the feature map honest. Drives new, changed and `draft` steps. Add `map only` or `full audit`. |
 
-`quick` skips the full audit, so the features stay `draft` until the next
+`quick` skips the full audit, so undriven features stay `draft` until the next
 `/maintain-verify-<app>` drives them. Where a project cannot create a
 disposable environment, the create skill asks you what to do instead of
 guessing.

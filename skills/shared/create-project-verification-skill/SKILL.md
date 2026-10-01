@@ -13,7 +13,7 @@ Every serious project needs a scripted way to drive the real app and prove behav
 ## Modes
 
 - `/create-project-verification-skill` (default): write everything, then run a full audit (step 7).
-- `/create-project-verification-skill quick`: write everything, then run a smoke proof only. The features are marked `draft`.
+- `/create-project-verification-skill quick`: write everything, then drive one feature per surface as a smoke proof. Features it drove and passed are marked `proven`. The others stay `draft`.
 
 Honor an equivalent request, such as "without the audit". Do not ask which mode to use.
 
@@ -48,7 +48,7 @@ Answer these from the codebase. Ask the user only what you cannot observe.
 - **Run:** how the app starts locally. Prefer the repo's documented dev command. Note ports, env vars, seed data and auth.
 - **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and the docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service in another repo, learn how to start it there. Ask the user where that checkout is if you need to read it.
 - **Existing harness:** specs, helper scripts, sign-in or seed tools, curl-able endpoints, a debug port. Reuse them.
-- **Side effects of starting:** what startup may change: files, data, processes, external systems. See [`references/lifecycle.md`](references/lifecycle.md).
+- **Side effects of starting:** what startup may change: files, data, processes, external systems. Check what is already running (`ps`, `ss -ltn`), such as an installed copy of the app holding a port, a global hotkey or a single-instance lock, and record it as original state. See [`references/lifecycle.md`](references/lifecycle.md).
 - **Observe:** the evidence you can capture: screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, database state.
 
 If the checkout does not build or start as-is, fix that first, or report it precisely, before generating. A skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, marked as verification scaffolding, and remove it in cleanup.
@@ -68,18 +68,18 @@ Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill
 
 Create `features/README.md` and one file per feature the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. Find them from code and docs. Do not map internal functions. Follow [`references/feature-map-example/`](references/feature-map-example/).
 
-`features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape and the index. Each index entry carries a status: `proven` once a drive passed, `draft` before that.
+`features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape and the index. Each index entry carries a status: `proven` once a drive passed every step of the feature, `draft` before that.
 
 Each feature file starts with an H1 and one paragraph on the observable behavior, then exactly four H2s in this order:
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with exact setup, then labeled bullets that pair a user action with an exact command and its observable result. End with proof and fixture cleanup. Each bullet is a **step**.
+3. `Driving it with <tool>`: `Preconditions:` with exact setup, then labeled bullets that pair a user action with an exact command and its observable result. End with proof and fixture cleanup. Each labeled bullet is a **step**. Preconditions are setup, not steps. A fixture that is itself a user action worth proving gets its own labeled step.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 Keep code paths out of the map. The agent maps a change to features by reasoning, and the audit reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
 
-Each recipe runs from the documented baseline in a fresh session. It sets up its own data instead of relying on another feature having run, and it keeps variable creation and use in one command block or persists them under `.cache/`. State any unavoidable ordering. Restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
+Each recipe runs from the documented baseline in a fresh session. It sets up its own data instead of relying on another feature having run, and it keeps variable creation and use in one command block or persists them under `.cache/`. State any unavoidable ordering. Prefer a fresh identity or namespace per recipe over deleting fixtures afterwards. Otherwise restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
@@ -102,13 +102,13 @@ Keep the project's test, lint and type-check guidance, and add the exact focused
 Run `maintain-verify-<app>` on what you wrote. Drive the recipes from a fresh session, not from unrecorded exploratory state.
 
 - **Default:** `full audit`. Every feature file is checked against source and every step is driven live. After the audit, run a representative state-changing feature, clean up, and run it in a newly created environment with no reset step. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that pre-existing resources are unchanged and evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
-- **`quick`:** drive one feature per surface from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test. The features stay `draft` in the index until a drive passes them.
+- **`quick`:** drive one feature per surface from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test. Mark the features you drove and passed `proven`. Every other feature stays `draft` until a drive passes it.
 
 A feature that is partial, blocked or failing is reported as such. Writing the map does not complete the proof. A generated skill without live proof is a draft, even if a PR is already open.
 
 ## 8. Hand over
 
-Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say that the features are `draft` and unaudited. Explain the maintenance calls:
+Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say which features are still `draft` and unaudited. Explain the maintenance calls:
 
 - `/maintain-verify-<app>` updates the map and drives new, changed and `draft` steps.
 - `/maintain-verify-<app> map only` updates the map without feature drives.
