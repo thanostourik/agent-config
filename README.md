@@ -19,6 +19,36 @@ To turn a skill, agent, hook, or Jira MCP off, copy `config.example.json` to
 `config.json`. Sync treats a missing entry as on. The next `./sync --apply`
 removes the copies it installed for disabled items.
 
+## Project verification skills
+
+Two skills set up and maintain verification for one project. Run them from the
+project's root, in a new session. Both are manual: the agent never starts them
+on its own.
+
+Start a skill like this:
+
+- Claude Code, Cursor, Grok: type `/skill-name` and the mode, for example
+  `/create-project-verification-skill quick`.
+- Codex: type `$skill-name` and the mode, for example
+  `$create-project-verification-skill quick`.
+
+| Skill | When | Modes |
+|---|---|---|
+| `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write, then fully audit<br>`quick`: write, then a smoke proof. Features are marked `draft`. |
+| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive new, changed and `draft` steps<br>`map only`: no drives<br>`full audit`: drive every step<br>`quick`: like none, one feature per surface |
+
+After generation, the project's own skills are the daily tools:
+
+| Skill | Use |
+|---|---|
+| `verify-<app>` | Agents use it on their own before calling work done. You can also ask for it by name. |
+| `/maintain-verify-<app>` | Keeps the feature map honest. Drives new, changed and `draft` steps. Add `map only` or `full audit`. |
+
+`quick` skips the full audit, so the features stay `draft` until the next
+`/maintain-verify-<app>` drives them. Where a project cannot create a
+disposable environment, the create skill asks you what to do instead of
+guessing.
+
 Jira MCP URLs also go in `config.json` (never in git). Some tools need machine
 setup beyond copying files. Paste this into a new agent session:
 
