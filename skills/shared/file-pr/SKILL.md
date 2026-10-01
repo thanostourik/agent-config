@@ -52,13 +52,15 @@ Follow any repository PR template.
 
 After the verification section, add one last line, exactly in this form:
 
-> Filed by <model> through <harness>.
+> Filed by <model> through <harness>[ in <host>].
 
 `<harness>` is the coding tool running the model, for example `Claude Code` or
-`Codex`. Use only known model information; if the exact model is unavailable,
-write `an unknown model` instead of guessing. This line is the only
-attribution: do not add a harness-supplied line such as "Generated with" or a
-Co-authored-by trailer.
+`Codex`. `<host>` is an app that runs the harness, for example `T3 Code`. Add
+` in <host>` only when the environment states the host; otherwise leave it out.
+Use only known model information; if the exact model is unavailable, write
+`an unknown model` instead of guessing. This line is the only attribution: do
+not add a harness-supplied line such as "Generated with" or a Co-authored-by
+trailer.
 
 Open a ready-for-review PR rather than a draft so review bots can run, unless
 the user requests a draft. Return the PR link.
