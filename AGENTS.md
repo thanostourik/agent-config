@@ -39,8 +39,13 @@ Two things to keep as they are:
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
-  `mcp-atlassian-start` takes a Jira URL, unlocks Bitwarden if needed, reads
-  that login's username and password, and execs `uvx mcp-atlassian`.
+  `mcp-atlassian-start` takes a Jira URL, reads that login's username and
+  password from Bitwarden, and execs `uvx mcp-atlassian`. It asks a `bw serve`
+  agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
+  the vault unlocked in memory, and starts and unlocks that agent when needed.
+  A lookup through the agent takes milliseconds; plain `bw` takes about 3
+  seconds, which is too slow for Codex to list Jira's tools in a thread's first
+  turn. `systemctl --user stop bw-agent` locks the vault again.
 - `config.example.json`: the enable/disable menu for skills, agents, hooks, and
   Jira MCP. Copy it to `config.json` (gitignored) and set `enabled` to `false`
   on what you do not want. Sync does not require an entry. Missing means on.
