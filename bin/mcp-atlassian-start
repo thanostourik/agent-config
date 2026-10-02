@@ -2,6 +2,11 @@
 # Start mcp-atlassian for one Jira URL. Username and password come from the
 # Bitwarden login whose URI is that URL. Sync writes this command into each
 # tool's MCP config; the URL is the only argument.
+#
+# The unlocked vault lives in one `bw serve` agent, the systemd user unit
+# bw-agent, on a socket in XDG_RUNTIME_DIR. Only the first start asks for the
+# master password, and later lookups take milliseconds instead of bw's
+# seconds-long startup. `systemctl --user stop bw-agent` locks it again.
 set -eu
 
 if [ "${1:-}" = "" ]; then
@@ -26,83 +31,120 @@ need bw
 need zenity
 need uvx
 need python3
+need flock
+need systemd-run
+need systemctl
 
-session="${XDG_RUNTIME_DIR}/bw-session"
-if [ -s "$session" ]; then
-  BW_SESSION=$(cat "$session")
-  export BW_SESSION
-fi
+sock="${XDG_RUNTIME_DIR}/bw-agent.sock"
 
-host=${url#*://}
-host=${host%%/*}
-err=$(mktemp "${XDG_RUNTIME_DIR}/bw-err.XXXXXX")
-unlocked=0
-item_json=""
+# Client for the agent's HTTP API. Commands: status, unlock (password on
+# stdin), login <url> (prints shell assignments for user and token).
+client='
+import http.client, json, shlex, socket, sys, urllib.parse
 
-unlock() {
-  pw=$(zenity --password --title='Bitwarden master password' --text='Same password that unlocks the Bitwarden app.
-NOT Client ID. NOT Client Secret. NOT Jira.')
-  test -n "$pw"
-  tmp="${XDG_RUNTIME_DIR}/bw-mp"
-  umask 077
-  printf %s "$pw" > "$tmp"
-  unset pw
-  bw --nointeraction unlock --passwordfile "$tmp" --raw > "$session"
-  rm -f "$tmp"
-  chmod 600 "$session"
-  BW_SESSION=$(cat "$session")
-  export BW_SESSION
+class Agent(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX)
+        self.sock.connect(sys.argv[1])
+
+def call(method, path, body=None):
+    # bw serve accepts only this Host header, even on a unix socket.
+    conn = Agent("localhost:8087")
+    conn.request(method, path, body, {"Content-Type": "application/json"})
+    return json.loads(conn.getresponse().read())
+
+def item(needle):
+    return call("GET", "/object/item/" + urllib.parse.quote(needle, safe=""))
+
+command = sys.argv[2]
+if command == "status":
+    print(call("GET", "/status")["data"]["template"]["status"])
+elif command == "unlock":
+    res = call("POST", "/unlock", json.dumps({"password": sys.stdin.read()}))
+    sys.exit(0 if res.get("success") else 1)
+elif command == "login":
+    url = sys.argv[3]
+    res = item(url)
+    if res.get("message") == "Not found.":
+        res = item(urllib.parse.urlsplit(url).netloc)
+    if not res.get("success"):
+        message = res.get("message") or "Bitwarden lookup failed."
+        if message == "Not found.":
+            message = f"Bitwarden has no login for {url}. The login URI must match this URL."
+        sys.exit(message)
+    login = res["data"].get("login") or {}
+    user = login.get("username") or ""
+    token = login.get("password") or ""
+    if not user or not token:
+        sys.exit("Bitwarden login for this URL has no username or password.")
+    print("user=" + shlex.quote(user))
+    print("token=" + shlex.quote(token))
+'
+
+agent() {
+  python3 -c "$client" "$sock" "$@"
 }
 
-while :; do
-  if item_json=$(bw --nointeraction get item "$url" 2>"$err"); then
-    break
-  fi
-  reason=$(cat "$err")
-  case $reason in
-    *"Vault is locked."*)
-      if [ "$unlocked" = 1 ]; then
-        echo "Bitwarden vault is still locked after unlock." >&2
-        rm -f "$err"
-        exit 1
-      fi
-      unlock
-      unlocked=1
-      ;;
-    *"not logged in"*)
-      echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
-      rm -f "$err"
-      exit 1
-      ;;
-    *"Not found."*)
-      if item_json=$(bw --nointeraction get item "$host" 2>"$err"); then
-        break
-      fi
-      echo "Bitwarden has no login for $url. The login URI must match this URL." >&2
-      rm -f "$err"
-      exit 1
-      ;;
-    *)
-      printf '%s\n' "$reason" >&2
-      rm -f "$err"
-      exit 1
-      ;;
-  esac
-done
-rm -f "$err"
+agent_status() {
+  agent status 2>/dev/null || true
+}
 
-eval "$(printf '%s\n' "$item_json" | python3 -c '
-import json, shlex, sys
-item = json.load(sys.stdin)
-login = item.get("login") or {}
-user = login.get("username") or ""
-token = login.get("password") or ""
-if not user or not token:
-    sys.stderr.write("Bitwarden login for this URL has no username or password.\n")
-    sys.exit(1)
-print("user=" + shlex.quote(user))
-print("token=" + shlex.quote(token))
-')"
+start_agent() {
+  systemctl --user stop bw-agent.service >/dev/null 2>&1 || true
+  rm -f "$sock"
+  systemd-run --user --quiet --collect --unit=bw-agent --setenv=PATH="$PATH" \
+    bw --nointeraction serve --hostname "unix://$sock"
+  tries=0
+  while [ "$tries" -lt 50 ]; do
+    status=$(agent_status)
+    [ -n "$status" ] && return
+    sleep 0.2
+    tries=$((tries + 1))
+  done
+  echo "Bitwarden agent did not start. See: journalctl --user -u bw-agent" >&2
+  exit 1
+}
+
+unlock() {
+  text='Same password that unlocks the Bitwarden app.
+NOT Client ID. NOT Client Secret. NOT Jira.'
+  while :; do
+    pw=$(zenity --password --title='Bitwarden master password' --text="$text") || pw=""
+    if [ -z "$pw" ]; then
+      echo "Bitwarden unlock was cancelled." >&2
+      exit 1
+    fi
+    if printf %s "$pw" | agent unlock; then
+      unset pw
+      return
+    fi
+    unset pw
+    if [ "$(agent_status)" != locked ]; then
+      echo "Bitwarden agent stopped while unlocking. Retry." >&2
+      exit 1
+    fi
+    text='Wrong master password. Try again.'
+  done
+}
+
+# One start or unlock at a time, so parallel sessions show one password window.
+exec 9>"${XDG_RUNTIME_DIR}/bw-agent.lock"
+flock 9
+status=$(agent_status)
+[ -n "$status" ] || start_agent
+case $status in
+  unauthenticated)
+    echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
+    exit 1
+    ;;
+  locked)
+    unlock
+    ;;
+esac
+exec 9>&-
+
+creds=$(agent login "$url")
+eval "$creds"
 
 export JIRA_URL=$url
 export JIRA_USERNAME=$user
