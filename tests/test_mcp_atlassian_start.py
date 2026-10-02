@@ -132,14 +132,14 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
             except ProcessLookupError:
                 pass
 
-    def run_helper(self, expected=0, extra_env=None):
+    def run_helper(self, expected=0, extra_env=None, args=("https://jira.example.com",)):
         env = os.environ.copy()
         env["PATH"] = f"{self.bin}:/usr/bin:/bin"
         env["HOME"] = str(self.root)
         env["XDG_RUNTIME_DIR"] = str(self.runtime)
         if extra_env:
             env.update(extra_env)
-        result = subprocess.run([str(HELPER), "https://jira.example.com"],
+        result = subprocess.run([str(HELPER), *args],
                                 capture_output=True, text=True, timeout=15, env=env)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
@@ -198,6 +198,21 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.run_helper()
         self.assertEqual(self.zenity_calls(), 2)
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_USERNAME"], "jira-user")
+
+    def test_unlock_option_unlocks_the_agent_and_starts_nothing(self):
+        (self.state / "start-status").write_text("locked")
+        self.passwords.write_text("master-password\n")
+        self.run_helper(args=("--unlock",))
+        self.assertEqual(self.zenity_calls(), 1)
+        self.assertEqual([path for _, path, _, _ in self.requests()],
+                         ["/status", "/unlock"])
+        self.assertFalse(self.env_out.exists())
+
+    def test_unlock_option_does_not_prompt_for_an_unlocked_agent(self):
+        self.start_agent("unlocked")
+        self.run_helper(args=("--unlock",))
+        self.assertEqual(self.zenity_calls(), 0)
+        self.assertFalse(self.env_out.exists())
 
     def test_not_logged_in_fails_without_prompt(self):
         self.start_agent("unauthenticated")

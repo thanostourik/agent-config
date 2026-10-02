@@ -45,7 +45,12 @@ Two things to keep as they are:
   the vault unlocked in memory, and starts and unlocks that agent when needed.
   A lookup through the agent takes milliseconds; plain `bw` takes about 3
   seconds, which is too slow for Codex to list Jira's tools in a thread's first
-  turn. `systemctl --user stop bw-agent` locks the vault again.
+  turn. `systemctl --user stop bw-agent` locks the vault again. When a Jira
+  instance is configured, sync also writes the login autostart entry
+  `~/.config/autostart/jira-vault-unlock.desktop`, which runs
+  `mcp-atlassian-start --unlock` so the password dialog appears at login, not in
+  a thread's first turn. Desktops without XDG autostart (a bare window manager)
+  need that command in their own startup config.
 - `config.example.json`: the enable/disable menu for skills, agents, hooks, and
   Jira MCP. Copy it to `config.json` (gitignored) and set `enabled` to `false`
   on what you do not want. Sync does not require an entry. Missing means on.
@@ -211,7 +216,7 @@ Sync makes what it owns match this repository and `config.json`, and touches
 nothing else. It owns two kinds of items:
 
 - whole files: instructions, every file of a skill, agents, the Codex and
-  Cursor hook files, `bin/` scripts
+  Cursor hook files, `bin/` scripts, the Jira login autostart entry
 - entries inside a file that belongs to a tool: the `hooks` key in
   `~/.claude/settings.json`, and each Jira server in the five MCP files
 
