@@ -1,7 +1,9 @@
 #!/bin/sh
 # Start mcp-atlassian for one Jira URL. Username and password come from the
 # Bitwarden login whose URI is that URL. Sync writes this command into each
-# tool's MCP config; the URL is the only argument.
+# tool's MCP config; the URL is the only argument. With --unlock instead of a
+# URL it only starts and unlocks the agent, then exits. Sync installs a login
+# autostart entry that runs it, so the first Jira thread finds the vault open.
 #
 # The unlocked vault lives in one `bw serve` agent, the systemd user unit
 # bw-agent, on a socket in XDG_RUNTIME_DIR. Only the first start asks for the
@@ -9,11 +11,16 @@
 # seconds-long startup. `systemctl --user stop bw-agent` locks it again.
 set -eu
 
-if [ "${1:-}" = "" ]; then
-  echo "usage: mcp-atlassian-start <jira-url>" >&2
+unlock_only=0
+url=""
+if [ "${1:-}" = "--unlock" ]; then
+  unlock_only=1
+elif [ "${1:-}" = "" ]; then
+  echo "usage: mcp-atlassian-start <jira-url> | --unlock" >&2
   exit 1
+else
+  url=$1
 fi
-url=$1
 
 uid=$(id -u)
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
@@ -142,6 +149,9 @@ case $status in
     ;;
 esac
 exec 9>&-
+if [ "$unlock_only" = 1 ]; then
+  exit 0
+fi
 
 creds=$(agent login "$url")
 eval "$creds"

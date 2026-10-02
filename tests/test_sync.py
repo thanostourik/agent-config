@@ -545,6 +545,23 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".claude.json").exists())
         self.assertTrue((self.home / ".local/bin/mcp-atlassian-start").is_file())
 
+    def test_jira_instances_install_a_login_unlock_entry(self):
+        entry = self.home / ".config/autostart/jira-vault-unlock.desktop"
+        self.add_helper()
+        self.jira_config({"work": {"url": "https://jira.example.com"}})
+        self.run_sync("--apply")
+        self.assertIn(f"Exec={self.home}/.local/bin/mcp-atlassian-start --unlock",
+                      entry.read_text())
+        self.jira_config({})
+        self.run_sync("--apply")
+        self.assertFalse(entry.exists())
+
+    def test_jira_instances_missing_install_no_login_entry(self):
+        self.add_helper()
+        self.jira_config({})
+        self.run_sync("--apply")
+        self.assertFalse((self.home / ".config/autostart").exists())
+
     def test_one_jira_instance_installs_as_server_jira(self):
         self.add_helper()
         url = "https://jira.example.com"

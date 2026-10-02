@@ -47,6 +47,7 @@ ROOT = Path(__file__).resolve().parent
 # the "hooks" key of settings.json.
 #   skills/shared/<name>/   -> every tool's skills unless harness says otherwise
 # bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
+# With a Jira instance configured, a login autostart entry unlocks the vault.
 TOOLS = {
     "claude-code": {"instructions": ".claude/CLAUDE.md", "hooks": ".claude/settings.json",
                     "skills": ".claude/skills", "agents": ".claude/agents"},
@@ -665,6 +666,11 @@ def desired_files(config, home, hooks_by_tool):
             target = home / ".local/bin" / script.name
             files[target] = script.read_bytes()
             executable.add(target)
+    if jira_servers(config):
+        files[home / ".config/autostart/jira-vault-unlock.desktop"] = (
+            "[Desktop Entry]\nType=Application\nName=Unlock Jira vault\n"
+            f"Exec={home}/.local/bin/mcp-atlassian-start --unlock\n"
+            "NoDisplay=true\n").encode()
     return files, executable
 
 

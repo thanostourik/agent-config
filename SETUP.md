@@ -10,7 +10,9 @@ after that. Add a section when something new needs steps beyond `./sync`.
    `config.json` under `mcp.jira.instances`. Do not commit that file. Do not
    create or rename Bitwarden items. Do not run `bw login`.
 3. `./sync --apply --replace-existing`
-4. Tell the user to restart the coding tools.
+4. Tell the user to log out and in again, or run
+   `~/.local/bin/mcp-atlassian-start --unlock`, so the vault is open before the
+   first thread. Then restart the coding tools.
 
 ## render-plan
 
