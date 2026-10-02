@@ -12,7 +12,7 @@ This directory is the maintained source for verifying the browser and CLI behavi
 ## Driving conventions
 
 - Every command runs from the repository root. `pw` means `.agents/skills/verify-notes/bin/pw.sh`, which runs `npx playwright cli -s=notes` with its files kept in the skill's `.cache/`.
-- `notes` in the recipes means `notes --data-dir=.agents/skills/verify-notes/.cache/data`. Expand both shorthands in shell commands; no alias or environment variable from an earlier session is assumed.
+- `notes` in the recipes means `notes --data-dir=.agents/skills/verify-notes/.cache/data`. The recipes write the shorthands for brevity. When you run a step, type the full command, because no alias or environment variable from an earlier session exists.
 - Start every feature from the baseline unless its preconditions say otherwise.
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Treat every command as literal. Keep quoted names and flags unchanged.
