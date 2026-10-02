@@ -34,7 +34,5 @@ Each feature file starts with an H1 and one paragraph describing the observable 
 
 ## Features
 
-Each entry carries a status. `proven` means a drive passed every step. `draft` means it has not been driven yet. Maintenance drives every step of a `draft` feature and then marks it `proven`.
-
-- [Create a note](./create-note.md) `proven` covers browser and CLI creation, cancellation, persistence, and cleanup.
-- [Search notes](./search.md) `draft` covers toolbar, keyboard, and CLI search with matching, empty, and clear states.
+- [Create a note](./create-note.md) covers browser and CLI creation, cancellation, persistence, and cleanup.
+- [Search notes](./search.md) covers toolbar, keyboard, and CLI search with matching, empty, and clear states.

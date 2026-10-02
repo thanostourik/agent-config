@@ -13,9 +13,11 @@ Every serious project needs a scripted way to drive the real app and prove behav
 ## Modes
 
 - `/create-project-verification-skill` (default): write everything, then run a full audit (step 7).
-- `/create-project-verification-skill quick`: write everything, then drive one feature per surface as a smoke proof. Features it drove and passed are marked `proven`. The others stay `draft`.
+- `/create-project-verification-skill quick`: map only one feature per surface, drive each of them once as a smoke proof, and stop. `/maintain-verify-<app>` finds the other features in the source and adds them later.
 
 Honor an equivalent request, such as "without the audit". Do not ask which mode to use.
+
+If `.agents/skills/verify-*` or `.agents/skills/maintain-verify-*` already exists, stop before writing anything. Ask the user whether to replace those skills (delete them and generate again) or to upgrade them with `/maintain-project-verification-skill`. Never overwrite them silently.
 
 Messages you post anyway may carry progress lines such as `map 3/15: projects.md written` or `drive 7/16: projects — pass`. Never change how you split, delegate or order work to produce them, and never add a turn just to report.
 
@@ -66,9 +68,9 @@ Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill
 
 ## 4. Map every feature
 
-Create `features/README.md` and one file per feature the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. Find them from code and docs. Do not map internal functions. Follow [`references/feature-map-example/`](references/feature-map-example/).
+Create `features/README.md` and one file per feature the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. Find them from code and docs. Do not map internal functions. In `quick` mode, map only one feature per surface, the ones step 7 drives. Follow [`references/feature-map-example/`](references/feature-map-example/).
 
-`features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape and the index. Each index entry carries a status: `proven` once a drive passed every step of the feature, `draft` before that.
+`features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape and the index.
 
 Each feature file starts with an H1 and one paragraph on the observable behavior, then exactly four H2s in this order:
 
@@ -102,15 +104,15 @@ Keep the project's test, lint and type-check guidance, and add the exact focused
 Run `maintain-verify-<app>` on what you wrote. Drive the recipes from a fresh session, not from unrecorded exploratory state.
 
 - **Default:** `full audit`. Every feature file is checked against source and every step is driven live. After the audit, run a representative state-changing feature, clean up, and run it in a newly created environment with no reset step. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that pre-existing resources are unchanged and evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
-- **`quick`:** drive one feature per surface from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test. Mark the features you drove and passed `proven`. Every other feature stays `draft` until a drive passes it.
+- **`quick`:** drive each mapped feature once from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test.
 
 A feature that is partial, blocked or failing is reported as such. Writing the map does not complete the proof. A generated skill without live proof is a draft, even if a PR is already open.
 
 ## 8. Hand over
 
-Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say which features are still `draft` and unaudited. Explain the maintenance calls:
+Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say that the map is partial and unaudited. Explain the maintenance calls:
 
-- `/maintain-verify-<app>` updates the map and drives new, changed and `draft` steps.
+- `/maintain-verify-<app>` updates the map, adds features missing from it, and drives new and changed steps.
 - `/maintain-verify-<app> map only` updates the map without feature drives.
 - `/maintain-verify-<app> full audit` drives every step of every feature.
-- `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes. It accepts the same modes plus `quick`, and runs focused checks for changed helpers in every mode.
+- `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes. It accepts the same three modes and runs focused checks for changed helpers in every mode.

@@ -1,6 +1,6 @@
 ---
 name: maintain-verify-<app>
-description: "Maintain the verify-<app> feature map and drive new, changed and draft recipes. Use /maintain-verify-<app>, map only for source-only updates, or full audit to drive every feature."
+description: "Maintain the verify-<app> feature map and drive new and changed recipes. Use /maintain-verify-<app>, map only for source-only updates, or full audit to drive every feature."
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,7 @@ A feature map rots the moment the app changes. Each change updates its own featu
 
 ## Choose the mode
 
-- **Changed recipes (default):** `/maintain-verify-<app>` reads source, updates the map, then drives only new, meaningfully changed and `draft` steps. A step is one labeled bullet under `Driving it with <tool>`.
+- **Changed recipes (default):** `/maintain-verify-<app>` reads source, updates the map, then drives only new and meaningfully changed steps. A step is one labeled bullet under `Driving it with <tool>`.
 - **Map only:** `/maintain-verify-<app> map only` updates the map from source without launching or driving the app. Report the edits as source-reviewed, not live-verified.
 - **Full audit:** `/maintain-verify-<app> full audit`, or an explicit request to drive all features, updates the map and drives every step of every feature, including unchanged ones.
 
@@ -33,7 +33,7 @@ Before editing, record the starting map and driving conventions so selection inc
 ## Select what to drive
 
 - **Map only:** go to Ship. No drives.
-- **Changed recipes:** compare the final map with the recorded starting point, step by step. Select each step that is new or whose action, command, expected result, proof or fixture cleanup changed meaningfully, and every step of a new feature file. A new sub-feature selects the steps that exercise it. Select every step of a `draft` feature. If a file's Preconditions, the baseline, the driving conventions or a cleanup step changed, select every step of the files that change affects. Wording, formatting, index repairs, unchanged renames and deletions select nothing. If nothing qualifies, go to Ship without launching the app.
+- **Changed recipes:** compare the final map with the recorded starting point, step by step. Select each step that is new or whose action, command, expected result, proof or fixture cleanup changed meaningfully, and every step of a new feature file. A new sub-feature selects the steps that exercise it. If a file's Preconditions, the baseline, the driving conventions or a cleanup step changed, select every step of the files that change affects. Wording, formatting, index repairs, unchanged renames and deletions select nothing. If nothing qualifies, go to Ship without launching the app.
 - **Full audit:** every step of every feature.
 
 Drive each selected step with the Preconditions it needs. Do not treat unselected steps or features as verified. A product change is different: `verify-<app>` drives the whole feature file.
@@ -50,8 +50,6 @@ A selected step that needs data the baseline lacks gets that data created first,
 
 Every selected step ends with a result: pass, fail, partial or blocked. Never leave one unattempted. If Doctor fails because of a helper defect, correct it and retry once before reporting the blocker. When a healthy-looking app is wedged, clean up the run's resources and relaunch.
 
-When every step of a `draft` feature passes, mark the feature `proven` in the index. A feature with any other result stays `draft`.
-
 Finish or abort through Cleanup, including when startup or a drive fails. Check that cleanup completed and evidence still exists before reporting. Re-run only affected checks after corrections.
 
 ## Ship
@@ -65,7 +63,7 @@ Follow the repository's branch, commit and PR conventions as you edit. Keep all 
 Put the report in the final message. Name the mode and summarize additions, removals, corrections, unresolved expectations and helper problems.
 
 - **Map only:** say `Source-reviewed; no live drives run`.
-- **Changed recipes:** list each selected feature with its selected steps and the map change or `draft` status that selected them. Say how many features were not driven. If none qualified, say no drives were needed.
+- **Changed recipes:** list each selected feature with its selected steps and the map change that selected them. Say how many features were not driven. If none qualified, say no drives were needed.
 - **Full audit:** report every feature.
 
 Give each selected step's result. Name every step that did not pass with its reason: blocked (what was tried), failed or partial. Follow `verify-<app>`'s Report section for omissions, evidence links, classified findings and the cleanup result.

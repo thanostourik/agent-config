@@ -28,10 +28,10 @@ isolation, failure handling, or report rules.
   mode (one driver, marked fixtures only, reports labeled lower confidence), or focused checks
   only. The answer is written into the generated skill. During a run, a step that must touch
   something not owned asks first and names the resource.
-- **Create modes.** Default: write the skills, then full audit. `quick`: write the skills, smoke
-  proof only (launch, doctor, one feature per surface, cleanup), features marked `draft` in the
-  index. `/maintain-verify-<app>` selects every step of a `draft` feature and marks it `proven`
-  after it passes. `maintain-project-verification-skill` passes `quick` through.
+- **Create modes.** Default: map every feature, then full audit. `quick`: map only one feature
+  per surface, drive each once, stop. Maintenance already finds features missing from the map
+  and drives new feature files, so no per-feature status label is needed.
+- **Existing skills.** `create` stops when `verify-*` already exists and asks: replace or upgrade.
 - **Gaps.** Add the verification section to `CLAUDE.md` when it does not import `AGENTS.md`.
   One rule for third-party sign-in. Maintenance checks that the Claude stubs match the real
   skills. The controlled startup-failure test runs only when startup creates more than one

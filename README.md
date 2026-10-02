@@ -34,20 +34,21 @@ Start a skill like this:
 
 | Skill | When | Modes |
 |---|---|---|
-| `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write, then fully audit<br>`quick`: write, then a smoke proof of one feature per surface. Features not driven stay `draft`. |
-| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive new, changed and `draft` steps<br>`map only`: no drives<br>`full audit`: drive every step<br>`quick`: like none, one feature per surface |
+| `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write all features, then fully audit<br>`quick`: write and drive one feature per surface, nothing more |
+| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive new and changed steps<br>`map only`: no drives<br>`full audit`: drive every step |
 
 After generation, the project's own skills are the daily tools:
 
 | Skill | Use |
 |---|---|
 | `verify-<app>` | Agents use it on their own before calling work done. You can also ask for it by name. |
-| `/maintain-verify-<app>` | Keeps the feature map honest. Drives new, changed and `draft` steps. Add `map only` or `full audit`. |
+| `/maintain-verify-<app>` | Keeps the feature map honest. Adds features missing from the map and drives new and changed steps. Add `map only` or `full audit`. |
 
-`quick` skips the full audit, so undriven features stay `draft` until the next
-`/maintain-verify-<app>` drives them. Where a project cannot create a
-disposable environment, the create skill asks you what to do instead of
-guessing.
+`quick` maps and proves only one feature per surface. The next
+`/maintain-verify-<app>` finds the other features in the source, adds them and
+drives them. If a project already has these skills, `create` stops and asks
+whether to replace or upgrade them. Where a project cannot create a
+disposable environment, `create` asks you what to do instead of guessing.
 
 Jira MCP URLs also go in `config.json` (never in git). Some tools need machine
 setup beyond copying files. Paste this into a new agent session:

@@ -21,7 +21,7 @@ remaining resources.
 
 Keep the map current with
 [maintain-verify-<app>](.agents/skills/maintain-verify-<app>/SKILL.md):
-`/maintain-verify-<app>` (new, changed and `draft` steps),
+`/maintain-verify-<app>` (new and changed steps),
 `/maintain-verify-<app> map only` (no drives) or
 `/maintain-verify-<app> full audit` (every step). Use
 `/maintain-project-verification-skill` to update these skills to the current
