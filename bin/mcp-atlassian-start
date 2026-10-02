@@ -31,24 +31,62 @@ need bw
 need zenity
 need uvx
 need python3
-need curl
 need flock
 need systemd-run
 need systemctl
 
 sock="${XDG_RUNTIME_DIR}/bw-agent.sock"
-# bw serve accepts only this Host header, even on a unix socket.
-api=http://localhost:8087
+
+# Client for the agent's HTTP API. Commands: status, unlock (password on
+# stdin), login <url> (prints shell assignments for user and token).
+client='
+import http.client, json, shlex, socket, sys, urllib.parse
+
+class Agent(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX)
+        self.sock.connect(sys.argv[1])
+
+def call(method, path, body=None):
+    # bw serve accepts only this Host header, even on a unix socket.
+    conn = Agent("localhost:8087")
+    conn.request(method, path, body, {"Content-Type": "application/json"})
+    return json.loads(conn.getresponse().read())
+
+def item(needle):
+    return call("GET", "/object/item/" + urllib.parse.quote(needle, safe=""))
+
+command = sys.argv[2]
+if command == "status":
+    print(call("GET", "/status")["data"]["template"]["status"])
+elif command == "unlock":
+    res = call("POST", "/unlock", json.dumps({"password": sys.stdin.read()}))
+    sys.exit(0 if res.get("success") else 1)
+elif command == "login":
+    url = sys.argv[3]
+    res = item(url)
+    if res.get("message") == "Not found.":
+        res = item(urllib.parse.urlsplit(url).netloc)
+    if not res.get("success"):
+        message = res.get("message") or "Bitwarden lookup failed."
+        if message == "Not found.":
+            message = f"Bitwarden has no login for {url}. The login URI must match this URL."
+        sys.exit(message)
+    login = res["data"].get("login") or {}
+    user = login.get("username") or ""
+    token = login.get("password") or ""
+    if not user or not token:
+        sys.exit("Bitwarden login for this URL has no username or password.")
+    print("user=" + shlex.quote(user))
+    print("token=" + shlex.quote(token))
+'
 
 agent() {
-  curl -s --unix-socket "$sock" "$@"
+  python3 -c "$client" "$sock" "$@"
 }
 
 agent_status() {
-  agent "$api/status" 2>/dev/null | python3 -c '
-import json, sys
-print(json.load(sys.stdin)["data"]["template"]["status"])
-' 2>/dev/null || true
+  agent status 2>/dev/null || true
 }
 
 start_agent() {
@@ -76,11 +114,7 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
       echo "Bitwarden unlock was cancelled." >&2
       exit 1
     fi
-    if printf %s "$pw" |
-      python3 -c 'import json, sys; print(json.dumps({"password": sys.stdin.read()}))' |
-      agent -X POST -H 'Content-Type: application/json' --data-binary @- "$api/unlock" |
-      python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("success") else 1)'
-    then
+    if printf %s "$pw" | agent unlock; then
       unset pw
       return
     fi
@@ -91,13 +125,6 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
     fi
     text='Wrong master password. Try again.'
   done
-}
-
-item() {
-  agent "$api/object/item/$(python3 -c '
-import sys, urllib.parse
-print(urllib.parse.quote(sys.argv[1], safe=""))
-' "$1")"
 }
 
 # One start or unlock at a time, so parallel sessions show one password window.
@@ -116,31 +143,7 @@ case $status in
 esac
 exec 9>&-
 
-host=${url#*://}
-host=${host%%/*}
-item_json=$(item "$url")
-case $item_json in
-  *'"Not found."'*) item_json=$(item "$host") ;;
-esac
-
-creds=$(printf '%s\n' "$item_json" | python3 -c '
-import json, shlex, sys
-res = json.load(sys.stdin)
-if not res.get("success"):
-    message = res.get("message") or "Bitwarden lookup failed."
-    if message == "Not found.":
-        message = f"Bitwarden has no login for {sys.argv[1]}. The login URI must match this URL."
-    sys.stderr.write(message + "\n")
-    sys.exit(1)
-login = res["data"].get("login") or {}
-user = login.get("username") or ""
-token = login.get("password") or ""
-if not user or not token:
-    sys.stderr.write("Bitwarden login for this URL has no username or password.\n")
-    sys.exit(1)
-print("user=" + shlex.quote(user))
-print("token=" + shlex.quote(token))
-' "$url")
+creds=$(agent login "$url")
 eval "$creds"
 
 export JIRA_URL=$url
