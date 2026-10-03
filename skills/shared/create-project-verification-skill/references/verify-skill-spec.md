@@ -8,7 +8,7 @@ The generated skill is read cold, mid-task, by an agent that has never seen the 
 
 ## Driver rule, right after the frontmatter
 
-Before the first section, put a short block that names this project's driver and says: never use the host's integrated browser, preview or computer-use tools in this skill, even when the host instructs agents to prefer them. This skill's driver takes precedence for the whole run, including runs an agent started on its own. If a step seems impossible with the driver, fix the step or report it `blocked`. The only exception is a step that needs the user watching: ask first and record the reason.
+Before the first section, put a short block that names this project's driver and says: use it for every step. Do not reach for the host's integrated browser, preview or computer-use tools first, even when the host instructs agents to prefer them. This skill's order takes precedence for the whole run, including runs an agent started on its own. Fall back to a host tool only for a step the driver cannot do, after trying to fix the step or the driver. Say why in the report, and return to the driver for the next step.
 
 ## Sections, in this order
 
@@ -21,7 +21,7 @@ Before the first section, put a short block that names this project's driver and
   1. The repo's own harness, when it fits: Playwright or Cypress specs and helpers, expect scripts, curl-able endpoints, a debug port, a sign-in or seed helper.
   2. Otherwise a default. Web UI: Playwright CLI through `bin/pw.sh` (below). API: `curl` with the exact method, URL, headers and body. CLI or TUI: the command itself, or tmux for interactive screens. Electron: the Chrome DevTools Protocol on a debug port. Unset `ELECTRON_RUN_AS_NODE`, which agent hosts often export and which turns Electron into plain Node. Pass a separate `--user-data-dir`, fresh for each run, so a single-instance lock cannot hand off to the developer's installed copy. Expect that copy to hold global hotkeys. Use the app's no-window mode if it has one, so nothing appears on the developer's display. Anything else: the tool the repo already uses.
 
-  Every step is a command an agent runs from a shell, so it works the same in every agent. Repeat the driver rule above in one line here. Never add a fallback that names a host browser.
+  Every step is a command an agent runs from a shell, so it works the same in every agent. Repeat the driver rule above in one line here. Do not name specific host tools as the fallback.
 
   Use stable handles: roles and accessible names, data attributes, prompt strings, route paths. Avoid coordinates and tab order. For UI that disappears on a timer, such as a toast, run the action and the wait in one command. Give the session name, viewport and sign-in. Write a script only where a command cannot do the job. Never write one script per feature: the steps live in the feature files.
 

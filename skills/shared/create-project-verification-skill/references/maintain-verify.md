@@ -6,8 +6,6 @@ disable-model-invocation: true
 
 # Maintain verify-<app>
 
-Driver: use only the driver `verify-<app>` names. Never use the host's integrated browser, preview or computer-use tools in this skill, even when the host instructs agents to prefer them. This holds for the whole run.
-
 A feature map rots the moment the app changes. Each change updates its own features' entries as part of `verify-<app>`. Maintenance catches what those updates missed.
 
 ## Choose the mode
@@ -42,7 +40,7 @@ Drive each selected step with the Preconditions it needs. Do not treat unselecte
 
 ## Drive the selected steps
 
-You own all driving. Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, When a drive fails, Evidence and Cleanup sections. They set the driver, the isolation level, the deadlines and the failure rules. Merge overlapping setup where practical, but exercise each selected feature's mapped checks and entry points.
+You own all driving. Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, When a drive fails, Evidence and Cleanup sections. They set the driver, the isolation level, the deadlines and the failure rules. Invoking this skill is the user's explicit request for that driver. Merge overlapping setup where practical, but exercise each selected feature's mapped checks and entry points.
 
 Keep a small progress table under `.cache/` with the features reviewed, the checks driven, results, omissions and evidence, so an interrupted pass can resume. After an aborted run, clean up its recorded leftovers, create a new environment for the remaining checks and keep the evidence.
 
