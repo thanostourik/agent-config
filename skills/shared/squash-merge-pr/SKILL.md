@@ -29,8 +29,8 @@ the merge and cleanup checks. Never delete `main`.
 
 ## Merge and update main
 
-Confirm the PR is mergeable and its required checks have passed. If checks
-are pending or failing, or the merge status is unknown or blocked, stop.
+Confirm the PR is mergeable. If checks are pending or failing, or the merge
+status is unknown or blocked, stop.
 
 Set the commit message deliberately instead of leaving it to GitHub's default.
 Read the PR's title, number, and description with
