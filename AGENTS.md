@@ -37,7 +37,8 @@ Two things to keep as they are:
 - `hooks/shared/<name>.json`: one hook for every tool with hooks, written once
   in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
-  `~/.local/bin/`, executable. `render-plan` needs `npx`, fetches `marked` and `postplan`
+  `~/.local/bin/`, executable. `squash-merge-pr` needs `git`, a logged-in `gh`, and `jq`.
+  `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
   password from Bitwarden, and execs `uvx mcp-atlassian`. It asks a `bw serve`

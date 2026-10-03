@@ -1,0 +1,123 @@
+#!/bin/bash
+# squash-merge-pr [PR number or URL]: squash merge the PR for the current branch,
+# update local main, and delete the PR's local and remote branches. Stops at the
+# first failed command or unmet check, and says which step it was and whether the
+# PR was already merged.
+
+set -euo pipefail
+
+current_step=starting
+merged=no
+body_file=$(mktemp)
+
+step() {
+  current_step=$1
+  echo "==> $1"
+}
+
+die() {
+  echo "squash-merge-pr: $*" >&2
+  exit 1
+}
+
+finish() {
+  status=$?
+  rm -f "$body_file"
+  if [ "$status" -ne 0 ]; then
+    echo "squash-merge-pr: stopped while: $current_step (PR merged: $merged)" >&2
+  fi
+}
+trap finish EXIT
+
+field() {
+  jq -r ".$1" <<< "$pr"
+}
+
+step "checking the working tree"
+[ -z "$(git status --porcelain)" ] || die "there is uncommitted work"
+
+step "reading the PR"
+repo=$(gh repo view "$(git remote get-url origin)" --json nameWithOwner --jq .nameWithOwner)
+fields=url,number,title,body,state,baseRefName,headRefName,headRefOid,isCrossRepository,isDraft,mergeable,mergeStateStatus,statusCheckRollup
+selector=${1:-$(git branch --show-current)}
+[ -n "$selector" ] || die "no PR given and HEAD is not on a branch"
+# GitHub reports UNKNOWN while it is still computing mergeability, e.g. right after a push.
+for _ in 1 2 3 4 5; do
+  pr=$(gh pr view "$selector" --repo "$repo" --json "$fields")
+  if [ "$(field mergeable)" != UNKNOWN ]; then
+    break
+  fi
+  sleep 2
+done
+
+step "checking the PR"
+url=$(field url)
+number=$(field number)
+branch=$(field headRefName)
+head=$(field headRefOid)
+[ "$(field state)" = OPEN ] || die "$url is not open"
+[ "$(field baseRefName)" = main ] || die "$url does not target main"
+[ "$(field isCrossRepository)" = false ] || die "$url is from a fork"
+[ "$(field isDraft)" = false ] || die "$url is a draft"
+[[ $url == */"$repo"/pull/* ]] || die "$url does not belong to origin ($repo)"
+[ "$branch" != main ] || die "the PR's head branch is main"
+[ "$(git branch --show-current)" = "$branch" ] || die "the current branch is not the PR's head branch ($branch)"
+[ "$(git rev-parse HEAD)" = "$head" ] || die "the local branch is not at the PR's head commit $head"
+[ "$(field mergeable)" = MERGEABLE ] || die "$url is not mergeable (mergeable: $(field mergeable))"
+unfinished=$(field statusCheckRollup | jq -r '(. // [])[]
+  | select((.status // "COMPLETED") != "COMPLETED" or ((.conclusion // .state) | IN("SUCCESS", "NEUTRAL", "SKIPPED") | not))
+  | "\(.name // .context): \(.conclusion // .state // .status)"')
+[ -z "$unfinished" ] || die $'checks are pending or failing:\n'"$unfinished"
+case $(field mergeStateStatus) in
+  CLEAN | HAS_HOOKS) ;;
+  *) die "$url cannot be merged yet (merge state: $(field mergeStateStatus))" ;;
+esac
+
+# The Verification section is a snapshot of the PR and goes stale on main. It runs from
+# its heading to the next heading (headings inside code fences do not count). A final
+# "Filed by " paragraph stays.
+step "preparing the commit message"
+subject="$(field title) (#$number)"
+field body | awk '
+  /^```/ { fence = !fence }
+  !fence && /^#/ { skip = /^## Verification[ \t\r]*$/ }
+  skip && /^Filed by / { skip = 0; if (last != "") print "" }
+  !skip { print; last = $0 }
+' > "$body_file"
+
+step "merging the PR"
+merged="unknown, check the PR"
+gh pr merge "$url" --repo "$repo" --squash --match-head-commit "$head" --subject "$subject" --body-file "$body_file"
+
+step "confirming the merge"
+pr=$(gh pr view "$url" --repo "$repo" --json state,mergeCommit)
+if [ "$(field state)" != MERGED ]; then
+  merged=no
+  die "GitHub has not finished the merge (state: $(field state)); main and the branches are untouched"
+fi
+merged=yes
+merge_commit=$(field mergeCommit.oid)
+
+step "updating main"
+git switch main
+git pull --ff-only origin main
+[ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || die "local main differs from origin/main"
+git merge-base --is-ancestor "$merge_commit" main || die "main does not contain the merge commit $merge_commit"
+
+step "deleting the PR branches"
+remote_sha=$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)
+local_sha=$(git rev-parse --verify --quiet "refs/heads/$branch" || true)
+for sha in "$remote_sha" "$local_sha"; do
+  [ -z "$sha" ] || [ "$sha" = "$head" ] || die "$branch no longer points to the PR's head commit $head; not deleting it"
+done
+[ -z "$remote_sha" ] || git push origin --delete "$branch"
+# -D because squash merging leaves the branch's commits out of main's history.
+[ -z "$local_sha" ] || git branch -D "$branch"
+
+step "verifying the result"
+[ -z "$(git ls-remote --heads origin "refs/heads/$branch")" ] || die "the remote branch $branch still exists"
+git rev-parse --verify --quiet "refs/heads/$branch" > /dev/null && die "the local branch $branch still exists"
+[ "$(git branch --show-current)" = main ] || die "the current branch is not main"
+[ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
+
+echo "Merged $url as $merge_commit. Local main is up to date; $branch is deleted locally and on origin."
