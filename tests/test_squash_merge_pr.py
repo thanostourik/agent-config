@@ -60,6 +60,7 @@ class SquashMergePrTest(unittest.TestCase):
         self.work = Path(temp.name)
         self.origin = self.work / "origin.git"
         self.clone = self.work / "clone"
+        self.cwd = self.clone
         fake_bin = self.work / "bin"
         fake_bin.mkdir()
         (fake_bin / "gh").write_text(FAKE_GH)
@@ -95,8 +96,16 @@ class SquashMergePrTest(unittest.TestCase):
         (self.work / "pr.json").write_text(json.dumps(pr))
 
     def run_script(self):
-        return subprocess.run([str(SCRIPT)], cwd=self.clone, env=self.env,
+        return subprocess.run([str(SCRIPT)], cwd=self.cwd, env=self.env,
                               capture_output=True, text=True, timeout=30)
+
+    def move_branch_to_worktree(self, main_checked_out):
+        """Check feature/x out in a linked worktree and run the script from there."""
+        self.git("switch", "main")
+        if not main_checked_out:
+            self.git("switch", "-c", "other")
+        self.cwd = self.work / "wt"
+        self.git("worktree", "add", str(self.cwd), "feature/x")
 
     def merge_call(self):
         return json.loads((self.work / "merge.json").read_text())
@@ -121,6 +130,36 @@ class SquashMergePrTest(unittest.TestCase):
         self.assertEqual(self.git("log", "-1", "--format=%s", "main"), "feat: thing (#7)")
         self.assertEqual(self.git("branch", "--list", "feature/x"), "")
         self.assertEqual(self.git("ls-remote", "--heads", "origin", "feature/x"), "")
+
+    def test_in_a_worktree_updates_the_main_checkout_and_removes_the_worktree(self):
+        self.move_branch_to_worktree(main_checked_out=True)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.cwd.exists())
+        self.assertEqual(self.git("worktree", "list", "--porcelain").count("worktree "), 1)
+        self.assertEqual(self.git("branch", "--show-current"), "main")
+        self.assertEqual(self.git("rev-parse", "main"), self.git("rev-parse", "origin/main"))
+        self.assertEqual(self.git("log", "-1", "--format=%s", "main"), "feat: thing (#7)")
+        self.assertEqual(self.git("branch", "--list", "feature/x"), "")
+        self.assertEqual(self.git("ls-remote", "--heads", "origin", "feature/x"), "")
+
+    def test_in_a_worktree_updates_main_when_no_worktree_has_it_checked_out(self):
+        self.move_branch_to_worktree(main_checked_out=False)
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.cwd.exists())
+        self.assertEqual(self.git("branch", "--show-current"), "other")
+        self.assertEqual(self.git("rev-parse", "main"), self.git("rev-parse", "origin/main"))
+        self.assertEqual(self.git("log", "-1", "--format=%s", "main"), "feat: thing (#7)")
+        self.assertEqual(self.git("branch", "--list", "feature/x"), "")
+
+    def test_in_a_worktree_refuses_uncommitted_work_and_keeps_the_worktree(self):
+        self.move_branch_to_worktree(main_checked_out=True)
+        (self.cwd / "dirty").write_text("x")
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("uncommitted work", result.stderr)
+        self.assertTrue(self.cwd.exists())
 
     def test_commit_body_drops_the_verification_section_and_keeps_filed_by(self):
         self.run_script()
