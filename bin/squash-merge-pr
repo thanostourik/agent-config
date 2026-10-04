@@ -1,8 +1,8 @@
 #!/bin/bash
 # squash-merge-pr [PR number or URL]: squash merge the PR for the current branch,
-# update local main, and delete the PR's local and remote branches. Stops at the
-# first failed command or unmet check, and says which step it was and whether the
-# PR was already merged.
+# update local main, and delete the PR's local and remote branches. In a linked
+# worktree it also removes that worktree. Stops at the first failed command or unmet
+# check, and says which step it was and whether the PR was already merged.
 
 set -euo pipefail
 
@@ -35,6 +35,10 @@ field() {
 
 step "checking the working tree"
 [ -z "$(git status --porcelain)" ] || die "there is uncommitted work"
+worktree=$(git rev-parse --show-toplevel)
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+linked=no
+[ "$(git rev-parse --path-format=absolute --git-dir)" = "$common_dir" ] || linked=yes
 
 step "reading the PR"
 repo=$(gh repo view "$(git remote get-url origin)" --json nameWithOwner --jq .nameWithOwner)
@@ -99,8 +103,18 @@ merged=yes
 merge_commit=$(field mergeCommit.oid)
 
 step "updating main"
-git switch main
-git pull --ff-only origin main
+# A branch can be checked out in one worktree only, so a linked worktree cannot switch to main.
+if [ "$linked" = no ]; then
+  git switch main
+  git pull --ff-only origin main
+else
+  main_worktree=$(git worktree list --porcelain | awk '/^worktree /{path = substr($0, 10)} $0 == "branch refs/heads/main" {print path; exit}')
+  if [ -n "$main_worktree" ]; then
+    git -C "$main_worktree" pull --ff-only origin main
+  else
+    git fetch origin main:main
+  fi
+fi
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || die "local main differs from origin/main"
 git merge-base --is-ancestor "$merge_commit" main || die "main does not contain the merge commit $merge_commit"
 
@@ -111,13 +125,24 @@ for sha in "$remote_sha" "$local_sha"; do
   [ -z "$sha" ] || [ "$sha" = "$head" ] || die "$branch no longer points to the PR's head commit $head; not deleting it"
 done
 [ -z "$remote_sha" ] || git push origin --delete "$branch"
+if [ "$linked" = yes ]; then
+  # Leave the worktree first: it is about to be deleted, and it holds the branch checked out.
+  cd "$common_dir/.."
+  git worktree remove "$worktree"
+fi
 # -D because squash merging leaves the branch's commits out of main's history.
 [ -z "$local_sha" ] || git branch -D "$branch"
 
 step "verifying the result"
 [ -z "$(git ls-remote --heads origin "refs/heads/$branch")" ] || die "the remote branch $branch still exists"
 git rev-parse --verify --quiet "refs/heads/$branch" > /dev/null && die "the local branch $branch still exists"
-[ "$(git branch --show-current)" = main ] || die "the current branch is not main"
-[ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
+if [ "$linked" = yes ]; then
+  [ ! -e "$worktree" ] || die "the worktree $worktree still exists"
+else
+  [ "$(git branch --show-current)" = main ] || die "the current branch is not main"
+  [ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
+fi
 
-echo "Merged $url as $merge_commit. Local main is up to date; $branch is deleted locally and on origin."
+removed=
+[ "$linked" = no ] || removed=" The worktree $worktree is removed."
+echo "Merged $url as $merge_commit. Local main is up to date; $branch is deleted locally and on origin.$removed"
