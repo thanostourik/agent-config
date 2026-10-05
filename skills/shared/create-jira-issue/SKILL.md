@@ -108,16 +108,12 @@ creation, add the returned issue key to the resolved active sprint afterwards.
 
 Read back each created issue and verify its project, title, labels, assignee,
 type, priority, fix version, description, parent/epic, and sprint membership.
-Check that any component matches the user's explicit request. Check the
-rendered description through Jira's rendered fields or the browser when
-available: headings, lists, code blocks, italic footer, and no unknown macros
-or literal formatting syntax. A Markdown-normalized read-back alone does not
-prove Jira rendered it correctly.
+Check that any component matches the user's explicit request.
 
 If creation times out or the outcome is uncertain, check whether the issue
 exists before retrying. If a later step fails, report the created key and the
 incomplete field; do not create a replacement or alter an existing issue
 without authorization.
 
-Return the issue links and chosen fields, plus any incomplete operation or
-unverified rendering. In a batch, apply the same resolved defaults consistently.
+Return the issue links and chosen fields, plus any incomplete operation. In a
+batch, apply the same resolved defaults consistently.
