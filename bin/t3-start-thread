@@ -1,0 +1,157 @@
+#!/bin/bash
+# t3-start-thread --project NAME_OR_PATH [--prompt TEXT] [--title TEXT]
+#                 [--provider INSTANCE_ID] [--model MODEL]
+#                 [--worktree-from BASE [--branch NEW_BRANCH]]
+# Starts a new thread in the running T3 Code app and sends its first prompt, so the
+# agent starts working at once. The prompt comes from --prompt or from stdin.
+# Without --worktree-from the thread runs in the project folder. With it, the script
+# makes a git worktree from the latest origin/BASE (branch NEW_BRANCH, default
+# t3code/<8 hex>) the way T3 does, and the thread runs there. The thread runs in
+# full-access mode. Without --provider and --model it uses the project's default
+# model, then T3's global default. Talks to T3's local HTTP API, which is internal
+# and may change between T3 versions.
+
+set -euo pipefail
+
+die() {
+  echo "t3-start-thread: $*" >&2
+  exit 1
+}
+
+project="" prompt="" title="New thread" provider="" model="" base="" branch=""
+while [ $# -gt 0 ]; do
+  [ $# -ge 2 ] || die "missing value for $1"
+  case $1 in
+    --project) project=$2 ;;
+    --prompt) prompt=$2 ;;
+    --title) title=$2 ;;
+    --provider) provider=$2 ;;
+    --model) model=$2 ;;
+    --worktree-from) base=$2 ;;
+    --branch) branch=$2 ;;
+    *) die "unknown option $1" ;;
+  esac
+  shift 2
+done
+
+[ -n "$project" ] || die "--project is required"
+[ -n "$prompt" ] || { [ -t 0 ] || prompt=$(cat); }
+[ -n "$prompt" ] || die "give the first prompt with --prompt or on stdin"
+[ -z "$branch" ] || [ -n "$base" ] || die "--branch needs --worktree-from"
+[ -z "$provider" ] || [ -n "$model" ] || die "--provider needs --model"
+
+t3_home=${T3CODE_HOME:-$HOME/.t3}
+db=$t3_home/userdata/state.sqlite
+sql() {
+  sqlite3 -readonly -separator $'\t' "$db" "$1"
+}
+quote() {
+  printf "'%s'" "${1//\'/\'\'}"
+}
+
+origin=$(jq -r .origin "$t3_home/userdata/server-runtime.json") || die "T3 Code does not seem to be running"
+curl -fsS -m 5 -o /dev/null "$origin/" || die "T3 Code does not answer at $origin"
+
+q=$(quote "$project")
+matches=$(sql "select project_id, title, workspace_root, coalesce(default_model_selection_json, '') from projection_projects
+  where deleted_at is null and (workspace_root = $q or lower(title) = lower($q))")
+[ -n "$matches" ] || matches=$(sql "select project_id, title, workspace_root, coalesce(default_model_selection_json, '') from projection_projects
+  where deleted_at is null and lower(title) like '%' || lower($q) || '%'")
+[ -n "$matches" ] || die "no project matches '$project'"
+if [ "$(wc -l <<< "$matches")" -gt 1 ]; then
+  echo "t3-start-thread: '$project' matches several projects:" >&2
+  cut -f2,3 <<< "$matches" >&2
+  exit 1
+fi
+IFS=$'\t' read -r project_id project_title project_root project_model <<< "$matches"
+
+if [ -n "$model" ]; then
+  [ -n "$provider" ] || [ -z "$project_model" ] || provider=$(jq -r .instanceId <<< "$project_model")
+  [ -n "$provider" ] || provider=$(jq -r .defaultModelSelection.instanceId "$t3_home/userdata/settings.json")
+  model_selection=$(jq -n --arg i "$provider" --arg m "$model" '{instanceId: $i, model: $m}')
+elif [ -n "$project_model" ]; then
+  model_selection=$project_model
+else
+  model_selection=$(jq -c .defaultModelSelection "$t3_home/userdata/settings.json")
+fi
+
+if [ -n "$branch" ]; then
+  [ -z "$(sql "select 1 from projection_threads where deleted_at is null and branch = $(quote "$branch") limit 1")" ] ||
+    die "a thread for branch '$branch' already exists"
+fi
+
+version=$(jq -r .activeVersion "$t3_home/runtime/service-state.json")
+t3_cli=$t3_home/runtime/versions/$version/node_modules/t3/dist/bin.mjs
+[ -f "$t3_cli" ] || die "t3 CLI not found at $t3_cli"
+token=$(node "$t3_cli" auth session issue --ttl 5m --label t3-start-thread --token-only)
+
+dispatch() {
+  local response status
+  response=$(curl -sS -m 120 -w '\n%{http_code}' -X POST "$origin/api/orchestration/dispatch" \
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$1")
+  status=${response##*$'\n'}
+  [ "$status" = 200 ] || die "T3 rejected the request (HTTP $status): ${response%$'\n'*}"
+}
+
+uuid() {
+  cat /proc/sys/kernel/random/uuid
+}
+
+worktree=""
+cleanup() {
+  if [ -z "$worktree" ] || [ "$thread_created" = yes ]; then
+    return 0
+  fi
+  git -C "$project_root" worktree remove --force "$worktree" || true
+  git -C "$project_root" branch -D "$branch" || true
+}
+thread_created=no
+trap cleanup EXIT
+
+if [ -n "$base" ]; then
+  [ -n "$branch" ] || branch=t3code/$(uuid | cut -c1-8)
+  base_ref=$base
+  if git -C "$project_root" fetch -q origin "$base" 2>/dev/null; then
+    base_ref=origin/$base
+  fi
+  worktree=$t3_home/worktrees/$(basename "$project_root")/${branch//\//-}
+  git -C "$project_root" worktree add --no-track -b "$branch" "$worktree" "$base_ref" ||
+    { worktree=""; die "could not create the worktree"; }
+fi
+
+now=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+thread_id=$(uuid)
+dispatch "$(jq -n \
+  --arg thread_id "$thread_id" --arg command_id "$(uuid)" --arg now "$now" \
+  --arg project_id "$project_id" --arg title "$title" \
+  --arg branch "$branch" --arg worktree "$worktree" \
+  --argjson model_selection "$model_selection" '
+  {
+    type: "thread.create",
+    commandId: $command_id,
+    threadId: $thread_id,
+    projectId: $project_id,
+    title: $title,
+    modelSelection: $model_selection,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: (if $branch == "" then null else $branch end),
+    worktreePath: (if $worktree == "" then null else $worktree end),
+    createdAt: $now
+  }')"
+thread_created=yes
+
+dispatch "$(jq -n \
+  --arg thread_id "$thread_id" --arg command_id "$(uuid)" --arg message_id "$(uuid)" \
+  --arg now "$now" --arg prompt "$prompt" '
+  {
+    type: "thread.turn.start",
+    commandId: $command_id,
+    threadId: $thread_id,
+    message: {messageId: $message_id, role: "user", text: $prompt, attachments: []},
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    createdAt: $now
+  }')"
+
+echo "started thread $thread_id in project '$project_title'${worktree:+ (worktree $worktree, branch $branch)}"
