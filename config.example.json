@@ -10,6 +10,7 @@
     "grok-review": { "enabled": true },
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
+    "plain-writing": { "enabled": true },
     "render-plan": { "enabled": true },
     "squash-merge-pr": { "enabled": true },
     "start-t3-thread": { "enabled": true }
