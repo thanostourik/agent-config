@@ -8,6 +8,7 @@
     "file-pr": { "enabled": true },
     "grill-me": { "enabled": true },
     "grok-review": { "enabled": true },
+    "html-communication": { "enabled": true },
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true },
