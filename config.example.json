@@ -11,7 +11,8 @@
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true },
-    "squash-merge-pr": { "enabled": true }
+    "squash-merge-pr": { "enabled": true },
+    "start-t3-thread": { "enabled": true }
   },
   "hooks": {
     "render-plan": { "enabled": true }
