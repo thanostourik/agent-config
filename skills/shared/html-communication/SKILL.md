@@ -34,8 +34,16 @@ When the user asks for variants:
 
 ## Output
 
-1. Write the HTML file locally. Save it in the project's `.plans/` folder as `YYYY-MM-DD-short-slug.html`. Create `.plans/` if it does not exist.
-2. To revise a document, update the same file. Create a new file only when the user asks for a new draft.
-3. Report the absolute local path as a clickable link.
+Plans come from Markdown first:
+
+1. Write or update the Markdown plan in the project's `.plans/` folder, named `YYYY-MM-DD-short-slug.md`. If the plan already exists, use that file.
+2. Create the HTML from that Markdown file. The HTML must show the same content as the Markdown.
+3. Save the HTML next to the plan with the same name and an `.html` extension, for example `2026-10-08-auth-retry.html`.
+
+Other documents go straight to HTML. Save them in the project's `.plans/` folder as `YYYY-MM-DD-short-slug.html`.
+
+Create `.plans/` if it does not exist. To revise, update the same file. Create a new file only when the user asks for a new draft. For a plan, update the Markdown first, then regenerate the HTML.
+
+Report the absolute local path to the HTML as a clickable link.
 
 Do not open a browser unless the user asks.
