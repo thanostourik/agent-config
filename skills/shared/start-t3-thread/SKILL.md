@@ -9,6 +9,10 @@ Run `~/.local/bin/t3-start-thread` once per thread. It creates the thread in the
 running T3 Code app and sends the first prompt, so the agent starts working
 at once, in full-access mode. The thread appears in the T3 app.
 
+When you need me to make a choice before you can continue, use your question
+tool if you have one, or ask in your reply if you don't. If the question gets no
+answer, ask again in your reply and wait. Do not answer it yourself.
+
 ```bash
 t3-start-thread --project <name or path> [--prompt <text> | prompt on stdin] [--title <text>] \
   [--provider <instance id> --model <model>] [--worktree-from <base> [--branch <name>]]
