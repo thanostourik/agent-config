@@ -13,6 +13,10 @@ another confirmation. Respect a request to create only the first issue of a
 batch. This skill does not authorize editing existing issues or creating Jira
 versions, sprints, components, or statuses.
 
+When you need me to make a choice before you can continue, use your question
+tool if you have one, or ask in your reply if you don't. If the question gets no
+answer, ask again in your reply and wait. Do not answer it yourself.
+
 ## Project
 
 If the user has not specified a project for these issues, ask which Jira
