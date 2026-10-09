@@ -46,14 +46,24 @@
 - Be careful with destructive actions that I did not explicitly request.
 - Tests are good. Endless smoke tests, "regression tests" for feature deletions, etc. are much less
   good. Tests should be focused, not slop.
-- No inline comments unless the line would otherwise look like a bug
-  (a deliberate ordering, a swallowed exception, a workaround).
-- Add concise comments above functions or classes when their purpose, usage, or constraints are not clear from the code.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Catch errors only where something useful can be done with them (user input, external calls,
   I/O). Let the rest propagate.
 - Prefer early returns when they make control flow clearer.
+
+## Comments
+
+- No comments inside code, whether on their own line or at the end of one. Use clear names instead.
+- Only exception: code a careful reader would think is a bug. The comment says why it is not:
+  a workaround (`# lib X drops the last row on a full page, fetch one extra`), a deliberate
+  choice (`# no retry: not idempotent`), an ordering that matters, or an exception swallowed on purpose.
+- Never: what a variable holds, what the next line does, block labels (`# Step 2: validate`),
+  history (`# added for X`), or notes to the reviewer.
+- Above a function or class: one or two lines, only when its name and signature don't show its
+  purpose or constraints.
+- Before committing, check each comment you added: without it, would a reader think the code
+  is a bug? If not, delete it.
 
 ## Verification
 
