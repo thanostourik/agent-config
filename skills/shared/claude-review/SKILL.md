@@ -8,32 +8,26 @@ metadata:
 
 # Claude review
 
-Use the user's selected model, or `claude-sonnet-5-5` when none is specified. Use the
-user's selected effort (`low`, `medium`, `high`, or `max`), or `high` when none is
-specified. Start a fresh review session, without resuming the author's
-conversation. Review locally; do not post findings or edit the reviewed files.
+Run Claude Code's built-in `/code-review` locally. Use the user's selected
+model, or `claude-sonnet-5-5` when none is specified, and the user's selected
+effort, or `high` when none is specified. Do not post findings or edit the
+reviewed files.
 
 ## Prepare
 
 Identify the repository and exact review target from the request. Record the
 current commit and `git status --short`. Create a unique directory under
-`.plans/scratch/` for `prompt.md`, the report, and the log; exclude it from review.
+`.plans/scratch/` for the report and log; exclude it from review.
 
-The caller prepares the diff because the reviewer has no shell tool:
+Set `REVIEW_TARGET` to the `/code-review` target:
 
-- Uncommitted changes: `git diff HEAD -- <paths>` covers tracked staged and
-  unstaged changes. List relevant untracked files separately for Claude to read.
-- Branch changes: `git diff <base>...HEAD -- <paths>`.
-- A commit: `git show --format=fuller <sha> -- <paths>`.
-- A plan or selected files: supply their paths and the requested review scope.
+- Uncommitted changes, or the current branch when the tree is clean: empty.
+- Another branch: its name.
+- A commit: its SHA.
+- A plan or selected files: their paths.
 
-Write a self-contained prompt with the repository path, exact target, diff or
-diff-file path, relevant project instructions, and requirements. Ask Claude to
-read surrounding code and report concrete bugs, regressions, and requirements
-mismatches with severity, file and line, failure scenario, and fix direction.
-For plans, assess feasibility and missing decisions. Request an explicit
-statement if no substantive issues are found. Instruct it to review directly,
-without edits, commands, or further delegation.
+`/code-review` reviews every uncommitted change. If the tree holds user changes
+outside the requested target, say so when presenting the findings.
 
 ## Run and monitor
 
@@ -44,20 +38,22 @@ the process. A short wait that returns control while leaving it running is fine.
 
 Set `REVIEW_REPO`, `REVIEW_MODEL`, `REVIEW_EFFORT`, and `REVIEW_DIR` to the
 absolute repository path, selected model, selected effort, and artifact
-directory. Run from the repository:
+directory:
 
 ```bash
 cd "$REVIEW_REPO"
 claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
-  --tools "Read,Glob,Grep" --allowedTools "Read,Glob,Grep" \
-  --permission-mode dontAsk --disable-slash-commands --strict-mcp-config \
-  --no-session-persistence --output-format text \
-  <"$REVIEW_DIR/prompt.md" >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
+  --allowedTools "Read,Glob,Grep,Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*)" \
+  --permission-mode dontAsk --strict-mcp-config --no-session-persistence \
+  --output-format text "/code-review $REVIEW_EFFORT $REVIEW_TARGET" \
+  </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
 ```
 
-The restricted tool list permits source inspection but excludes shell execution,
-editing, and subagents; strict MCP configuration excludes configured external
-tools. This is a static review: the caller remains responsible for tests.
+The allowed tools let the reviewer read files and run read-only git commands;
+`dontAsk` rejects everything else. Never add `--fix`, which edits files,
+`--comment` or `--post`, which publish findings, or `ultra`, which starts a
+billed cloud review. This is a static review: the caller remains responsible
+for tests.
 
 Check the running task and any new report or log output every 30–60 seconds.
 Give the user a brief progress update at least once a minute, even when there
@@ -71,12 +67,13 @@ and keep monitoring when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
-Do not silently switch models or effort, or bypass permissions to make the
-invocation work.
+Do not silently switch models or effort, or loosen the allowed tools to make
+the invocation work.
 
 ## Assess the result
 
-Verify substantive findings against the source before presenting them.
-Distinguish confirmed issues from unresolved concerns, name the reviewed target,
-model, and effort, and state verification gaps. A clean review is not evidence
-that tests passed. Check the final Git state; do not revert user work.
+Read the report and verify substantive findings against the source before
+presenting them. Distinguish confirmed issues from unresolved concerns, name
+the reviewed target, model, and effort, and state verification gaps. A clean
+review is not evidence that tests passed. Check the final Git state; do not
+revert user work.
