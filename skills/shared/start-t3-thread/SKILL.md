@@ -1,6 +1,6 @@
 ---
 name: start-t3-thread
-description: Start a new T3 Code thread that begins working on a prompt right away, optionally in its own git worktree and branch. Use only when the user asks to start, spawn, queue, or fan out T3 threads.
+description: Use only when the user asks to start, spawn, queue, or fan out T3 Code threads.
 ---
 
 # Start T3 thread

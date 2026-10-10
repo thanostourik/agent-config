@@ -1,6 +1,6 @@
 ---
 name: squash-merge-pr
-description: Squash merge a PR, update local main, and delete the PR's local and remote branches, plus its worktree when it runs in one. Use only when the user explicitly invokes squash-merge-pr.
+description: Use only when the user explicitly invokes squash-merge-pr.
 disable-model-invocation: true
 ---
 

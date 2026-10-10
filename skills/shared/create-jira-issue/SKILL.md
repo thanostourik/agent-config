@@ -1,6 +1,6 @@
 ---
 name: create-jira-issue
-description: Create Jira issues using the agreed agent attribution, assignment, current fix version and sprint, and standard description template. Use when asked to file Jira issues or draft them for review.
+description: Use when the user asks to create or file Jira issues, or to draft them for review.
 metadata:
   harness: "claude-code, codex, grok, opencode, cursor"
 ---
