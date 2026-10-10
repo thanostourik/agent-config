@@ -44,8 +44,6 @@
 - If a problem can be solved in a simpler way, propose it.
 - Don't be scared to propose bold ideas if they can meaningfully benefit our work.
 - Be careful with destructive actions that I did not explicitly request.
-- Tests are good. Endless smoke tests, "regression tests" for feature deletions, etc. are much less
-  good. Tests should be focused, not slop.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Catch errors only where something useful can be done with them (user input, external calls,
@@ -67,10 +65,11 @@
 
 ## Verification
 
+- Never write tests (unit, integration, regression, or E2E) unless I ask.
 - Never say "done" or "fixed" without exercising the change: run it, hit the endpoint, drive the UI.
   Reading your own code is not verification.
-- Match the check to the change: logic gets a unit test, an API gets a real request, UI gets a
-  screenshot compared against the mockup.
+- Verify the way the project does. Look for its process in its instructions, docs, and skills.
+- Run focused tests, type checks, and lint checks appropriate to the change.
 - If you can't verify, say exactly what is unverified and how I can check it.
 - Manual steps for me must be complete and exact: where to click, what to enter, in what order.
 
@@ -108,12 +107,7 @@ for any of these steps. Reading and answering questions is the only work that ha
 - Containers (databases, auth servers, etc.) started by the project's dev script
   (`dev_setup/dev.sh`) run in a branch-isolated environment. You may start, reset, and
   reseed them freely. If that script does not exist, treat containers as shared and ask first.
-- App servers (Next.js, Spring Boot, etc.): follow the project's verification skill for starting and
-  stopping them. Without one, check whether one is already running and reuse it, ask before starting
-  one yourself, and stop anything you started when you're done so I can run it from my IDE.
 - Never touch shared or remote services (deployed environments, remote databases).
-- Run focused tests, type checks, and lint checks appropriate to the change.
-- Avoid full builds unless needed to verify the change, and say why when one is.
 
 ## TypeScript
 
