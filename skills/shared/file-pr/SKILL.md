@@ -50,7 +50,10 @@ has not run yet, say so plainly and say how the user can run it. Do not present
 untested work as tested. When verification finishes later, update the section.
 Follow any repository PR template.
 
-After the verification section, add one last line, exactly in this form:
+By default, end the description with the `## Verification` section and add no
+attribution. Add the attribution line only when the skill is called with the
+argument `attribution` (for example `/file-pr attribution`) or the user asks for
+it. Then add one last line after the verification section, exactly in this form:
 
 > Filed by <model> through <harness>[ in <host>].
 
@@ -58,9 +61,9 @@ After the verification section, add one last line, exactly in this form:
 `Codex`. `<host>` is an app that runs the harness, for example `T3 Code`. Add
 ` in <host>` only when the environment states the host; otherwise leave it out.
 Use only known model information; if the exact model is unavailable, write
-`an unknown model` instead of guessing. This line is the only attribution: do
-not add a harness-supplied line such as "Generated with" or a Co-authored-by
-trailer.
+`an unknown model` instead of guessing. When updating a PR, keep a line that is
+already there. Never add a harness-supplied line such as "Generated with" or a
+Co-authored-by trailer.
 
 Open a ready-for-review PR rather than a draft so review bots can run, unless
 the user requests a draft. Return the PR link.
