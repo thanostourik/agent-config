@@ -77,6 +77,66 @@ def call(method, path, body=None):
 def item(needle):
     return call("GET", "/object/item/" + urllib.parse.quote(needle, safe=""))
 
+def uris_of(data):
+    login = (data or {}).get("login") or {}
+    found = []
+    for entry in login.get("uris") or []:
+        uri = entry.get("uri") if isinstance(entry, dict) else entry
+        if uri:
+            found.append(uri)
+    return found
+
+def norm(value):
+    return value.strip().rstrip("/").lower()
+
+def exact_uri(data, needle):
+    want = norm(needle)
+    return any(norm(uri) == want for uri in uris_of(data))
+
+def host_only(data, host):
+    for uri in uris_of(data):
+        parsed = urllib.parse.urlsplit(uri if "://" in uri else "https://" + uri)
+        if (parsed.hostname or "").lower() == host.lower() and (parsed.path or "").rstrip("/") == "":
+            return True
+    return False
+
+def result_ids(res):
+    data = res.get("data")
+    if not isinstance(data, list):
+        return []
+    ids = []
+    for entry in data:
+        if isinstance(entry, str):
+            ids.append(entry)
+        elif isinstance(entry, dict) and entry.get("id"):
+            ids.append(entry["id"])
+    return ids
+
+# Bitwarden treats the query as a substring of the URI, so the gate login also
+# matches the Jira URL. Keep the item whose URI is the whole query.
+def pick(res, needle, allow_host):
+    if res.get("success") and exact_uri(res.get("data"), needle):
+        return res["data"]
+    candidates = [res["data"]] if res.get("success") else []
+    for ident in result_ids(res):
+        one = item(ident)
+        if one.get("success"):
+            candidates.append(one["data"])
+    for data in candidates:
+        if exact_uri(data, needle):
+            return data
+    if not allow_host:
+        return None
+    host = urllib.parse.urlsplit(needle).hostname or needle
+    for data in candidates:
+        if host_only(data, host):
+            return data
+    return None
+
+def missed(res):
+    message = res.get("message") or ""
+    return res.get("success") or message == "Not found." or message.startswith("More than one result")
+
 command = sys.argv[2]
 if command == "status":
     print(call("GET", "/status")["data"]["template"]["status"])
@@ -87,14 +147,17 @@ elif command == "login":
     url = sys.argv[3]
     exact = len(sys.argv) > 4 and sys.argv[4] == "exact"
     res = item(url)
-    if res.get("message") == "Not found." and not exact:
-        res = item(urllib.parse.urlsplit(url).netloc)
-    if not res.get("success"):
+    data = pick(res, url, allow_host=not exact)
+    host = urllib.parse.urlsplit(url).netloc
+    if data is None and not exact and host and host != url and missed(res):
+        res = item(host)
+        data = pick(res, host, allow_host=True)
+    if data is None:
         message = res.get("message") or "Bitwarden lookup failed."
-        if message == "Not found.":
+        if missed(res):
             message = f"Bitwarden has no login for {url}. The login URI must match this URL."
         sys.exit(message)
-    login = res["data"].get("login") or {}
+    login = data.get("login") or {}
     user = login.get("username") or ""
     token = login.get("password") or ""
     if not user or not token:

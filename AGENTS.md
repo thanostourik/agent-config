@@ -47,7 +47,9 @@ Two things to keep as they are:
   Authorization header. The flag starts `jira-gate-proxy`, which sends the
   Apache password in that header, logs in to Jira with the normal Bitwarden
   login, and keeps the session cookie. mcp-atlassian talks to the proxy on
-  localhost. The Apache username and password are a second Bitwarden login
+  localhost. The proxy answers only when the request carries that same Jira
+  login, so another account on this computer cannot use the session. The
+  Apache username and password are a second Bitwarden login
   whose URI is the Jira URL plus `/basic-auth-gate`. Sync adds `--gate` when
   the instance sets `"gate": true`. Set it back to `false` and run sync to
   connect directly again. Delete `bin/jira-gate-proxy` and the `--gate` path
