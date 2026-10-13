@@ -159,6 +159,7 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.run_helper(extra_env={"READ_ONLY_MODE": "true"})
         self.assertEqual(self.requests(), [
             ["GET", "/status", "localhost:8087", ""],
+            ["POST", "/sync", "localhost:8087", ""],
             ["GET", "/object/item/https%3A%2F%2Fjira.example.com", "localhost:8087", ""],
         ])
         self.assertFalse((self.state / "systemd-run.log").exists())
@@ -175,6 +176,7 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.set_items({"jira.example.com": ITEM})
         self.run_helper()
         self.assertEqual([path for _, path, _, _ in self.requests()[1:]], [
+            "/sync",
             "/object/item/https%3A%2F%2Fjira.example.com",
             "/object/item/jira.example.com",
         ])
