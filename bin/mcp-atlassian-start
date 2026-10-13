@@ -1,9 +1,16 @@
 #!/bin/sh
 # Start mcp-atlassian for one Jira URL. Username and password come from the
 # Bitwarden login whose URI is that URL. Sync writes this command into each
-# tool's MCP config; the URL is the only argument. With --unlock instead of a
-# URL it only starts and unlocks the agent, then exits. Sync installs a login
+# tool's MCP config. The URL is the first argument, and --gate is optional.
+# With --unlock instead of a URL it only starts and unlocks the agent, then
+# exits. Sync installs a login
 # autostart entry that runs it, so the first Jira thread finds the vault open.
+#
+# --gate is temporary. Apache in front of Jira keeps Authorization and deletes
+# it, so Jira never sees a basic-auth login. The flag starts jira-gate-proxy
+# and points mcp-atlassian at it. The Apache username and password are the
+# Bitwarden login whose URI is the Jira URL plus /basic-auth-gate. Drop the
+# flag to send the Jira password directly again.
 #
 # The unlocked vault lives in one `bw serve` agent, the systemd user unit
 # bw-agent, on a socket in XDG_RUNTIME_DIR. Only the first start asks for the
@@ -12,14 +19,21 @@
 set -eu
 
 unlock_only=0
+gate=0
 url=""
 if [ "${1:-}" = "--unlock" ]; then
   unlock_only=1
 elif [ "${1:-}" = "" ]; then
-  echo "usage: mcp-atlassian-start <jira-url> | --unlock" >&2
+  echo "usage: mcp-atlassian-start <jira-url> [--gate] | --unlock" >&2
   exit 1
 else
   url=$1
+  if [ "${2:-}" = "--gate" ]; then
+    gate=1
+  elif [ -n "${2:-}" ]; then
+    echo "usage: mcp-atlassian-start <jira-url> [--gate] | --unlock" >&2
+    exit 1
+  fi
 fi
 
 uid=$(id -u)
@@ -71,8 +85,9 @@ elif command == "unlock":
     sys.exit(0 if res.get("success") else 1)
 elif command == "login":
     url = sys.argv[3]
+    exact = len(sys.argv) > 4 and sys.argv[4] == "exact"
     res = item(url)
-    if res.get("message") == "Not found.":
+    if res.get("message") == "Not found." and not exact:
         res = item(urllib.parse.urlsplit(url).netloc)
     if not res.get("success"):
         message = res.get("message") or "Bitwarden lookup failed."
@@ -134,6 +149,40 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
   done
 }
 
+start_gate() {
+  gate_url=${url%/}/basic-auth-gate
+  gate_creds=$(agent login "$gate_url" exact)
+  eval "$gate_creds"
+  export JIRA_UPSTREAM=$url
+  export JIRA_GATE_USERNAME=$user
+  export JIRA_GATE_PASSWORD=$token
+  unset user token
+  portfile=$(mktemp)
+  "$(dirname "$0")/jira-gate-proxy" "$portfile" &
+  proxy_pid=$!
+  tries=0
+  while [ ! -s "$portfile" ]; do
+    if ! kill -0 "$proxy_pid" 2>/dev/null; then
+      wait "$proxy_pid" || true
+      rm -f "$portfile"
+      echo "jira-gate-proxy exited before it was ready." >&2
+      exit 1
+    fi
+    tries=$((tries + 1))
+    if [ "$tries" -ge 150 ]; then
+      kill "$proxy_pid" 2>/dev/null || true
+      rm -f "$portfile"
+      echo "jira-gate-proxy did not become ready." >&2
+      exit 1
+    fi
+    sleep 0.2
+  done
+  port=$(cat "$portfile")
+  rm -f "$portfile"
+  unset JIRA_UPSTREAM JIRA_GATE_USERNAME JIRA_GATE_PASSWORD
+  export JIRA_URL="http://127.0.0.1:${port}"
+}
+
 # One start or unlock at a time, so parallel sessions show one password window.
 exec 9>"${XDG_RUNTIME_DIR}/bw-agent.lock"
 flock 9
@@ -155,10 +204,18 @@ fi
 
 creds=$(agent login "$url")
 eval "$creds"
+jira_user=$user
+jira_token=$token
+unset user token
 
-export JIRA_URL=$url
-export JIRA_USERNAME=$user
-export JIRA_API_TOKEN=$token
-unset READ_ONLY_MODE
+export JIRA_USERNAME=$jira_user
+export JIRA_API_TOKEN=$jira_token
+unset READ_ONLY_MODE jira_user jira_token
+
+if [ "$gate" = 1 ]; then
+  start_gate
+else
+  export JIRA_URL=$url
+fi
 
 exec uvx mcp-atlassian

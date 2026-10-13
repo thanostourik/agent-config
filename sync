@@ -139,7 +139,7 @@ def is_enabled(config, section, name):
 
 
 def jira_servers(config):
-    """Return (mcp name, url) pairs. One instance is installed as server jira."""
+    """Return (mcp name, url, gate) triples. One instance is installed as server jira."""
     if not is_enabled(config, "mcp", "jira"):
         return []
     mcp = config.get("mcp")
@@ -169,9 +169,13 @@ def jira_servers(config):
         if not isinstance(url, str) or not url.strip():
             raise ValueError(
                 f"config.json mcp.jira.instances.{name}.url must be a non-empty string")
-        items.append((name, url.strip()))
+        gate = entry.get("gate", False)
+        if not isinstance(gate, bool):
+            raise ValueError(
+                f"config.json mcp.jira.instances.{name}.gate must be true or false")
+        items.append((name, url.strip(), gate))
     if len(items) == 1:
-        return [("jira", items[0][1])]
+        return [("jira", items[0][1], items[0][2])]
     return items
 
 
@@ -185,14 +189,18 @@ def mcp_gui_env():
     }
 
 
-def stdio_server(helper, url, env):
-    return {"command": str(helper), "args": [url], "env": env}
+def server_args(url, gate):
+    return [url, "--gate"] if gate else [url]
 
 
-def opencode_server(helper, url, env):
+def stdio_server(helper, url, env, gate):
+    return {"command": str(helper), "args": server_args(url, gate), "env": env}
+
+
+def opencode_server(helper, url, env, gate):
     return {
         "type": "local",
-        "command": [str(helper), url],
+        "command": [str(helper), *server_args(url, gate)],
         "enabled": True,
         "environment": env,
         "timeout": 180000,
@@ -211,9 +219,9 @@ def toml_scalar(value):
     return json.dumps(value)
 
 
-def toml_server(helper, url, env):
-    return {"command": str(helper), "args": [url], "startup_timeout_sec": 180,
-            "enabled": True, "env": env}
+def toml_server(helper, url, env, gate):
+    return {"command": str(helper), "args": server_args(url, gate),
+            "startup_timeout_sec": 180, "enabled": True, "env": env}
 
 
 def render_toml_table(header, value):
@@ -684,12 +692,12 @@ def desired_entries(config, home, hooks_by_tool):
         entries[f"{TOOLS['claude-code']['hooks']}#hooks"] = hooks
     helper = home / ".local/bin/mcp-atlassian-start"
     env = mcp_gui_env()
-    for name, url in jira_servers(config):
+    for name, url, gate in jira_servers(config):
         for relative, bucket, flavor in MCP_JSON:
             server = opencode_server if flavor == "opencode" else stdio_server
-            entries[f"{relative}#{bucket}.{name}"] = server(helper, url, env)
+            entries[f"{relative}#{bucket}.{name}"] = server(helper, url, env, gate)
         for relative in MCP_TOML:
-            entries[f"{relative}#mcp_servers.{name}"] = toml_server(helper, url, env)
+            entries[f"{relative}#mcp_servers.{name}"] = toml_server(helper, url, env, gate)
     return entries
 
 
