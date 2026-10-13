@@ -42,7 +42,19 @@ Two things to keep as they are:
   `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
-  password from Bitwarden, and execs `uvx mcp-atlassian`. It asks a `bw serve`
+  password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` only
+  while Apache basic auth sits in front of that Jira and deletes the
+  Authorization header. The flag starts `jira-gate-proxy`, which sends the
+  Apache password in that header, logs in to Jira with the normal Bitwarden
+  login, and keeps the session cookie. mcp-atlassian talks to the proxy on
+  localhost. The proxy answers only when the request carries that same Jira
+  login, so another account on this computer cannot use the session. The
+  Apache username and password are a second Bitwarden login
+  whose URI is the Jira URL plus `/basic-auth-gate`. Sync adds `--gate` when
+  the instance sets `"gate": true`. Set it back to `false` and run sync to
+  connect directly again. Delete `bin/jira-gate-proxy` and the `--gate` path
+  in `mcp-atlassian-start` once that direct connection works.
+  `mcp-atlassian-start` asks a `bw serve`
   agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
   the vault unlocked in memory, and starts and unlocks that agent when needed.
   A lookup through the agent takes milliseconds; plain `bw` takes about 3
@@ -64,7 +76,9 @@ Two things to keep as they are:
   `.json`. One entry switches that item for every tool. For example,
   `"skills": {"bro": {"enabled": false}}` removes `bro` from all tools.
   `mcp.jira.instances` holds Jira URLs. The example uses a fake URL; copy it
-  to `config.json` and replace that URL. One instance is installed as MCP
+  to `config.json` and replace that URL. `"gate": true` on an instance adds
+  `--gate`. A missing `gate` and `"gate": false` keep the direct connection.
+  One instance is installed as MCP
   server `jira`; two or more use the instance keys. An instance key starts
   with a letter and uses only letters, digits, `_`, and `-`. Sync merges those
   servers into each tool's MCP config and never writes credentials.

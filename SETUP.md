@@ -13,6 +13,10 @@ after that. Add a section when something new needs steps beyond `./sync`.
 4. Tell the user to log out and in again, or run
    `~/.local/bin/mcp-atlassian-start --unlock`, so the vault is open before the
    first thread. Then restart the coding tools.
+5. When an instance sets `"gate": true`, the user adds a Bitwarden login whose
+   URI is that Jira URL plus `/basic-auth-gate`. Its username and password are
+   the Apache gate, not the Jira account. When the gate is removed, set
+   `"gate": false` and run `./sync --apply` again.
 
 ## render-plan
 

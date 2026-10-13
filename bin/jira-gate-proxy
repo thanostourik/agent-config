@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Local stand-in for Jira while Apache basic auth sits in front of it.
+
+Apache keeps the Authorization header and deletes it, so Jira never sees a
+basic-auth login. This process sends the Apache password in that header, logs
+in to Jira with the normal username and password, and forwards every request
+with the session cookie. mcp-atlassian talks only to this process. It exists
+so the gate can be removed by deleting this file and the --gate path.
+"""
+
+import base64
+import ctypes
+import ctypes.util
+import hmac
+import http.client
+import json
+import os
+import signal
+import sys
+import threading
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+HOP = {
+    "connection",
+    "content-length",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
+DROP = HOP | {"authorization", "cookie", "host"}
+
+
+class LoginFailed(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def die_with_parent():
+    # The shell execs mcp-atlassian into this process's parent. Die with it.
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    if libc.prctl(1, signal.SIGTERM) != 0:
+        raise OSError(ctypes.get_errno(), "prctl")
+    if os.getppid() == 1:
+        raise SystemExit(0)
+
+
+def basic_auth(username, password):
+    token = base64.b64encode(f"{username}:{password}".encode()).decode()
+    return f"Basic {token}"
+
+
+class Gate:
+    def __init__(self):
+        self.upstream = os.environ["JIRA_UPSTREAM"]
+        self.parts = urllib.parse.urlsplit(self.upstream)
+        if self.parts.scheme not in ("http", "https") or not self.parts.hostname:
+            raise LoginFailed(f"JIRA_UPSTREAM is not an http(s) URL: {self.upstream}")
+        self.gate = basic_auth(os.environ["JIRA_GATE_USERNAME"], os.environ["JIRA_GATE_PASSWORD"])
+        self.user = os.environ["JIRA_USERNAME"]
+        self.password = os.environ["JIRA_API_TOKEN"]
+        self.cookies = {}
+        self.lock = threading.Lock()
+        self.listen_host = ""
+
+    def origin_path(self, raw):
+        incoming = urllib.parse.urlsplit(raw)
+        prefix = self.parts.path.rstrip("/")
+        path = prefix + incoming.path
+        if not path.startswith("/"):
+            path = "/" + path
+        return urllib.parse.urlunsplit(("", "", path, incoming.query, ""))
+
+    def connection(self):
+        port = self.parts.port or (443 if self.parts.scheme == "https" else 80)
+        if self.parts.scheme == "https":
+            return http.client.HTTPSConnection(self.parts.hostname, port, timeout=60)
+        return http.client.HTTPConnection(self.parts.hostname, port, timeout=60)
+
+    def round_trip(self, method, path, headers, body):
+        conn = self.connection()
+        try:
+            conn.request(method, self.origin_path(path), body=body, headers=headers)
+            response = conn.getresponse()
+            return response.status, response.getheaders(), response.read()
+        finally:
+            conn.close()
+
+    def absorb(self, headers):
+        for key, value in headers:
+            if key.lower() != "set-cookie":
+                continue
+            name, sep, cookie = value.split(";", 1)[0].partition("=")
+            if sep and name.strip():
+                self.cookies[name.strip()] = cookie.strip()
+
+    def login_failure(self, status, headers, payload):
+        found = {key.lower(): value for key, value in headers}
+        reason = found.get("x-seraph-loginreason", "")
+        text = payload.decode("utf-8", "replace")
+        if reason == "AUTHENTICATED_FAILED" or "Login failed" in text:
+            return "Jira rejected the username or password from Bitwarden."
+        authenticate = found.get("www-authenticate", "")
+        if "basic" in authenticate.lower() and "html" in found.get("content-type", ""):
+            return "The Apache gate rejected the Bitwarden login for the basic-auth-gate item."
+        return f"Jira login failed ({status})."
+
+    def login(self):
+        body = json.dumps({"username": self.user, "password": self.password}).encode()
+        headers = {
+            "Authorization": self.gate,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+        }
+        try:
+            status, response_headers, payload = self.round_trip(
+                "POST", "/rest/auth/1/session", headers, body)
+        except OSError as exc:
+            raise LoginFailed(
+                f"Jira gate proxy could not reach {self.parts.hostname}: {exc}") from exc
+        if status != 200:
+            raise LoginFailed(self.login_failure(status, response_headers, payload))
+        found = {}
+        for key, value in response_headers:
+            if key.lower() != "set-cookie":
+                continue
+            name, sep, cookie = value.split(";", 1)[0].partition("=")
+            if sep and name.strip():
+                found[name.strip()] = cookie.strip()
+        if not found:
+            raise LoginFailed("Jira login returned no session cookie.")
+        with self.lock:
+            self.cookies = found
+
+    def outbound(self, inbound, body):
+        headers = {}
+        has_token = False
+        for key, value in inbound.items():
+            if key.lower() in DROP:
+                continue
+            if key.lower() == "x-atlassian-token":
+                has_token = True
+            headers[key] = value
+        headers["Authorization"] = self.gate
+        host = self.parts.hostname
+        if self.parts.port:
+            host = f"{host}:{self.parts.port}"
+        headers["Host"] = host
+        headers["Accept-Encoding"] = "identity"
+        with self.lock:
+            if self.cookies:
+                headers["Cookie"] = "; ".join(
+                    f"{name}={value}" for name, value in self.cookies.items())
+        if not has_token:
+            # Jira rejects cookie-authenticated writes without this header.
+            headers["X-Atlassian-Token"] = "no-check"
+        if body is not None:
+            headers["Content-Length"] = str(len(body))
+        return headers
+
+    def caller_allowed(self, inbound):
+        # 127.0.0.1 is shared by every account on this machine. Require the
+        # Jira password mcp-atlassian already sends before attaching the session.
+        presented = ""
+        for key, value in inbound.items():
+            if key.lower() == "authorization":
+                presented = value.strip()
+                break
+        expected = basic_auth(self.user, self.password)
+        if len(presented) != len(expected):
+            return False
+        return hmac.compare_digest(presented, expected)
+
+    def exchange(self, method, path, inbound, body):
+        try:
+            status, headers, payload = self.round_trip(
+                method, path, self.outbound(inbound, body), body)
+        except OSError as exc:
+            message = f"Jira gate proxy could not reach {self.parts.hostname}: {exc}"
+            return 502, [("Content-Type", "text/plain; charset=utf-8")], message.encode()
+        if status == 401:
+            try:
+                self.login()
+            except LoginFailed as exc:
+                return 502, [("Content-Type", "text/plain; charset=utf-8")], exc.message.encode()
+            try:
+                status, headers, payload = self.round_trip(
+                    method, path, self.outbound(inbound, body), body)
+            except OSError as exc:
+                message = f"Jira gate proxy could not reach {self.parts.hostname}: {exc}"
+                return 502, [("Content-Type", "text/plain; charset=utf-8")], message.encode()
+        if status != 401:
+            with self.lock:
+                self.absorb(headers)
+        return status, headers, payload
+
+    def rewrite(self, value):
+        parts = urllib.parse.urlsplit(value)
+        if parts.scheme not in ("http", "https") or parts.hostname != self.parts.hostname:
+            return value
+        path = urllib.parse.urlunsplit(("", "", parts.path, parts.query, parts.fragment))
+        return f"http://{self.listen_host}{path}"
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    gate = None
+
+    def do_GET(self):
+        self.forward()
+
+    def do_POST(self):
+        self.forward()
+
+    def do_PUT(self):
+        self.forward()
+
+    def do_PATCH(self):
+        self.forward()
+
+    def do_DELETE(self):
+        self.forward()
+
+    def do_HEAD(self):
+        self.forward()
+
+    def forward(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else None
+        if not self.gate.caller_allowed(self.headers):
+            payload = b"Unauthorized\n"
+            self.send_response(401)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(payload)
+            return
+        status, headers, payload = self.gate.exchange(self.command, self.path, self.headers, body)
+        self.send_response(status)
+        for key, value in headers:
+            lowered = key.lower()
+            if lowered in HOP or lowered == "set-cookie":
+                continue
+            if lowered == "location":
+                value = self.gate.rewrite(value)
+            self.send_header(key, value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(payload)
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("jira-gate-proxy: " + (fmt % args) + "\n")
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: jira-gate-proxy <port-file>", file=sys.stderr)
+        raise SystemExit(1)
+    die_with_parent()
+    try:
+        gate = Gate()
+        gate.login()
+    except KeyError as exc:
+        print(f"jira-gate-proxy: missing {exc.args[0]}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except LoginFailed as exc:
+        print(f"jira-gate-proxy: {exc.message}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    Handler.gate = gate
+    gate.listen_host = f"127.0.0.1:{server.server_address[1]}"
+    port_file = sys.argv[1]
+    temporary = port_file + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(gate.listen_host.split(":", 1)[1])
+    os.rename(temporary, port_file)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
