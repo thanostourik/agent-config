@@ -59,7 +59,7 @@ need systemctl
 sock="${XDG_RUNTIME_DIR}/bw-agent.sock"
 
 # Client for the agent's HTTP API. Commands: status, unlock (password on
-# stdin), login <url> (prints shell assignments for user and token).
+# stdin), sync, login <url> (prints shell assignments for user and token).
 client='
 import http.client, json, shlex, socket, sys, urllib.parse
 
@@ -143,6 +143,8 @@ if command == "status":
 elif command == "unlock":
     res = call("POST", "/unlock", json.dumps({"password": sys.stdin.read()}))
     sys.exit(0 if res.get("success") else 1)
+elif command == "sync":
+    sys.exit(0 if call("POST", "/sync").get("success") else 1)
 elif command == "login":
     url = sys.argv[3]
     exact = len(sys.argv) > 4 and sys.argv[4] == "exact"
@@ -246,17 +248,9 @@ start_gate() {
   export JIRA_URL="http://127.0.0.1:${port}"
 }
 
-# The lock only keeps two password prompts from opening at once. Creating it
-# under XDG_RUNTIME_DIR fails in a later thread and the script exits before
-# Jira, so the lock lives in the home cache and is skipped when that
-# directory cannot be written.
-if [ "${BW_LOCK_HELD:-}" != 1 ]; then
-  lockdir=${HOME}/.cache/agent-config
-  if mkdir -p "$lockdir" 2>/dev/null && [ -w "$lockdir" ]; then
-    BW_LOCK_HELD=1 flock "$lockdir/bw-agent.lock" "$0" "$@"
-    exit $?
-  fi
-fi
+# One start or unlock at a time, so parallel sessions show one password window.
+exec 9>"${XDG_RUNTIME_DIR}/bw-agent.lock"
+flock 9
 status=$(agent_status)
 [ -n "$status" ] || start_agent
 case $status in
@@ -268,10 +262,14 @@ case $status in
     unlock
     ;;
 esac
+exec 9>&-
 if [ "$unlock_only" = 1 ]; then
   exit 0
 fi
 
+# The agent never refreshes its vault copy on its own, so a login added in the
+# Bitwarden app stays invisible to it. Offline, the old copy is still usable.
+agent sync || true
 creds=$(agent login "$url")
 eval "$creds"
 jira_user=$user

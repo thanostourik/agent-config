@@ -57,6 +57,8 @@ Two things to keep as they are:
   `mcp-atlassian-start` asks a `bw serve`
   agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
   the vault unlocked in memory, and starts and unlocks that agent when needed.
+ The agent never refreshes its copy of the vault by itself, so each start
+ tells it to sync first; a login added in the Bitwarden app is then found.
   A lookup through the agent takes milliseconds; plain `bw` takes about 3
   seconds, which is too slow for Codex to list Jira's tools in a thread's first
   turn. `systemctl --user stop bw-agent` locks the vault again. When a Jira
