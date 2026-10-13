@@ -143,6 +143,10 @@ if command == "status":
 elif command == "unlock":
     res = call("POST", "/unlock", json.dumps({"password": sys.stdin.read()}))
     sys.exit(0 if res.get("success") else 1)
+elif command == "sync":
+    res = call("POST", "/sync", "{}")
+    if not res.get("success"):
+        sys.exit(res.get("message") or "Bitwarden sync failed.")
 elif command == "login":
     url = sys.argv[3]
     exact = len(sys.argv) > 4 and sys.argv[4] == "exact"
@@ -212,9 +216,29 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
   done
 }
 
+# The agent serves its last sync. A login added in the Bitwarden app is
+# invisible until the next one, so a miss is tried again after a sync.
+login_for() {
+  err=$(mktemp)
+  if creds=$("$@" 2>"$err"); then
+    rm -f "$err"
+    printf '%s\n' "$creds"
+    return 0
+  fi
+  agent sync
+  if creds=$("$@" 2>"$err"); then
+    rm -f "$err"
+    printf '%s\n' "$creds"
+    return 0
+  fi
+  cat "$err" >&2
+  rm -f "$err"
+  return 1
+}
+
 start_gate() {
   gate_url=${url%/}/basic-auth-gate
-  gate_creds=$(agent login "$gate_url" exact)
+  gate_creds=$(login_for agent login "$gate_url" exact)
   eval "$gate_creds"
   export JIRA_UPSTREAM=$url
   export JIRA_GATE_USERNAME=$user
@@ -265,7 +289,7 @@ if [ "$unlock_only" = 1 ]; then
   exit 0
 fi
 
-creds=$(agent login "$url")
+creds=$(login_for agent login "$url")
 eval "$creds"
 jira_user=$user
 jira_token=$token
