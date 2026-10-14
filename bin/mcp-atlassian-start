@@ -214,9 +214,33 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
   done
 }
 
+# The agent answers from its last vault copy, and a sync takes seconds, so a
+# thread looks up first. A login added in the app is absent from that copy:
+# refresh once and look again. The next thread finds it in memory.
+lookup() {
+  errfile=$(mktemp)
+  if creds=$(agent login "$@" 2>"$errfile"); then
+    rm -f "$errfile"
+    printf '%s\n' "$creds"
+    return 0
+  fi
+  err=$(cat "$errfile")
+  rm -f "$errfile"
+  case $err in
+    *"has no login for"*)
+      agent sync >/dev/null 2>&1 || true
+      agent login "$@"
+      ;;
+    *)
+      printf '%s\n' "$err" >&2
+      return 1
+      ;;
+  esac
+}
+
 start_gate() {
   gate_url=${url%/}/basic-auth-gate
-  gate_creds=$(agent login "$gate_url" exact)
+  gate_creds=$(lookup "$gate_url" exact)
   eval "$gate_creds"
   export JIRA_UPSTREAM=$url
   export JIRA_GATE_USERNAME=$user
@@ -260,17 +284,18 @@ case $status in
     ;;
   locked)
     unlock
+    # The password dialog is already open here. Refresh once, not per thread.
+    agent sync >/dev/null 2>&1 || true
+    refreshed=1
     ;;
 esac
 exec 9>&-
 if [ "$unlock_only" = 1 ]; then
+  [ "${refreshed:-}" = 1 ] || agent sync >/dev/null 2>&1 || true
   exit 0
 fi
 
-# The agent never refreshes its vault copy on its own, so a login added in the
-# Bitwarden app stays invisible to it. Offline, the old copy is still usable.
-agent sync || true
-creds=$(agent login "$url")
+creds=$(lookup "$url")
 eval "$creds"
 jira_user=$user
 jira_token=$token

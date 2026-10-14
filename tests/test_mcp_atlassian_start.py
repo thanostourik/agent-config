@@ -47,6 +47,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if ok:
                 status.write_text("unlocked")
             out = {"success": ok, "message": None if ok else "Invalid master password."}
+        elif self.path == "/sync":
+            out = {"success": True, "data": {"title": "Syncing complete."}}
         else:
             items = json.loads((state / "items.json").read_text())
             key = urllib.parse.unquote(self.path.removeprefix("/object/item/"))
@@ -159,7 +161,6 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.run_helper(extra_env={"READ_ONLY_MODE": "true"})
         self.assertEqual(self.requests(), [
             ["GET", "/status", "localhost:8087", ""],
-            ["POST", "/sync", "localhost:8087", ""],
             ["GET", "/object/item/https%3A%2F%2Fjira.example.com", "localhost:8087", ""],
         ])
         self.assertFalse((self.state / "systemd-run.log").exists())
@@ -176,7 +177,6 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.set_items({"jira.example.com": ITEM})
         self.run_helper()
         self.assertEqual([path for _, path, _, _ in self.requests()[1:]], [
-            "/sync",
             "/object/item/https%3A%2F%2Fjira.example.com",
             "/object/item/jira.example.com",
         ])
@@ -207,7 +207,7 @@ json.dump({{k: os.environ.get(k) for k in keys}}, open(sys.argv[1], "w"))
         self.run_helper(args=("--unlock",))
         self.assertEqual(self.zenity_calls(), 1)
         self.assertEqual([path for _, path, _, _ in self.requests()],
-                         ["/status", "/unlock"])
+                         ["/status", "/unlock", "/sync"])
         self.assertFalse(self.env_out.exists())
 
     def test_unlock_option_does_not_prompt_for_an_unlocked_agent(self):
