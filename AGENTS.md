@@ -57,9 +57,16 @@ Two things to keep as they are:
   `mcp-atlassian-start` asks a `bw serve`
   agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
   the vault unlocked in memory, and starts and unlocks that agent when needed.
-  A lookup through the agent takes milliseconds; plain `bw` takes about 3
-  seconds, which is too slow for Codex to list Jira's tools in a thread's first
-  turn. `systemctl --user stop bw-agent` locks the vault again. When a Jira
+  The agent never refreshes its copy of the vault by itself. A lookup through
+  the agent takes milliseconds; plain `bw` takes about 3 seconds, which is too
+  slow for Codex to list Jira's tools in a thread's first turn, so a thread
+  whose login is already in that copy does not sync. The copy is refreshed
+  after the vault is unlocked and whenever `--unlock` runs. That refresh has
+  a ten-second deadline and does not hold the startup lock. When a lookup
+  cannot see its login, that start refreshes once, looks again, and reports a
+  failed refresh. The `--unlock` run exits after its refresh with no failure
+  message. A login the refresh added is in memory
+  for the next thread. `systemctl --user stop bw-agent` locks the vault again. When a Jira
   instance is configured, sync also writes the login autostart entry
   `~/.config/autostart/jira-vault-unlock.desktop`, which runs
   `mcp-atlassian-start --unlock` so the password dialog appears at login, not in
