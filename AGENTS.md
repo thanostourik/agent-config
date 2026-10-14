@@ -38,7 +38,12 @@ Two things to keep as they are:
   in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `squash-merge-pr` needs `git`, a logged-in `gh`, and `jq`.
-  `t3-start-thread` needs `jq`, `sqlite3`, `curl`, `node`, `git`, and a running T3 Code app.
+  `t3-start-thread` starts a thread, optionally at an effort level. It needs
+  `jq`, `sqlite3`, `curl`, `node`, `git`, and a running T3 Code app.
+  `t3-message-thread` sends a follow-up message to a thread and needs the same
+  except `git`. `t3-check-thread` reports whether a thread is working,
+  waiting, failed, interrupted, or idle, with its latest reply. It needs only
+  `sqlite3`.
   `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and

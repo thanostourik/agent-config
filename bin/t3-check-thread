@@ -1,0 +1,65 @@
+#!/bin/bash
+# t3-check-thread --thread THREAD_ID
+# Prints the state of a thread in T3 Code and the last assistant message of its
+# latest turn. The state is one of: working (a turn is running), waiting (it asked
+# a question or wants an approval, answer it in the T3 app), failed, interrupted
+# (stopped before the turn finished), or idle.
+# Reads T3's local database, whose layout is internal and may change between T3 versions.
+
+set -euo pipefail
+
+die() {
+  echo "t3-check-thread: $*" >&2
+  exit 1
+}
+
+thread_id=""
+while [ $# -gt 0 ]; do
+  [ $# -ge 2 ] || die "missing value for $1"
+  case $1 in
+    --thread) thread_id=$2 ;;
+    *) die "unknown option $1" ;;
+  esac
+  shift 2
+done
+[ -n "$thread_id" ] || die "--thread is required"
+
+db=${T3CODE_HOME:-$HOME/.t3}/userdata/state.sqlite
+sql() {
+  sqlite3 -readonly -separator $'\t' "$db" "$1"
+}
+q="'${thread_id//\'/\'\'}'"
+
+thread=$(sql "select title, pending_approval_count + pending_user_input_count from projection_threads
+  where thread_id = $q and deleted_at is null")
+[ -n "$thread" ] || die "no thread with id '$thread_id'"
+IFS=$'\t' read -r title pending <<< "$thread"
+
+latest_turn=$(sql "select coalesce(turn_id, ''), state from projection_turns where thread_id = $q
+  order by requested_at desc, row_id desc limit 1")
+IFS=$'\t' read -r turn_id turn_state <<< "${latest_turn:-$'\t'}"
+session_status=$(sql "select status from projection_thread_sessions where thread_id = $q")
+last_error=$(sql "select coalesce(last_error, '') from projection_thread_sessions where thread_id = $q")
+
+if [ "$pending" -gt 0 ]; then
+  state=waiting
+elif [[ $turn_state =~ ^(pending|running)$ || $session_status =~ ^(starting|running)$ ]]; then
+  state=working
+elif [[ $turn_state = error || $session_status = error || ( -z $turn_state && -n $last_error ) ]]; then
+  state=failed
+elif [ "$turn_state" = interrupted ]; then
+  state=interrupted
+else
+  state=idle
+fi
+
+reply=""
+[ -z "$turn_id" ] || reply=$(sql "select text from projection_thread_messages
+  where thread_id = $q and turn_id = '${turn_id//\'/\'\'}' and role = 'assistant'
+  order by created_at desc, rowid desc limit 1")
+
+echo "thread: $thread_id ($title)"
+echo "state: $state"
+[ "$state" != failed ] || [ -z "$last_error" ] || echo "error: $last_error"
+echo "latest reply:"
+echo "${reply:-(none yet)}"

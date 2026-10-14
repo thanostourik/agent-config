@@ -1,0 +1,74 @@
+#!/bin/bash
+# t3-message-thread --thread THREAD_ID [--message TEXT]
+# Sends a follow-up message to an existing thread in the running T3 Code app, which
+# starts the thread's next turn. The message comes from --message or from stdin.
+# Refuses while the thread is still working; check it with t3-check-thread first.
+# Talks to T3's local HTTP API, which is internal and may change between T3 versions.
+
+set -euo pipefail
+
+die() {
+  echo "t3-message-thread: $*" >&2
+  exit 1
+}
+
+thread_id="" message=""
+while [ $# -gt 0 ]; do
+  [ $# -ge 2 ] || die "missing value for $1"
+  case $1 in
+    --thread) thread_id=$2 ;;
+    --message) message=$2 ;;
+    *) die "unknown option $1" ;;
+  esac
+  shift 2
+done
+
+[ -n "$thread_id" ] || die "--thread is required"
+[ -n "$message" ] || { [ -t 0 ] || message=$(cat); }
+[ -n "$message" ] || die "give the message with --message or on stdin"
+
+t3_home=${T3CODE_HOME:-$HOME/.t3}
+db=$t3_home/userdata/state.sqlite
+sql() {
+  sqlite3 -readonly -separator $'\t' "$db" "$1"
+}
+q="'${thread_id//\'/\'\'}'"
+
+origin=$(jq -r .origin "$t3_home/userdata/server-runtime.json") || die "T3 Code does not seem to be running"
+curl -fsS -m 5 -o /dev/null "$origin/" || die "T3 Code does not answer at $origin"
+
+modes=$(sql "select runtime_mode, interaction_mode from projection_threads where thread_id = $q and deleted_at is null")
+[ -n "$modes" ] || die "no thread with id '$thread_id'"
+IFS=$'\t' read -r runtime_mode interaction_mode <<< "$modes"
+
+working=$(sql "select 1 from projection_turns where thread_id = $q and state in ('pending', 'running')
+  union select 1 from projection_thread_sessions where thread_id = $q and status in ('starting', 'running')")
+[ -z "$working" ] || die "thread '$thread_id' is still working; wait until t3-check-thread no longer reports it working"
+
+version=$(jq -r .activeVersion "$t3_home/runtime/service-state.json")
+t3_cli=$t3_home/runtime/versions/$version/node_modules/t3/dist/bin.mjs
+[ -f "$t3_cli" ] || die "t3 CLI not found at $t3_cli"
+token=$(node "$t3_cli" auth session issue --ttl 5m --label t3-message-thread --token-only)
+
+uuid() {
+  cat /proc/sys/kernel/random/uuid
+}
+
+response=$(curl -sS -m 120 -w '\n%{http_code}' -X POST "$origin/api/orchestration/dispatch" \
+  -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$(jq -n \
+  --arg thread_id "$thread_id" --arg command_id "$(uuid)" --arg message_id "$(uuid)" \
+  --arg now "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" --arg message "$message" \
+  --arg runtime_mode "$runtime_mode" --arg interaction_mode "$interaction_mode" '
+  {
+    type: "thread.turn.start",
+    commandId: $command_id,
+    threadId: $thread_id,
+    message: {messageId: $message_id, role: "user", text: $message, attachments: []},
+    runtimeMode: $runtime_mode,
+    interactionMode: $interaction_mode,
+    createdAt: $now
+  }')")
+status=${response##*$'\n'}
+[ "$status" = 200 ] || die "T3 rejected the request (HTTP $status): ${response%$'\n'*}"
+
+echo "sent the message to thread $thread_id"

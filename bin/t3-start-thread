@@ -1,6 +1,6 @@
 #!/bin/bash
 # t3-start-thread --project NAME_OR_PATH [--prompt TEXT] [--title TEXT]
-#                 [--provider INSTANCE_ID] [--model MODEL]
+#                 [--provider INSTANCE_ID] [--model MODEL] [--effort LEVEL]
 #                 [--worktree-from BASE [--branch NEW_BRANCH]]
 # Starts a new thread in the running T3 Code app and sends its first prompt, so the
 # agent starts working at once. The prompt comes from --prompt or from stdin.
@@ -8,7 +8,8 @@
 # makes a git worktree from the latest origin/BASE (branch NEW_BRANCH, default
 # t3code/<8 hex>) the way T3 does, and the thread runs there. The thread runs in
 # full-access mode. Without --provider and --model it uses the project's default
-# model, then T3's global default. Talks to T3's local HTTP API, which is internal
+# model, then T3's global default. --effort sets the reasoning level under the
+# option id the provider's driver uses. Talks to T3's local HTTP API, which is internal
 # and may change between T3 versions.
 
 set -euo pipefail
@@ -18,7 +19,7 @@ die() {
   exit 1
 }
 
-project="" prompt="" title="New thread" provider="" model="" base="" branch=""
+project="" prompt="" title="New thread" provider="" model="" effort="" base="" branch=""
 while [ $# -gt 0 ]; do
   [ $# -ge 2 ] || die "missing value for $1"
   case $1 in
@@ -27,6 +28,7 @@ while [ $# -gt 0 ]; do
     --title) title=$2 ;;
     --provider) provider=$2 ;;
     --model) model=$2 ;;
+    --effort) effort=$2 ;;
     --worktree-from) base=$2 ;;
     --branch) branch=$2 ;;
     *) die "unknown option $1" ;;
@@ -73,6 +75,27 @@ elif [ -n "$project_model" ]; then
   model_selection=$project_model
 else
   model_selection=$(jq -c .defaultModelSelection "$t3_home/userdata/settings.json")
+fi
+
+if [ -n "$effort" ]; then
+  instance=$(jq -r .instanceId <<< "$model_selection")
+  driver=$(jq -r --arg i "$instance" '.providerInstances[$i].driver // $i' "$t3_home/userdata/settings.json")
+  case $driver in
+    claudeAgent) effort_id=effort ;;
+    codex | grok) effort_id=reasoningEffort ;;
+    cursor) effort_id=reasoning ;;
+    opencode) effort_id=variant ;;
+    *) die "--effort is not supported for provider '$instance' (driver $driver)" ;;
+  esac
+  levels=$(jq -r --arg d "$driver" --arg m "$(jq -r .model <<< "$model_selection")" --arg id "$effort_id" '
+    .manifest.providers[$d] // empty
+    | .profiles[first(.models[] | select(.slug == $m or any(.aliases[]?; . == $m)) | .profile // empty)]
+    | .capabilities.optionDescriptors[]? | select(.id == $id) | .options[].id' \
+    "$t3_home/userdata/model-manifest.json" 2>/dev/null || true)
+  [ -z "$levels" ] || grep -qxF -- "$effort" <<< "$levels" ||
+    die "effort '$effort' is not valid for this model; use one of: $(paste -sd' ' <<< "$levels")"
+  model_selection=$(jq -c --arg id "$effort_id" --arg v "$effort" \
+    '.options = [(.options // [])[] | select(.id != $id)] + [{id: $id, value: $v}]' <<< "$model_selection")
 fi
 
 if [ -n "$branch" ]; then
