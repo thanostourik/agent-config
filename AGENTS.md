@@ -63,8 +63,9 @@ Two things to keep as they are:
   whose login is already in that copy does not sync. The copy is refreshed
   after the vault is unlocked and whenever `--unlock` runs. That refresh has
   a ten-second deadline and does not hold the startup lock. When a lookup
-  cannot see its login, that start refreshes once and looks again. If the
-  refresh fails, the start says so. A login the refresh added is in memory
+  cannot see its login, that start refreshes once, looks again, and reports a
+  failed refresh. The `--unlock` run exits after its refresh with no failure
+  message. A login the refresh added is in memory
   for the next thread. `systemctl --user stop bw-agent` locks the vault again. When a Jira
   instance is configured, sync also writes the login autostart entry
   `~/.config/autostart/jira-vault-unlock.desktop`, which runs
