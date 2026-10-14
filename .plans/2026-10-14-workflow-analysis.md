@@ -152,7 +152,7 @@ Data: 384 threads and 2,570 user messages. 742 of those messages (29%) contain s
 - **Evidence:**
   - bf6da768 had 79 "Still running" turns and hit the session limit 21 times in a row.
   - 293bb5fb had about 26 pings during one review.
-  - The rule sits at `skills/shared/codex-review/SKILL.md:59`.
+  - The rule sits at `skills/shared/codex-review/SKILL.md:60`.
 - **Fix:** Wait on the process with a long blocking wait or a completion notice. Report only on
   completion, or every 5 minutes or so.
 
