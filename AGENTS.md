@@ -60,9 +60,12 @@ Two things to keep as they are:
   The agent never refreshes its copy of the vault by itself. A lookup through
   the agent takes milliseconds; plain `bw` takes about 3 seconds, which is too
   slow for Codex to list Jira's tools in a thread's first turn, so a thread
-  does not sync. The copy is refreshed when the vault is unlocked, and once
-  more only when a lookup cannot see its login. The next thread then finds it
-  in memory. `systemctl --user stop bw-agent` locks the vault again. When a Jira
+  whose login is already in that copy does not sync. The copy is refreshed
+  after the vault is unlocked and whenever `--unlock` runs. That refresh has
+  a ten-second deadline and does not hold the startup lock. When a lookup
+  cannot see its login, that start refreshes once and looks again. If the
+  refresh fails, the start says so. A login the refresh added is in memory
+  for the next thread. `systemctl --user stop bw-agent` locks the vault again. When a Jira
   instance is configured, sync also writes the login autostart entry
   `~/.config/autostart/jira-vault-unlock.desktop`, which runs
   `mcp-atlassian-start --unlock` so the password dialog appears at login, not in

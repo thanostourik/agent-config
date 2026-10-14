@@ -55,11 +55,13 @@ need python3
 need flock
 need systemd-run
 need systemctl
+need timeout
 
 sock="${XDG_RUNTIME_DIR}/bw-agent.sock"
 
 # Client for the agent's HTTP API. Commands: status, unlock (password on
-# stdin), sync, login <url> (prints shell assignments for user and token).
+# stdin), sync, login <url> (prints shell assignments, or exits 2 when no
+# login exists).
 client='
 import http.client, json, shlex, socket, sys, urllib.parse
 
@@ -155,10 +157,12 @@ elif command == "login":
         res = item(host)
         data = pick(res, host, allow_host=True)
     if data is None:
-        message = res.get("message") or "Bitwarden lookup failed."
         if missed(res):
-            message = f"Bitwarden has no login for {url}. The login URI must match this URL."
-        sys.exit(message)
+            sys.stderr.write(
+                f"Bitwarden has no login for {url}. The login URI must match this URL.\n"
+            )
+            sys.exit(2)
+        sys.exit(res.get("message") or "Bitwarden lookup failed.")
     login = data.get("login") or {}
     user = login.get("username") or ""
     token = login.get("password") or ""
@@ -214,33 +218,87 @@ NOT Client ID. NOT Client Secret. NOT Jira.'
   done
 }
 
-# The agent answers from its last vault copy, and a sync takes seconds, so a
-# thread looks up first. A login added in the app is absent from that copy:
-# refresh once and look again. The next thread finds it in memory.
-lookup() {
+# Refresh the agent's vault copy once per run. The deadline is ten seconds,
+# past a normal sync. After that, this start uses the copy it already has.
+refresh() {
+  if [ "${refresh_tried:-}" = 1 ]; then
+    [ "${refresh_ok:-}" = 1 ] && return 0
+    return 1
+  fi
+  refresh_tried=1
   errfile=$(mktemp)
-  if creds=$(agent login "$@" 2>"$errfile"); then
+  if timeout 10 python3 -c "$client" "$sock" sync >/dev/null 2>"$errfile"; then
+    refresh_ok=1
     rm -f "$errfile"
+    return 0
+  fi
+  refresh_ok=0
+  refresh_err=$(cat "$errfile")
+  rm -f "$errfile"
+  return 1
+}
+
+login_once() {
+  errfile=$(mktemp)
+  set +e
+  creds=$(agent login "$@" 2>"$errfile")
+  login_status=$?
+  set -e
+  login_err=$(cat "$errfile")
+  rm -f "$errfile"
+}
+
+refresh_failed() {
+  echo "Bitwarden vault refresh failed." >&2
+  if [ -n "${refresh_err:-}" ]; then
+    printf '%s\n' "$refresh_err" >&2
+  fi
+}
+
+# Use the copy already in memory. Refresh once only when that copy has no login.
+lookup() {
+  login_once "$@"
+  if [ "$login_status" -eq 0 ]; then
     printf '%s\n' "$creds"
     return 0
   fi
-  err=$(cat "$errfile")
-  rm -f "$errfile"
-  case $err in
-    *"has no login for"*)
-      agent sync >/dev/null 2>&1 || true
-      agent login "$@"
-      ;;
-    *)
-      printf '%s\n' "$err" >&2
-      return 1
-      ;;
-  esac
+  if [ "$login_status" -ne 2 ]; then
+    printf '%s\n' "$login_err" >&2
+    return 1
+  fi
+  if [ "${refresh_tried:-}" != 1 ]; then
+    refresh || true
+    if [ "${refresh_ok:-}" = 1 ]; then
+      login_once "$@"
+      if [ "$login_status" -eq 0 ]; then
+        printf '%s\n' "$creds"
+        return 0
+      fi
+    fi
+  fi
+  if [ "${refresh_ok:-}" != 1 ]; then
+    refresh_failed
+    return 1
+  fi
+  printf '%s\n' "$login_err" >&2
+  return 1
+}
+
+read_creds() {
+  credfile=$(mktemp)
+  if lookup "$@" >"$credfile"; then
+    creds=$(cat "$credfile")
+    rm -f "$credfile"
+    return 0
+  fi
+  rm -f "$credfile"
+  return 1
 }
 
 start_gate() {
   gate_url=${url%/}/basic-auth-gate
-  gate_creds=$(lookup "$gate_url" exact)
+  read_creds "$gate_url" exact
+  gate_creds=$creds
   eval "$gate_creds"
   export JIRA_UPSTREAM=$url
   export JIRA_GATE_USERNAME=$user
@@ -277,6 +335,7 @@ exec 9>"${XDG_RUNTIME_DIR}/bw-agent.lock"
 flock 9
 status=$(agent_status)
 [ -n "$status" ] || start_agent
+just_unlocked=0
 case $status in
   unauthenticated)
     echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
@@ -284,18 +343,18 @@ case $status in
     ;;
   locked)
     unlock
-    # The password dialog is already open here. Refresh once, not per thread.
-    agent sync >/dev/null 2>&1 || true
-    refreshed=1
+    just_unlocked=1
     ;;
 esac
 exec 9>&-
+if [ "$just_unlocked" = 1 ] || [ "$unlock_only" = 1 ]; then
+  refresh || true
+fi
 if [ "$unlock_only" = 1 ]; then
-  [ "${refreshed:-}" = 1 ] || agent sync >/dev/null 2>&1 || true
   exit 0
 fi
 
-creds=$(lookup "$url")
+read_creds "$url"
 eval "$creds"
 jira_user=$user
 jira_token=$token
