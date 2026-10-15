@@ -80,17 +80,30 @@ its impact. Use these sections in order:
 | Bug | Task, Story, or decision |
 | --- | --- |
 | Steps to reproduce | Context |
-| Actual | Requested work |
-| Expected | Acceptance criteria |
-| Notes, when useful | Notes, when useful |
+| Actual | Acceptance criteria |
+| Expected | Notes, when useful |
+| Notes, when useful | |
 
 For bugs, include prerequisites, numbered reproduction steps, exact requests
 and responses when known, and a concrete expected result. For other work,
-describe the current situation, scope of work or decision, and observable
-completion criteria. Notes hold relevant environment limits, supporting
-evidence, or a suspected cause clearly identified as such. Include source,
-feature-file, or PR references only when available and relevant; a PR is not
-required. Do not invent reproduction evidence or claim unrun checks passed.
+describe the current situation, the problem to solve or feature wanted (or the
+decision to make), and observable completion criteria. Notes hold relevant
+environment limits, supporting evidence, or a suspected cause clearly
+identified as such. Include source, feature-file, or PR references only when
+available and relevant; a PR is not required. Do not invent reproduction
+evidence or claim unrun checks passed.
+
+The description never contains implementation details: no "Requested work"
+section, no list of steps to carry out, no files or functions to change. An
+issue describes a problem or a feature, not how to build it.
+
+## Suggested approach
+
+If you have a suggested approach for the implementation, add it as a comment on
+the issue right after creating it. This comment on your own new issue is
+covered by the authorization to create it. Start it with the heading
+`Suggested approach`, use the same input format as the description, and end it
+with the same footer. Skip the comment when there is no suggested approach.
 
 Use the input format the Jira tool documents. With mcp-atlassian's Markdown
 description input, use `###` headings, numbered lists, fenced code blocks, and
@@ -112,7 +125,8 @@ creation, add the returned issue key to the resolved active sprint afterwards.
 
 Read back each created issue and verify its project, title, labels, assignee,
 type, priority, fix version, description, parent/epic, and sprint membership.
-Check that any component matches the user's explicit request.
+Check that any component matches the user's explicit request, and that the
+suggested-approach comment exists when you wrote one.
 
 If creation times out or the outcome is uncertain, check whether the issue
 exists before retrying. If a later step fails, report the created key and the
