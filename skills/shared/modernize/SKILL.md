@@ -30,9 +30,8 @@ cannot tell which one is right, stop and ask instead of guessing.
 
 When the rebase is done, push with
 `git push --force-with-lease -u origin <branch>`. This also works for a branch
-that was never pushed. The user's general rule says never force-push. Running
-this skill is their permission to do it here, for this branch only. If the push
-is rejected, someone else pushed to the branch in the meantime: stop and say so.
+that was never pushed. If the push is rejected, someone else pushed to the branch
+in the meantime: stop and say so.
 
 Finish by telling the user how it went: a clean rebase, or which files
 conflicted and what you did in each one.

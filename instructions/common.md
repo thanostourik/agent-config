@@ -98,16 +98,18 @@ for any of these steps. Reading and answering questions is the only work that ha
   people's branches: ask first, every time.
 - Never merge another branch into the working branch, and never rebase it, unless I say so
   explicitly. If it needs main's changes, stop and ask.
-- No force-push, ever. If a push is rejected, stop and tell me.
+- Force-push only your working branch, and only with `--force-with-lease`. Never force-push main
+  or someone else's branch. If a `--force-with-lease` push is rejected, stop and tell me.
 - When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
   create merge commits. Squash first only if I ask.
 
 ## Local environment
 
-- Containers (databases, auth servers, etc.) started by the project's dev script
-  (`dev_setup/dev.sh`) run in a branch-isolated environment. You may start, reset, and
-  reseed them freely. If that script does not exist, treat containers as shared and ask first.
-- Never touch shared or remote services (deployed environments, remote databases).
+- Stop everything you started (servers, containers, background loops) before you report, unless
+  I asked you to keep it running. Never stop or replace something you did not start.
+- Servers, configuration, and credentials are read-only unless I say otherwise. This covers
+  deployed environments, remote databases, config files outside the repository, and password
+  stores.
 
 ## TypeScript
 
