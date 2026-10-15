@@ -366,8 +366,12 @@ unset READ_ONLY_MODE jira_user jira_token
 
 if [ "$gate" = 1 ]; then
   start_gate
-else
-  export JIRA_URL=$url
+  # mcp-atlassian builds issue links from JIRA_URL, which is the proxy. Point them at Jira.
+  links=$(mktemp -u)
+  mkfifo "$links"
+  { rm "$links"; sed -u "s#$JIRA_URL#${url%/}#g"; } < "$links" &
+  exec uvx mcp-atlassian > "$links"
 fi
 
+export JIRA_URL=$url
 exec uvx mcp-atlassian
