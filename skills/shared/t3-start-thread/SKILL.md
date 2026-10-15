@@ -1,5 +1,5 @@
 ---
-name: start-t3-thread
+name: t3-start-thread
 description: Use only when the user asks to start, spawn, queue, or fan out T3 Code threads, or to message or check on T3 threads.
 ---
 

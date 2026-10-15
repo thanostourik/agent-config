@@ -14,7 +14,7 @@
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true },
     "squash-merge-pr": { "enabled": true },
-    "start-t3-thread": { "enabled": true }
+    "t3-start-thread": { "enabled": true }
   },
   "hooks": {
     "render-plan": { "enabled": true }
