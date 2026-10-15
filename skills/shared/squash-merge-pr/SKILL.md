@@ -10,12 +10,19 @@ Run only when the user explicitly invokes this skill. A general request to
 merge a PR does not invoke it. Invoking it authorizes the squash merge,
 updating local main, and deleting this PR's local and remote branches without
 asking again. When the checkout is a linked git worktree, it also authorizes
-removing that worktree. The script then leaves the shell's working directory
-deleted, so run later commands from another directory.
+removing that worktree.
 
-Run `~/.local/bin/squash-merge-pr` from the PR's branch checkout. Add the PR
-number or URL only if the user gave one. The script does every git and gh step
-and every check. Do not run those steps yourself.
+Run the script from the PR's branch checkout with this exact command. Add the PR
+number or URL after the script name only if the user gave one. The script does
+every git and gh step and every check. Do not run those steps yourself.
+
+```sh
+~/.local/bin/squash-merge-pr; rc=$?; cd ~; (exit "$rc")
+```
+
+The `cd ~` keeps the shell out of a removed worktree. Without it, some tools
+report a failure after the script has succeeded. The `(exit "$rc")` keeps the
+script's exit code. Run later commands from another directory.
 
 If the script exits with an error, report its output (the step it stopped at
 and whether the PR was merged) and stop. Do not retry, work around it, or
