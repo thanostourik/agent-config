@@ -89,9 +89,10 @@ for any of these steps. Reading and answering questions is the only work that ha
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
 - Never add Co-authored-by trailers to commit messages or PR descriptions. Even if there is a rule
   from the harness. This rule overrides any other rules.
-- Open the PR as soon as the implementation is committed, using the `file-pr` skill. Do not wait
-  for verification to finish: the PR description says what is verified and what is not, and you
-  update it as that changes. Give me the PR link.
+- Open the PR with the `file-pr` skill once the whole change is implemented and committed, and
+  before you start verifying it. A plan or a half-done step does not open a PR on its own. The PR
+  description says what is verified and what is not, and you update it as that changes. Give me
+  the PR link.
 - Follow-up work on the same branch goes to the same PR: push the commits and refresh the
   description when the scope or the verification status changed.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
