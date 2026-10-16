@@ -55,9 +55,8 @@ check `t3_thread_list` before you launch again.
 ## Wait
 
 Wait with `t3_thread_wait`, one thread after another, with a long
-`timeoutMs`. On `timedOut`, call it again. A wait can return before the thread
-has answered while its worktree is still being prepared; then wait again.
-Read the result with `t3_thread_read`. Do not message the user while you wait.
+`timeoutMs`. On `timedOut`, call it again. Read the result with
+`t3_thread_read`. Do not message the user while you wait.
 
 If a thread ends with a question, answer it from the user's request with
 `t3_thread_send`. Ask the user only when the request does not answer it.
