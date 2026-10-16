@@ -33,9 +33,10 @@ Start one thread per task with `t3_thread_launch`:
 
 - `title`: the issue key and a few words.
 - `workspaceStrategy`: `{type: "worktree", baseRef: "main", branch,
-  startFromOrigin: true}`, with the project's main branch as `baseRef`.
-- `branch`: `<prefix>/ISSUE-123-short-name`, prefix `feature/`, `fix/`, or
-  `chore/`. Omit the issue id when there is none.
+  startFromOrigin: true}`, with the project's main branch as `baseRef`. The
+  branch goes inside `workspaceStrategy`; a top-level `branch` is ignored. Name
+  it `<prefix>/ISSUE-123-short-name`, prefix `feature/`, `fix/`, or `chore/`.
+  Omit the issue id when there is none.
 - `modelSelection`: `{instanceId, model, options}` from the check above.
 - `message`: the first prompt.
 
@@ -44,8 +45,8 @@ holds the task, the issue key, the branch name, and everything the user said
 about this task. It ends with:
 
 - Implement the change, commit, push, and open the PR.
-- Without parallel verification: do not verify yet. End with the PR link and
-  wait; the coordinator will tell you when to verify.
+- Without parallel verification: do not verify yet. End your turn with the PR
+  link; the coordinator will tell you when to verify.
 - With parallel verification: then verify the way the project does, and end
   with a one-line verdict, the PR link, and what is unverified.
 
@@ -55,11 +56,18 @@ check `t3_thread_list` before you launch again.
 ## Wait
 
 Wait with `t3_thread_wait`, one thread after another, with a long
-`timeoutMs`. On `timedOut`, call it again. Read the result with
-`t3_thread_read`. Do not message the user while you wait.
+`timeoutMs`. Read the result with `t3_thread_read`. Do not message the user
+while you wait.
 
-If a thread ends with a question, answer it from the user's request with
-`t3_thread_send`. Ask the user only when the request does not answer it.
+A thread can ask a question in two ways. Answer from the user's request, and
+ask the user only when the request does not answer it:
+
+- With a question tool: the run stays open, so the wait times out. On
+  `timedOut`, check `t3_pending_request_list` and answer with
+  `t3_pending_request_respond`. With no pending question, wait again.
+- As text that ends its turn: answer with `t3_thread_send`.
+
+After either answer, wait for that thread again.
 
 ## Verify one at a time
 
