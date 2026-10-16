@@ -56,10 +56,7 @@ requirements mismatches. Ask for severity, file and line, failure scenario, and
 suggested fix direction for each finding. For plans, assess feasibility and
 missing decisions. Request an explicit statement if no substantive issues are found.
 
-Check the running task and any new report or log output every 30–60 seconds.
-Give the user a brief progress update at least once a minute, even when there
-is no new output. Keep monitoring until it exits or the user cancels; do not
-end your turn with the review pending or wait for the user to ask you to check.
+Wait until the review finishes, then report.
 
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not

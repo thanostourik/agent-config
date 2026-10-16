@@ -77,10 +77,7 @@ CURSOR_CONFIG_DIR="$REVIEW_DIR/cursor-config" cursor-agent -p --trust \
 
 This is a static review: the caller remains responsible for tests.
 
-Check the running task and any new report or log output every 30–60 seconds.
-Give the user a brief progress update at least once a minute, even when there
-is no new output. Keep monitoring until it exits or the user cancels; do not
-end your turn with the review pending or wait for the user to ask you to check.
+Wait until the review finishes, then report.
 
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not
