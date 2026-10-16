@@ -52,10 +52,9 @@ Tell every reviewer:
 
 Do not tell a reviewer about the other two. Their answers stay independent.
 
-Each reviewer wakes this thread when it finishes. End your turn and wait for
-all three. Do not poll and do not send the user progress updates. If a reviewer
-fails or ends without a verdict, start it once more with a new `delegate_task`
-call. If it fails again, say so in the report.
+Wait until all three finish. If a reviewer fails or ends without a verdict,
+start it once more with a new `delegate_task` call. If it fails again, say so in
+the report.
 
 ## Report
 
