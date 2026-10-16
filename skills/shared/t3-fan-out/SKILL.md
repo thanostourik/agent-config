@@ -12,8 +12,8 @@ start them, wait for them, hand out verification, and report once at the end.
 
 A thread uses the provider, model, and effort the user names for it, for example
 "CHA-889 on Codex gpt-6-astra xhigh, the rest default". For each unspecified
-field, use provider `{{defaults.provider|claudeAgent}}`, model
-`{{defaults.model|claude-opus-5-5}}`, and effort `{{defaults.effort|high}}`.
+field, use provider `{{defaults.provider}}`, model
+`{{defaults.model}}`, and effort `{{defaults.effort}}`.
 
 Before starting anything, call `orchestrator_capabilities` and check every
 combination you will use: the provider instance, the model id, and the effort

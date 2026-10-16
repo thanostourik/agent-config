@@ -25,13 +25,13 @@ call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
 selected provider, model, and effort for each reviewer; otherwise use these
 defaults:
 
-- General: provider `{{defaults.general_provider|codex}}`, model
-  `{{defaults.general_model|gpt-6.1-sol}}`, effort `{{defaults.general_effort|high}}`.
-- Simplify: provider `{{defaults.simplify_provider|claudeAgent}}`, model
-  `{{defaults.simplify_model|claude-opus-5-5}}`, effort `{{defaults.simplify_effort|high}}`.
-- Over-engineering: provider `{{defaults.over_engineering_provider|claudeAgent}}`,
-  model `{{defaults.over_engineering_model|claude-opus-5-5}}`, effort
-  `{{defaults.over_engineering_effort|high}}`.
+- General: provider `{{defaults.general_provider}}`, model
+  `{{defaults.general_model}}`, effort `{{defaults.general_effort}}`.
+- Simplify: provider `{{defaults.simplify_provider}}`, model
+  `{{defaults.simplify_model}}`, effort `{{defaults.simplify_effort}}`.
+- Over-engineering: provider `{{defaults.over_engineering_provider}}`,
+  model `{{defaults.over_engineering_model}}`, effort
+  `{{defaults.over_engineering_effort}}`.
 
 Before starting, call `orchestrator_capabilities` and check every selected
 provider, model, and effort. Use the provider as `providerInstanceId` and map

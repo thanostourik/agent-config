@@ -16,8 +16,8 @@ that changed since, is replaced or deleted only with --replace-existing, after
 a backup under ~/.config/agent-config/backups/. Anything else is never touched.
 Cursor rules are installed in ~/.cursor/rules/agent-config.mdc and always
 apply. Cursor IDE discovers these for projects under the home directory.
-config.json (gitignored) can disable skills, agents, hooks, and MCP servers.
-Missing entries stay enabled. Copy config.example.json to start.
+config.defaults.json supplies the shipped settings; config.json (gitignored)
+overrides individual settings. Missing enabled switches stay on.
 Disabled items are removed like any other item that left the repository.
 skills.<name>.defaults overrides marked defaults in that skill's Markdown.
 Jira MCP URLs live only in config.json; sync owns only its server entries in
@@ -77,7 +77,7 @@ HOOK_EVENTS = {
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-SKILL_DEFAULT = re.compile(r"\{\{defaults\.([a-z][a-z0-9_]*)\|([^{}|\r\n]+)\}\}")
+SKILL_DEFAULT = re.compile(r"\{\{defaults\.([a-z][a-z0-9_]*)\}\}")
 STATE = ".config/agent-config/state.json"
 BACKUPS = ".config/agent-config/backups"
 BLOCKED = object()
@@ -90,45 +90,56 @@ MCP_JSON = (
 MCP_TOML = (".codex/config.toml", ".grok/config.toml")
 
 
+def merge_config(defaults, overrides):
+    merged = defaults.copy()
+    for key, value in overrides.items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            value = merge_config(merged[key], value)
+        merged[key] = value
+    return merged
+
+
 def load_config():
-    """Read config.json. Missing file means everything stays enabled."""
-    path = ROOT / "config.json"
-    if not path.is_file():
-        return {}
-    data = json.loads(path.read_text())
-    if not isinstance(data, dict):
-        raise ValueError("config.json must be a JSON object")
+    data = {}
+    for name in ("config.defaults.json", "config.json"):
+        path = ROOT / name
+        if name == "config.json" and not path.exists():
+            continue
+        layer = json.loads(path.read_text())
+        if not isinstance(layer, dict):
+            raise ValueError(f"{name} must be a JSON object")
+        data = merge_config(data, layer)
     for section in ("skills", "agents", "hooks"):
         items = data.get(section)
         if items is None:
             continue
         if not isinstance(items, dict):
-            raise ValueError(f"config.json {section} must be an object")
+            raise ValueError(f"configuration {section} must be an object")
         for name, entry in items.items():
             if not isinstance(entry, dict):
-                raise ValueError(f"config.json {section}.{name} must be an object")
+                raise ValueError(f"configuration {section}.{name} must be an object")
             if "enabled" in entry and not isinstance(entry["enabled"], bool):
                 raise ValueError(
-                    f"config.json {section}.{name}.enabled must be true or false")
+                    f"configuration {section}.{name}.enabled must be true or false")
             if section == "skills" and "defaults" in entry:
                 defaults = entry["defaults"]
                 if not isinstance(defaults, dict):
-                    raise ValueError(f"config.json skills.{name}.defaults must be an object")
+                    raise ValueError(f"configuration skills.{name}.defaults must be an object")
                 for key, value in defaults.items():
                     if not valid_skill_default(value):
                         raise ValueError(
-                            f"config.json skills.{name}.defaults.{key} must be a "
+                            f"configuration skills.{name}.defaults.{key} must be a "
                             "nonempty, single-line string without surrounding whitespace "
                             "or {{ or }}")
     mcp = data.get("mcp")
     if mcp is not None:
         if not isinstance(mcp, dict):
-            raise ValueError("config.json mcp must be an object")
+            raise ValueError("configuration mcp must be an object")
         for name, entry in mcp.items():
             if not isinstance(entry, dict):
-                raise ValueError(f"config.json mcp.{name} must be an object")
+                raise ValueError(f"configuration mcp.{name} must be an object")
             if "enabled" in entry and not isinstance(entry["enabled"], bool):
-                raise ValueError(f"config.json mcp.{name}.enabled must be true or false")
+                raise ValueError(f"configuration mcp.{name}.enabled must be true or false")
     jira_servers(data)
     return data
 
@@ -505,25 +516,22 @@ def valid_skill_default(value):
 def render_skill_markdown(skill, config):
     markdown = {file: file.read_bytes().decode("utf-8") for file in sorted(skill.rglob("*"))
                 if file.is_file() and file.suffix.lower() == ".md"}
-    declared = {}
+    declared = set()
     for file, contents in markdown.items():
-        for match in SKILL_DEFAULT.finditer(contents):
-            name, fallback = match.groups()
-            if not valid_skill_default(fallback):
-                raise ValueError(f"{file}: invalid shipped default for {name}")
-            if name in declared and declared[name] != fallback:
-                raise ValueError(f"{file}: conflicting shipped defaults for {name}")
-            declared[name] = fallback
+        declared.update(SKILL_DEFAULT.findall(contents))
         if re.search(r"\{\{\s*defaults\b", SKILL_DEFAULT.sub("", contents)):
             raise ValueError(f"{file}: malformed defaults marker; "
-                             "use {{defaults.name|shipped value}}")
+                             "use {{defaults.name}}")
     entry = (config.get("skills") or {}).get(skill.name, {})
-    overrides = entry.get("defaults", {})
-    unknown = overrides.keys() - declared.keys()
+    values = entry.get("defaults", {})
+    unknown = values.keys() - declared
     if unknown:
-        raise ValueError(f"config.json skills.{skill.name}.defaults has unsupported "
+        raise ValueError(f"configuration skills.{skill.name}.defaults has unsupported "
                          f"options: {', '.join(sorted(unknown))}")
-    values = declared | overrides
+    missing = declared - values.keys()
+    if missing:
+        raise ValueError(f"configuration skills.{skill.name}.defaults is missing "
+                         f"values: {', '.join(sorted(missing))}")
     return {file: SKILL_DEFAULT.sub(lambda match: values[match[1]], contents).encode("utf-8")
             for file, contents in markdown.items()}
 
@@ -712,7 +720,7 @@ def desired_files(config, home, hooks_by_tool):
     unknown = {name for name, entry in (config.get("skills") or {}).items()
                if entry.get("defaults") and name not in skill_names}
     if unknown:
-        raise ValueError(f"config.json defaults name no populated skill: "
+        raise ValueError(f"configuration defaults name no populated skill: "
                          f"{', '.join(sorted(unknown))}")
 
     for tool, hooks in hooks_by_tool.items():

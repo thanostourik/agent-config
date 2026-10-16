@@ -32,6 +32,7 @@ class SyncTest(unittest.TestCase):
         # start every test from an empty scaffold.
         for path in (self.repo / "instructions").glob("*.md"):
             path.write_text("")
+        (self.repo / "config.defaults.json").write_text("{}")
         for folder in ("skills/shared", "skills/grok", "skills/opencode", "agents/claude-code",
                        "hooks", "bin"):
             shutil.rmtree(self.repo / folder, ignore_errors=True)
@@ -503,19 +504,18 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
-    def test_example_config_lists_installable_skills_and_hooks(self):
+    def test_default_config_lists_installable_skills_and_hooks(self):
         source = Path(__file__).resolve().parents[1]
-        example = json.loads((source / "config.example.json").read_text())
+        defaults = json.loads((source / "config.defaults.json").read_text())
         skills = {path.parent.name for path in (source / "skills").glob("*/*/SKILL.md")
                   if path.read_text().strip()}
         hooks = {path.stem for path in (source / "hooks").glob("*/*.json")}
-        self.assertEqual(set(example["skills"]), skills)
-        self.assertEqual(set(example["hooks"]), hooks)
-        for entry in (*example["skills"].values(), *example["hooks"].values()):
+        self.assertEqual(set(defaults["skills"]), skills)
+        self.assertEqual(set(defaults["hooks"]), hooks)
+        for entry in (*defaults["skills"].values(), *defaults["hooks"].values()):
             self.assertEqual(entry["enabled"], True)
-        self.assertEqual(example["mcp"]["jira"]["enabled"], True)
-        self.assertEqual(example["mcp"]["jira"]["instances"],
-                         {"work": {"url": "https://jira.example.com", "gate": False}})
+        self.assertEqual(defaults["mcp"]["jira"]["enabled"], True)
+        self.assertEqual(defaults["mcp"]["jira"]["instances"], {})
 
     def add_helper(self):
         source = Path(__file__).resolve().parents[1] / "bin/mcp-atlassian-start"
