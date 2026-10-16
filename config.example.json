@@ -14,6 +14,7 @@
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true },
     "squash-merge-pr": { "enabled": true },
+    "t3-fan-out": { "enabled": true },
     "triple-review": { "enabled": true }
   },
   "hooks": {
