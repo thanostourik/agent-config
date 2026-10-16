@@ -62,15 +62,7 @@ is safe only inside the `read-only` sandbox: the kernel blocks writes outside
 that file in the report. This is a static review: the caller remains
 responsible for tests.
 
-Wait for the review without progress updates. Wait in steps of at most 10
-minutes, using your tool's way to wait on a background task with a time limit.
-If it has none, use `timeout 600 tail --pid=<review process id> -f /dev/null`,
-which returns when the review exits or after 10 minutes. When a step ends with
-the review still running, check the log for errors, send the user one line
-saying it is still running, and wait again. If your tool wakes you when a
-background task ends, you may end your turn and wait for that instead.
-Otherwise keep waiting until it exits or the user cancels; do not end your turn
-with the review pending or wait for the user to ask you to check.
+Wait until the review finishes, then report.
 
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not
