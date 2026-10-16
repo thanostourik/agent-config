@@ -10,9 +10,10 @@ start them, wait for them, hand out verification, and report once at the end.
 
 ## Models
 
-A thread runs on the model and effort the user names for it, for example
-"CHA-889 on Codex gpt-6-astra xhigh, the rest default". A thread the user does
-not name runs on `claudeAgent` / `claude-opus-5-5` with effort `high`.
+A thread uses the provider, model, and effort the user names for it, for example
+"CHA-889 on Codex gpt-6-astra xhigh, the rest default". For each unspecified
+field, use provider `{{defaults.provider|claudeAgent}}`, model
+`{{defaults.model|claude-opus-5-5}}`, and effort `{{defaults.effort|high}}`.
 
 Before starting anything, call `orchestrator_capabilities` and check every
 combination you will use: the provider instance, the model id, and the effort

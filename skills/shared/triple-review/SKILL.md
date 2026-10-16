@@ -5,8 +5,8 @@ description: Use when the user asks for a triple review, or for three independen
 
 # Triple review
 
-Three independent reviewers on two models look at one change. You check what
-they found and give the user one short report.
+Three independent reviewers look at one change. You check what they found and
+give the user one short report.
 
 ## Target and intent
 
@@ -21,17 +21,24 @@ they found and give the user one short report.
 ## Reviewers
 
 Start the three reviewers in parallel with T3 Code's `delegate_task` tool: one
-call per reviewer, with `mode: "async"` and `role: "review"`. Use exactly these
-targets:
+call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
+selected provider, model, and effort for each reviewer; otherwise use these
+defaults:
 
-| Reviewer | `providerInstanceId` | `model` | `options` |
-| --- | --- | --- | --- |
-| General | `codex` | `gpt-6.1-sol` | `reasoningEffort: high` |
-| Simplify | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
-| Over-engineering | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
+- General: provider `{{defaults.general_provider|codex}}`, model
+  `{{defaults.general_model|gpt-6.1-sol}}`, effort `{{defaults.general_effort|high}}`.
+- Simplify: provider `{{defaults.simplify_provider|claudeAgent}}`, model
+  `{{defaults.simplify_model|claude-opus-5-5}}`, effort `{{defaults.simplify_effort|high}}`.
+- Over-engineering: provider `{{defaults.over_engineering_provider|claudeAgent}}`,
+  model `{{defaults.over_engineering_model|claude-opus-5-5}}`, effort
+  `{{defaults.over_engineering_effort|high}}`.
 
-If `delegate_task` is missing, or `orchestrator_capabilities` does not list one
-of these models, tell the user and stop. Do not use another model instead.
+Before starting, call `orchestrator_capabilities` and check every selected
+provider, model, and effort. Use the provider as `providerInstanceId` and map
+the effort to that model's option in `options` (`reasoningEffort`, `effort`,
+or the option id the catalog gives). If `delegate_task` is missing or a
+selected combination is unavailable, tell the user and stop. Do not silently
+use another provider, model, or effort instead.
 
 Each reviewer's task gets the target, the intent, and one question:
 

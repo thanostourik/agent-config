@@ -77,8 +77,9 @@ Two things to keep as they are:
   Jira MCP. Copy it to `config.json` (gitignored) and set `enabled` to `false`
   on what you do not want. Sync does not require an entry. Missing means on.
   `enabled: true` is the same as missing. Instructions and `bin/` always
-  install. Disabling an item removes the copies sync installed for it, the
-  same way deleting its source does.
+  install. `skills.<name>.defaults` overrides marked values in that skill's
+  Markdown; see "Configurable skill defaults" below. Disabling an item removes
+  the copies sync installed for it, the same way deleting its source does.
   Each entry is keyed by the item's name: a skill by its folder name, an agent
   by its file name without the extension, a hook by its file name without
   `.json`. One entry switches that item for every tool. For example,
@@ -144,6 +145,47 @@ These stop sync before any write: an unknown or repeated name, other syntax,
 a hook `harness` that names a tool without hooks, and two source skills that
 target the same installed folder. Per-tool hooks (`hooks/<tool>/`) and agent
 definitions have no `harness` field. They go only to their own tool.
+
+## Configurable skill defaults
+
+`skills.<name>.defaults` in `config.json` holds optional defaults for that
+skill, alongside its `enabled` switch. Missing options use shipped values.
+The skill's instructions must keep explicit user choices ahead of defaults.
+These are choices for skill invocations, not the host tool's own model settings.
+
+To make a value configurable, write `{{defaults.name|shipped value}}` in the
+skill's `SKILL.md` or a Markdown reference file inside its folder. For example,
+`{{defaults.model|gpt-6.1-sol}}` declares the `model` option. Sync replaces it
+with `skills.<skill-folder-name>.defaults.model`, or `gpt-6.1-sol` when that
+option is absent. The installed Markdown contains ordinary text. Sources stay
+unchanged. Other files, instructions, agents, and hooks do not support markers.
+
+When adding an option:
+
+- Use a flat name: a lowercase letter, then lowercase letters, digits, or
+  underscores. Use prefixes for multiple targets, such as `general_model`.
+- Keep the shipped value in the marker. Repeated markers for one option,
+  including in reference files, must declare the same shipped value.
+- Use a nonempty, single-line string without surrounding whitespace or
+  `{{` or `}}`. Shipped values also cannot contain `|` or braces.
+- Use prose or lists for markers; their `|` would split Markdown table cells.
+- Add the option and shipped value to `config.example.json`. Document its
+  meaning and accepted values in README.md. Do not add Python code for each
+  option: the markers declare the supported names.
+- Keep explicit user choices ahead of defaults in the surrounding text.
+  Preserve the skill's behavior when a chosen target is unavailable.
+
+Sync performs literal substitution, without expressions or recursion, in all
+skill `.md` files (case insensitive). Other assets retain their bytes and
+executable permissions. Unknown option names, invalid value types, malformed
+markers, and conflicting shipped values stop sync before any write. Validation
+includes disabled skills. Nonempty defaults for a missing or empty skill also
+stop sync. Model and effort availability is checked by the skills when invoked,
+not by sync.
+
+See README.md for configuration examples and the supported model, provider,
+and effort settings. Verify changes using temporary `--home` folders; never
+install into the real home unless asked.
 
 ## Where sync installs each file
 

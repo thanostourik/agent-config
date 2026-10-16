@@ -19,6 +19,68 @@ To turn a skill, agent, hook, or Jira MCP off, copy `config.example.json` to
 `config.json`. Sync treats a missing entry as on. The next `./sync --apply`
 removes the copies it installed for disabled items.
 
+## Skill defaults
+
+Model, provider, and effort choices can be set under a skill's `defaults`:
+
+```json
+{
+  "skills": {
+    "codex-review": {
+      "enabled": true,
+      "defaults": { "model": "gpt-6.1-sol", "effort": "high" }
+    }
+  }
+}
+```
+
+Edit `config.json` in this repository and add or change the settings you want.
+If it does not exist, create it with the JSON above. If it already exists,
+merge the entry into its existing `skills` object. Run `./sync` to preview,
+then `./sync --apply` to install. The installed Markdown contains your chosen
+values. Open a new agent session to load the updated skill.
+
+An explicit choice in your request takes precedence over the configured
+default. A setting missing from `config.json` uses the shipped default from
+the source Markdown. Delete an override and run sync again to restore it.
+`config.example.json` lists all supported settings and their shipped values;
+sync does not read that file as configuration.
+
+The four CLI review skills support `model` and `effort`. `t3-fan-out` also
+supports `provider`. `triple-review` has separate settings for each reviewer:
+`general_provider`, `general_model`, `general_effort`, and the same suffixes
+under `simplify_` and `over_engineering_`. Providers are T3 provider instance
+IDs. Sync validates the configuration's shape; the skills check whether the
+selected targets are available when they run.
+
+### Adding a configurable default
+
+In a skill's `SKILL.md` or a Markdown reference file inside its folder, mark
+the value with `{{defaults.name|shipped value}}`. For example:
+
+```markdown
+Use the user's selected model, or `{{defaults.model|gpt-6.1-sol}}`
+when none is specified.
+```
+
+That declares `skills.<skill-folder-name>.defaults.model` and the shipped value
+`gpt-6.1-sol`. Sync replaces the marker in every installed copy, leaving the
+source unchanged. Keep the instruction that explicit user choices win.
+
+Use flat option names starting with a lowercase letter, followed by lowercase
+letters, digits, or underscores. Values must be nonempty, single-line strings
+without surrounding whitespace or `{{` or `}}`. Shipped values also cannot
+contain `|` or braces. Repeated markers for one option must have the same
+shipped value. Use prose or lists for markers because `|` separates Markdown
+table cells. Add the option and its shipped value to `config.example.json`,
+and document its meaning and accepted values here.
+
+Only skill Markdown supports markers; other assets are copied unchanged.
+There are no expressions or recursive substitutions. Malformed markers,
+unknown options, conflicting shipped values, and invalid configuration stop
+sync before any writes, including for disabled skills. Nonempty defaults for
+a missing or empty skill also stop sync.
+
 ## Project verification skills
 
 Two skills set up and maintain verification for one project. Run them from the

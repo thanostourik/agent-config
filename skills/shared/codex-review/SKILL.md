@@ -8,9 +8,10 @@ metadata:
 
 # Codex review
 
-Use the user's selected model, or `gpt-6.1-sol` when none is specified, and the
-user's selected effort, or `high` when none is specified. Review locally; do not
-post findings, edit the reviewed files, or delegate again.
+Use the user's selected model, or `{{defaults.model|gpt-6.1-sol}}` when none is
+specified, and the user's selected effort, or `{{defaults.effort|high}}` when
+none is specified. Review locally; do not post findings, edit the reviewed
+files, or delegate again.
 
 ## Prepare
 

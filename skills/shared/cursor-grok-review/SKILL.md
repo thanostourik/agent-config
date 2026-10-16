@@ -9,11 +9,12 @@ metadata:
 # Cursor Grok review
 
 Run a local review with the Cursor CLI (`cursor-agent`). Use the user's selected
-model, or `grok-4.7` when none is specified, and the user's selected effort, or
-`high` when none is specified. Cursor names a model and effort together as one
-id, `<model>-<effort>`, for example `grok-4.7-high`; check `cursor-agent
---list-models` if the id is not listed. Review locally; do not post findings or
-edit the reviewed files.
+model, or `{{defaults.model|grok-4.7}}` when none is specified, and the user's
+selected effort, or `{{defaults.effort|high}}` when none is specified. Cursor
+names a model and effort together as one id, `<model>-<effort>`, for example
+`{{defaults.model|grok-4.7}}-{{defaults.effort|high}}`; check
+`cursor-agent --list-models` if the id is not listed. Review locally; do not
+post findings or edit the reviewed files.
 
 ## Prepare
 
