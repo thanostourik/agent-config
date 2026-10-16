@@ -8,10 +8,9 @@ metadata:
 
 # Codex review
 
-Use the user's selected model, or `{{defaults.model}}` when none is
-specified, and the user's selected effort, or `{{defaults.effort}}` when
-none is specified. Review locally; do not post findings, edit the reviewed
-files, or delegate again.
+Use the user's selected model and effort; otherwise model `{{defaults.model}}`
+and effort `{{defaults.effort}}`. Review locally; do not post findings, edit
+the reviewed files, or delegate again.
 
 ## Prepare
 

@@ -25,13 +25,12 @@ call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
 selected provider, model, and effort for each reviewer; otherwise use these
 defaults:
 
-- General: provider `{{defaults.general_provider}}`, model
-  `{{defaults.general_model}}`, effort `{{defaults.general_effort}}`.
-- Simplify: provider `{{defaults.simplify_provider}}`, model
-  `{{defaults.simplify_model}}`, effort `{{defaults.simplify_effort}}`.
-- Over-engineering: provider `{{defaults.over_engineering_provider}}`,
-  model `{{defaults.over_engineering_model}}`, effort
-  `{{defaults.over_engineering_effort}}`.
+- General: `{{defaults.general_provider}}`, `{{defaults.general_model}}`,
+  `{{defaults.general_effort}}`.
+- Simplify: `{{defaults.simplify_provider}}`, `{{defaults.simplify_model}}`,
+  `{{defaults.simplify_effort}}`.
+- Over-engineering: `{{defaults.over_engineering_provider}}`,
+  `{{defaults.over_engineering_model}}`, `{{defaults.over_engineering_effort}}`.
 
 Before starting, call `orchestrator_capabilities` and check every selected
 provider, model, and effort. Use the provider as `providerInstanceId` and map

@@ -9,9 +9,9 @@ metadata:
 # Grok review
 
 Run Grok Build's built-in `/review` locally with an installed, authenticated
-`grok` CLI. Use the user's selected model, or `{{defaults.model}}` when
-none is specified, and the user's selected effort, or `{{defaults.effort}}`
-when none is specified. Do not post findings or edit the reviewed files.
+`grok` CLI. Use the user's selected model and effort; otherwise model
+`{{defaults.model}}` and effort `{{defaults.effort}}`. Do not post findings
+or edit the reviewed files.
 
 ## Prepare
 

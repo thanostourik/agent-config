@@ -14,15 +14,14 @@ Grok, Cursor, and OpenCode, kept in one place.
 ./sync --home /tmp/test --apply       # install into another folder, for testing
 ```
 
-To turn a skill, agent, hook, or Jira MCP off, copy `config.example.json` to
-`config.json` and set that entry's `enabled` to `false`. Do not commit
-`config.json`. Sync treats a missing entry as on. The next `./sync --apply`
-removes the copies it installed for disabled items.
-
-The same file sets a skill's model, provider, and effort under `defaults`, for
-example `"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}`.
-`config.example.json` lists every setting with its shipped value. A choice in
-your request still wins.
+`config.defaults.json` holds the shipped settings: which skills, agents, hooks,
+and Jira MCP are on, and each skill's model, provider, and effort under
+`defaults`. To change a setting, put only that setting in `config.json`
+(gitignored). Sync reads both, and your value replaces the shipped one. For
+example, `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}`
+changes one model, and `{"skills": {"bro": {"enabled": false}}}` turns `bro`
+off. The next `./sync --apply` removes the copies it installed for disabled
+items. A model or effort you name in a request still wins.
 
 ## Project verification skills
 
