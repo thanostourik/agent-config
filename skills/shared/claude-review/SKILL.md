@@ -9,9 +9,8 @@ metadata:
 # Claude review
 
 Run Claude Code's built-in `/code-review` locally. Use the user's selected
-model, or `claude-sonnet-5-5` when none is specified, and the user's selected
-effort, or `high` when none is specified. Do not post findings or edit the
-reviewed files.
+model and effort; otherwise model `{{defaults.model}}` and effort
+`{{defaults.effort}}`. Do not post findings or edit the reviewed files.
 
 ## Prepare
 

@@ -5,9 +5,11 @@ after that. Add a section when something new needs steps beyond `./sync`.
 
 ## Jira MCP
 
-1. If `config.json` is missing, copy `config.example.json` to `config.json`.
-2. Ask for each Jira URL unless the user already gave it. Write it only in
-   `config.json` under `mcp.jira.instances`. Do not commit that file. Do not
+1. If `config.json` is missing, create it containing `{}`.
+2. Ask for each Jira URL unless the user already gave it. Add each instance
+   only to `config.json`, as
+   `{"mcp": {"jira": {"instances": {"<key>": {"url": "<Jira URL>"}}}}}`, and
+   keep any settings already there. Do not commit that file. Do not
    create or rename Bitwarden items. Do not run `bw login`.
 3. `./sync --apply --replace-existing`
 4. Tell the user to log out and in again, or run

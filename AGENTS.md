@@ -73,18 +73,20 @@ Two things to keep as they are:
   `mcp-atlassian-start --unlock` so the password dialog appears at login, not in
   a thread's first turn. Desktops without XDG autostart (a bare window manager)
   need that command in their own startup config.
-- `config.example.json`: the enable/disable menu for skills, agents, hooks, and
-  Jira MCP. Copy it to `config.json` (gitignored) and set `enabled` to `false`
-  on what you do not want. Sync does not require an entry. Missing means on.
-  `enabled: true` is the same as missing. Instructions and `bin/` always
-  install. Disabling an item removes the copies sync installed for it, the
-  same way deleting its source does.
+- `config.defaults.json`: the shipped settings for skills, agents, hooks, and
+  Jira MCP. The optional, gitignored `config.json` overrides single settings:
+  sync merges objects key by key, and any other value replaces the shipped
+  one. Set `enabled` to `false` on what you do not want. A missing entry means
+  on. Instructions and `bin/` always install. `skills.<name>.defaults` fills
+  that skill's Markdown markers; see "Configurable skill defaults" below.
+  Disabling an item removes the copies sync installed for it, the same way
+  deleting its source does.
   Each entry is keyed by the item's name: a skill by its folder name, an agent
   by its file name without the extension, a hook by its file name without
   `.json`. One entry switches that item for every tool. For example,
   `"skills": {"bro": {"enabled": false}}` removes `bro` from all tools.
-  `mcp.jira.instances` holds Jira URLs. The example uses a fake URL; copy it
-  to `config.json` and replace that URL. `"gate": true` on an instance adds
+  `mcp.jira.instances` holds Jira URLs. It is empty in `config.defaults.json`;
+  add instances only in `config.json`. `"gate": true` on an instance adds
   `--gate`. A missing `gate` and `"gate": false` keep the direct connection.
   One instance is installed as MCP
   server `jira`; two or more use the instance keys. An instance key starts
@@ -98,8 +100,8 @@ Two things to keep as they are:
 
 If a skill or agent folder does not exist or is empty, sync skips it. Create
 `skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
-When you add a skill, agent, or hook, add it to `config.example.json`
-so the menu stays complete. Do not put a real Jira URL in that example.
+When you add a skill, agent, or hook, add it to `config.defaults.json`
+so the menu stays complete. Never put a Jira URL in that file.
 
 ## The harness field
 
@@ -145,6 +147,15 @@ a hook `harness` that names a tool without hooks, and two source skills that
 target the same installed folder. Per-tool hooks (`hooks/<tool>/`) and agent
 definitions have no `harness` field. They go only to their own tool.
 
+## Configurable skill defaults
+
+To make a value in skill Markdown configurable, write `{{defaults.<name>}}`
+and declare its shipped value in `config.defaults.json` under
+`skills.<skill>.defaults.<name>`. Sync replaces the marker with the merged
+value. A marker without a value, or a value without a marker, stops sync, even
+for a disabled skill. Keep the skill's wording that an explicit user choice
+wins.
+
 ## Where sync installs each file
 
 | Tool | Instructions | Skills | Agents | Hooks | MCP |
@@ -170,8 +181,8 @@ gets `type: local` and a `command` array. Every server's environment holds
 `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_RUNTIME_DIR`, taken from the
 shell that ran sync or from defaults, so `mcp-atlassian-start` can open its
 Bitwarden password window. Other servers and keys in those files stay. It does
-not touch MCP files when `config.json` is missing or `instances` is empty and
-it has never installed Jira.
+not touch MCP files when no Jira instance is configured and it has never
+installed Jira.
 
 The standard library cannot write TOML, so sync edits the Codex and Grok files
 as lines and then parses the result. If anything besides its own tables
@@ -288,4 +299,4 @@ preferences.
 - Preferences that apply to every tool go in `common.md`. Anything that only
   one tool needs goes in that tool's file.
 - Never copy credentials, session files, or plugin caches into this repository.
-  Jira URLs belong in gitignored `config.json`, not in example files or docs.
+  Jira URLs belong in gitignored `config.json`, not in `config.defaults.json` or docs.

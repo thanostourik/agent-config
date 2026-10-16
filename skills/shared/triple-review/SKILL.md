@@ -5,8 +5,8 @@ description: Use when the user asks for a triple review, or for three independen
 
 # Triple review
 
-Three independent reviewers on two models look at one change. You check what
-they found and give the user one short report.
+Three independent reviewers look at one change. You check what they found and
+give the user one short report.
 
 ## Target and intent
 
@@ -21,17 +21,23 @@ they found and give the user one short report.
 ## Reviewers
 
 Start the three reviewers in parallel with T3 Code's `delegate_task` tool: one
-call per reviewer, with `mode: "async"` and `role: "review"`. Use exactly these
-targets:
+call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
+selected provider, model, and effort for each reviewer; otherwise use these
+defaults:
 
-| Reviewer | `providerInstanceId` | `model` | `options` |
-| --- | --- | --- | --- |
-| General | `codex` | `gpt-6.1-sol` | `reasoningEffort: high` |
-| Simplify | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
-| Over-engineering | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
+- General: `{{defaults.general_provider}}`, `{{defaults.general_model}}`,
+  `{{defaults.general_effort}}`.
+- Simplify: `{{defaults.simplify_provider}}`, `{{defaults.simplify_model}}`,
+  `{{defaults.simplify_effort}}`.
+- Over-engineering: `{{defaults.over_engineering_provider}}`,
+  `{{defaults.over_engineering_model}}`, `{{defaults.over_engineering_effort}}`.
 
-If `delegate_task` is missing, or `orchestrator_capabilities` does not list one
-of these models, tell the user and stop. Do not use another model instead.
+Before starting, call `orchestrator_capabilities` and check every selected
+provider, model, and effort. Use the provider as `providerInstanceId` and map
+the effort to that model's option in `options` (`reasoningEffort`, `effort`,
+or the option id the catalog gives). If `delegate_task` is missing or a
+selected combination is unavailable, tell the user and stop. Do not silently
+use another provider, model, or effort instead.
 
 Each reviewer's task gets the target, the intent, and one question:
 

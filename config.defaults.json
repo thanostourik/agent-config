@@ -1,0 +1,59 @@
+{
+  "skills": {
+    "bro": { "enabled": true },
+    "claude-review": {
+      "enabled": true,
+      "defaults": { "model": "claude-sonnet-5-5", "effort": "high" }
+    },
+    "codex-review": {
+      "enabled": true,
+      "defaults": { "model": "gpt-6.1-sol", "effort": "high" }
+    },
+    "create-jira-issue": { "enabled": true },
+    "create-project-verification-skill": { "enabled": true },
+    "cursor-grok-review": {
+      "enabled": true,
+      "defaults": { "model": "grok-4.7", "effort": "high" }
+    },
+    "file-pr": { "enabled": true },
+    "grill-me": { "enabled": true },
+    "grok-review": {
+      "enabled": true,
+      "defaults": { "model": "grok-4.7", "effort": "high" }
+    },
+    "html-communication": { "enabled": true },
+    "maintain-project-verification-skill": { "enabled": true },
+    "modernize": { "enabled": true },
+    "render-plan": { "enabled": true },
+    "squash-merge-pr": { "enabled": true },
+    "t3-fan-out": {
+      "enabled": true,
+      "defaults": {
+        "provider": "claudeAgent", "model": "claude-opus-5-5", "effort": "high"
+      }
+    },
+    "triple-review": {
+      "enabled": true,
+      "defaults": {
+        "general_provider": "codex",
+        "general_model": "gpt-6.1-sol",
+        "general_effort": "high",
+        "simplify_provider": "claudeAgent",
+        "simplify_model": "claude-opus-5-5",
+        "simplify_effort": "high",
+        "over_engineering_provider": "claudeAgent",
+        "over_engineering_model": "claude-opus-5-5",
+        "over_engineering_effort": "high"
+      }
+    }
+  },
+  "hooks": {
+    "render-plan": { "enabled": true }
+  },
+  "mcp": {
+    "jira": {
+      "enabled": true,
+      "instances": {}
+    }
+  }
+}
