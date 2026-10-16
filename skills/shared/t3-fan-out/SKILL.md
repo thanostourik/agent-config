@@ -1,6 +1,6 @@
 ---
 name: t3-fan-out
-description: Use when the user wants several T3 threads started and coordinated, one per task.
+description: Use when the user wants several T3 threads or delegates started and coordinated, one per task.
 ---
 
 # T3 fan-out
@@ -75,6 +75,28 @@ Without parallel verification, once a thread has opened its PR, send it
 "verify now" with `t3_thread_send`: verify the way the project does, update the
 PR description, and end with a one-line verdict, the PR link, and what is
 unverified. Wait for it to finish before you send the next thread "verify now".
+
+## Delegates
+
+Only when the user asks for delegates. The steps above stay, with these changes:
+
+- Start: one `delegate_task` per task with `task` (the first prompt), `title`,
+  `isolation: "worktree"`, `target: {providerInstanceId, model, options}`,
+  `mode: "async"`, and its own `clientRequestId`; retry with the same one. The
+  worktree starts on a `t3/...` branch from your current local commit, so the
+  prompt first says: `git fetch origin`, then
+  `git switch -c <branch> origin/<main branch>`. Keep each `taskId` and
+  `childThreadId`.
+- Wait: `t3_thread_wait` on the `childThreadId`, as for threads, then read the
+  result with `task_status` and the `taskId`. Do not poll `task_status`.
+- Questions: on `timedOut`, `task_status` shows `hasPendingQuestion`. Pass the
+  `childThreadId` as `threadId` to `t3_pending_request_list` and
+  `t3_pending_request_respond`. Answer a question that ends the turn with
+  `t3_thread_send` to the `childThreadId`.
+- Verify now: `t3_thread_send` to the `childThreadId`, with its own
+  `clientRequestId`. It returns a new `taskId`; wait for it the same way. Never
+  send "verify now" as a new `delegate_task`: that child has neither the
+  conversation nor the worktree.
 
 ## Report
 
