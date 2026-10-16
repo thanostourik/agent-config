@@ -5,8 +5,8 @@ description: Use when the user asks for a triple review, or for three independen
 
 # Triple review
 
-Three independent reviewers look at one change. You check what they found and
-give the user one short report.
+Three independent reviewers on two models look at one change. You check what
+they found and give the user one short report.
 
 ## Target and intent
 
@@ -20,8 +20,20 @@ give the user one short report.
 
 ## Reviewers
 
-Start three reviewers in parallel with your tool's subagent feature. Each one
-gets the target, the intent, and one question:
+Start the three reviewers in parallel with T3 Code's `delegate_task` tool: one
+call per reviewer, with `mode: "async"` and `role: "review"`. Use exactly these
+targets:
+
+| Reviewer | `providerInstanceId` | `model` | `options` |
+| --- | --- | --- | --- |
+| General | `codex` | `gpt-6.1-sol` | `reasoningEffort: high` |
+| Simplify | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
+| Over-engineering | `claudeAgent` | `claude-opus-5-5` | `effort: high` |
+
+If `delegate_task` is missing, or `orchestrator_capabilities` does not list one
+of these models, tell the user and stop. Do not use another model instead.
+
+Each reviewer's task gets the target, the intent, and one question:
 
 1. **General:** what is wrong? Bugs, regressions, failure paths, security
    holes, and tests that would miss them.
@@ -40,9 +52,10 @@ Tell every reviewer:
 
 Do not tell a reviewer about the other two. Their answers stay independent.
 
-Wait until all three finish. Do not send the user progress updates while you
-wait. If a reviewer fails or ends without a verdict, start it once more. If it
-fails again, say so in the report.
+Each reviewer wakes this thread when it finishes. End your turn and wait for
+all three. Do not poll and do not send the user progress updates. If a reviewer
+fails or ends without a verdict, start it once more with a new `delegate_task`
+call. If it fails again, say so in the report.
 
 ## Report
 
@@ -64,7 +77,8 @@ until the user tells you to.
 
 ## Re-review
 
-When the user says they made fixes and asks for another review, run the same
-three reviewers again. This time the target is only the changes since the
+When the user says they made fixes and asks for another review, start the
+same three reviewers again with new `delegate_task` calls. Do not message the
+earlier reviewers' threads. This time the target is only the changes since the
 commit you wrote down last time. Give the reviewers the earlier findings too.
 The report says which earlier findings are now fixed.
