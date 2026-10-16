@@ -26,7 +26,19 @@ def git(*cmd):
 if args[:2] == ["repo", "view"]:
     print("{REPO}")
 elif args[:2] == ["pr", "view"]:
-    print((work / "pr.json").read_text())
+    # gh colors JSON when CLICOLOR_FORCE is set, and that wins over NO_COLOR.
+    # GH_FORCE_TTY also enables color unless NO_COLOR or CLICOLOR=0 is set.
+    text = (work / "pr.json").read_text()
+    force = os.environ.get("CLICOLOR_FORCE", "")
+    forced = force not in ("", "0")
+    disabled = bool(os.environ.get("NO_COLOR")) or os.environ.get("CLICOLOR") == "0"
+    if os.environ.get("GH_FORCE_TTY"):
+        enabled = not disabled
+    else:
+        enabled = forced
+    if enabled:
+        text = "\\033[1;37m" + text + "\\033[m"
+    print(text, end="" if text.endswith("\\n") else "\\n")
 elif args[:2] == ["pr", "merge"]:
     body_file = args[args.index("--body-file") + 1]
     call = {{"subject": args[args.index("--subject") + 1],
@@ -116,6 +128,11 @@ class SquashMergePrTest(unittest.TestCase):
         self.assertIn(message, result.stderr)
         self.assertFalse((self.work / "merge.json").exists())
         self.assertEqual(self.git("branch", "--show-current"), "feature/x")
+
+    def test_merges_when_the_caller_forces_gh_to_color_json(self):
+        self.env.update(CLICOLOR_FORCE="1", NO_COLOR="1", GH_FORCE_TTY="1")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
 
     def test_merges_updates_main_and_deletes_both_branches(self):
         head = self.git("rev-parse", "HEAD")
