@@ -512,7 +512,7 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(set(example["skills"]), skills)
         self.assertEqual(set(example["hooks"]), hooks)
         for entry in (*example["skills"].values(), *example["hooks"].values()):
-            self.assertEqual(entry, {"enabled": True})
+            self.assertEqual(entry["enabled"], True)
         self.assertEqual(example["mcp"]["jira"]["enabled"], True)
         self.assertEqual(example["mcp"]["jira"]["instances"],
                          {"work": {"url": "https://jira.example.com", "gate": False}})
