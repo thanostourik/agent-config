@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+# gh colors --json output when CLICOLOR_FORCE is set, even if NO_COLOR is set and
+# stdout is a pipe. jq then rejects the escape codes. A caller such as Grok exports
+# CLICOLOR_FORCE, so turn color off for every gh call this script makes.
+unset GH_FORCE_TTY
+export CLICOLOR_FORCE=0
+export NO_COLOR=1
+
 current_step=starting
 merged=no
 body_file=$(mktemp)
@@ -48,9 +55,9 @@ selector=${1:-$(git branch --show-current)}
 # GitHub reports UNKNOWN while it is still computing mergeability, e.g. right after a push.
 for _ in 1 2 3 4 5; do
   pr=$(gh pr view "$selector" --repo "$repo" --json "$fields")
-  if [ "$(field mergeable)" != UNKNOWN ]; then
-    break
-  fi
+  # Outside a conditional, so a payload jq cannot parse stops this step.
+  mergeable=$(jq -er .mergeable <<< "$pr")
+  [ "$mergeable" != UNKNOWN ] && break
   sleep 2
 done
 
