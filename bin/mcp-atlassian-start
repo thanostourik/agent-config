@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Start mcp-atlassian for one Jira URL. Username and password come from the
 # Bitwarden login whose URI is that URL. Sync writes this command into each
 # tool's MCP config. The URL is the first argument, and --gate is optional.
@@ -367,10 +367,7 @@ unset READ_ONLY_MODE jira_user jira_token
 if [ "$gate" = 1 ]; then
   start_gate
   # mcp-atlassian builds issue links from JIRA_URL, which is the proxy. Point them at Jira.
-  links=$(mktemp -u)
-  mkfifo "$links"
-  { rm "$links"; sed -u "s#$JIRA_URL#${url%/}#g"; } < "$links" &
-  exec uvx mcp-atlassian > "$links"
+  exec uvx mcp-atlassian > >(sed -u "s#$JIRA_URL#${url%/}#g")
 fi
 
 export JIRA_URL=$url
