@@ -58,7 +58,7 @@ run_step() {
     source "$__drive_state"
     set -euo pipefail
     source "$__drive_block"
-  ' _ "$state" "$block" >> "$log" 2>&1
+  ' _ "$state" "$block" >> "$log" 2>&1 < /dev/null 3<&-
   status=$?
   echo "exit=$status" >> "$log"
   ((status == 124)) && echo "timed out after ${step_timeout}s" >> "$log"
@@ -72,7 +72,7 @@ drive_feature() {
   rm -rf "$evidence" && mkdir -p "$evidence"
   split_steps "$skill/features/$feature.md" "$dir"
   export VERIFY_SESSION=$feature
-  while IFS=$'\t' read -r number label; do
+  while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"
     log="$evidence/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
     if [[ "$label" == "Clean up" ]]; then cleanup="$block	$log"; fi
@@ -93,7 +93,7 @@ drive_feature() {
       echo "$feature / $label: fail ($log)"
       failed="$label	$log"
     fi
-  done < "$dir/steps"
+  done 3< "$dir/steps"
   if [[ -n "$failed$stopped" && -n "$ran" && -n "$cleanup" && "${failed%%	*}" != "Clean up" ]]; then
     if run_step "$dir/state" "${cleanup%%	*}" "${cleanup#*	}"; then
       echo "$feature / Clean up: pass"
@@ -104,7 +104,7 @@ drive_feature() {
   fi
   if [[ -n "$failed" ]]; then
     echo "$failed" > "$dir/failed"
-    if [[ ! -e "$work/stop" ]] && ! "$skill/bin/doctor.sh" > "$evidence/doctor.log" 2>&1; then
+    if [[ ! -e "$work/stop" ]] && ! "$skill/bin/doctor.sh" > "$evidence/doctor.log" 2>&1 < /dev/null 3<&-; then
       echo "doctor failed after $feature ($evidence/doctor.log); stopping the run"
       : > "$work/stop"
     fi
@@ -114,7 +114,7 @@ drive_feature() {
 
 alone=() together=()
 for feature in "${features[@]}"; do
-  if awk '/^## Driving it with/ { d = 1 } d && /^- \*\*/ { exit } d && /Runs alone\./ { found = 1 } END { exit !found }' "$skill/features/$feature.md"; then
+  if awk '/^## Driving it with/ { d = 1 } d && /^- \*\*/ { exit } d && /Runs alone/ { found = 1 } END { exit !found }' "$skill/features/$feature.md"; then
     alone+=("$feature")
   else
     together+=("$feature")
