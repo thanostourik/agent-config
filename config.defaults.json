@@ -15,6 +15,7 @@
       "enabled": true,
       "defaults": { "model": "grok-4.7", "effort": "high" }
     },
+    "depatch": { "enabled": true },
     "file-pr": { "enabled": true },
     "grill-me": { "enabled": true },
     "grok-review": {
