@@ -25,11 +25,11 @@ proposed split and a question instead of a report.
    the target from scratch. In T3 Code this is `delegate_task`; elsewhere the
    tool's own subagent. Without either, the session does it itself and the
    report says the design is not blind.
-3. **Compare.** Put the blind design next to the real code. Each gap is a
-   candidate patch scar.
-4. **History.** Use `git log -p` over the target to find churn: lines
+3. **History.** Use `git log -p` over the target to find churn: lines
    rewritten repeatedly, reverts, fixes of earlier fixes. Churn points where to
    look; it proves nothing alone.
+4. **Compare.** Put the blind design next to the real code. Each gap is a
+   candidate patch scar.
 
 ## Report
 

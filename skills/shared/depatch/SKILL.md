@@ -33,6 +33,10 @@ date". Take them from:
 - for existing code: the code, its tests and docs, and its git history with the
   PRs and issues it links
 
+Write each behaviour as an outcome, not as the mechanism behind it: "parallel
+starts show one password dialog", not "takes a `flock` on `agent.lock`". A
+mechanism in the spec leaks today's design to the designer.
+
 Mark behaviours that look accidental, such as a quirk callers may rely on, as
 open questions. Do not silently keep or drop them.
 
@@ -45,20 +49,31 @@ provider and model unless the user chose others.
 
 Give the designer only:
 
-- the spec
+- the spec, with its open questions
 - the code around the target: for a branch, the base commit; for existing
-  code, the code that calls the target and the code the target calls
-- the paths it must not read: the target's files, and the branch diff and
-  commits
+  code, the code that calls the target and the code the target calls. When
+  that code is outside the repository, describe what it offers in a few
+  sentences.
+- what it must not read: the target's files, installed copies of them, notes
+  or reviews that quote them, the branch diff, and the git history
 
 Ask for: the modules or functions with their responsibilities, the data flow,
 the names, and a rough size in lines. Tell it: read only, no edits, no
 subagents of its own.
 
-If no subagent is available, write the design yourself before you read the
-target's code closely, and say in the report that the design is not blind.
+Do step 3 while the designer works, then wait for its design before step 4.
 
-## 3. Compare
+If no subagent is available, write the design yourself from the spec alone
+before you look at the target's code again, and say in the report that the
+design is not blind.
+
+## 3. History
+
+Read `git log -p` over the target: the branch commits, or the target's paths
+for existing code. Look for lines rewritten again and again, reverts, and fixes
+of earlier fixes. Churn shows where to look closer. It proves nothing alone.
+
+## 4. Compare
 
 Put the blind design next to the real code. Each place where the real code is
 bigger, more tangled, or shaped differently is a candidate patch scar. Keep it
@@ -77,11 +92,8 @@ Typical scars:
 - names that tell history: `new`, `v2`, `legacy`, `fallback`
 - tests that pin intermediate behaviour instead of the spec
 
-## 4. History
-
-Read `git log -p` over the target: the branch commits, or the target's paths
-for existing code. Look for lines rewritten again and again, reverts, and fixes
-of earlier fixes. Churn shows where to look closer. It proves nothing alone.
+Code that is only verbose but was written in one go is not a scar. Leave it
+out of the scars and count it in the redesign's size.
 
 ## Report
 
