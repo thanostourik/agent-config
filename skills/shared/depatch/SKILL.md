@@ -1,6 +1,6 @@
 ---
 name: depatch
-description: Use when the user asks whether code ended up as a pile of patches, or how it would look if written once with the final requirements known.
+description: Use when the user asks for "depatch" or "depatchify".
 ---
 
 # depatch
