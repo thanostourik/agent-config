@@ -21,7 +21,7 @@ Honor an equivalent request, such as "without the audit". Do not ask which mode 
 
 If `.agents/skills/verify-*` or `.agents/skills/maintain-verify-*` already exists, stop before writing anything. Ask the user whether to replace those skills (delete them and generate again) or to upgrade them with `/maintain-project-verification-skill`. Never overwrite them silently.
 
-Messages you post anyway may carry progress lines such as `map 3/15: projects.md written` or `drive 7/16: projects — pass`. Never change how you split, delegate or order work to produce them, and never add a turn just to report.
+Messages you post anyway may carry progress lines such as `map 3/15: projects.md written`. Never change how you split, delegate or order work to produce them, and never add a turn just to report.
 
 ## What you write
 
@@ -29,7 +29,7 @@ Messages you post anyway may carry progress lines such as `map 3/15: projects.md
 .agents/skills/verify-<app>/                    the verification skill
   SKILL.md
   features/README.md, features/<feature>.md     the feature map
-  bin/                                          helpers
+  bin/                                          helpers, including drive.sh and doctor.sh
   .gitignore                                    ignores .cache/
   .cache/                                       everything a run writes
 .agents/skills/maintain-verify-<app>/           map maintenance with three drive modes
@@ -41,7 +41,7 @@ Messages you post anyway may carry progress lines such as `map 3/15: projects.md
 
 `<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`. Claude Code reads only `.claude/skills/`, so the stubs exist for it. Never use symlinks: Windows checkouts turn them into plain files.
 
-Helper agents may read source in small concurrent batches, with related features grouped per reader. They return findings and proposed recipes. They never edit files or drive the app. You integrate their findings and own all driving, with one driver at a time. Do not create one agent per feature by default.
+Helper agents may read source in small concurrent batches, with related features grouped per reader. They return findings and proposed recipes. They never edit files or drive the app. You integrate their findings and run every drive through `bin/drive.sh`. Do not create one agent per feature by default.
 
 ## 1. Interview the repo, not the user
 
@@ -66,7 +66,7 @@ Decide these now, with the user where needed, and write the concrete choice into
 
 ## 3. Write `verify-<app>`
 
-Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Include the failure rules from [`references/drive-failures.md`](references/drive-failures.md). Write helpers in `bin/` and make them executable.
+Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Include the failure rules from [`references/drive-failures.md`](references/drive-failures.md). Copy [`references/drive.sh`](references/drive.sh) to `bin/drive.sh` unchanged. Write the other helpers in `bin/` and make them executable.
 
 ## 4. Map every feature
 
@@ -78,12 +78,12 @@ Each feature file starts with an H1 and one paragraph on the observable behavior
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with exact setup, then labeled bullets that pair a user action with an exact command and its observable result. End with proof and fixture cleanup. Each labeled bullet is a **step**. Preconditions are setup, not steps. A fixture that is itself a user action worth proving gets its own labeled step.
+3. `Driving it with <tool>`: `Preconditions:` with its setup, then labeled bullets `- **<Label>.**`, each a **step**. Every step states the user action and its observable result in a sentence, followed by a fenced `bash` block. The block exits non-zero when the result is not met: a command that only prints a value gets a check, such as `test`. Blocks run under `set -euo pipefail`, where `! command` never fails a block, so write negative checks with `test` or `if`. Preconditions get a block too. End with proof, then a last step labeled `Clean up` that removes the feature's fixtures; `drive.sh` runs it even after a failure. A fixture that is itself a user action worth proving gets its own step.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 Keep code paths out of the map. The agent maps a change to features by reasoning, and the audit reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
 
-Each recipe runs from the documented baseline in a fresh session. It sets up its own data instead of relying on another feature having run, and it keeps variable creation and use in one command block or persists them under `.cache/`. State any unavoidable ordering. Prefer a fresh identity or namespace per recipe over deleting fixtures afterwards. Otherwise restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
+Each recipe runs from the documented baseline in its own session, possibly while other features run. It sets up its own data instead of relying on another feature having run. Steps of one feature share shell variables and functions, so the Preconditions block can define what later steps use. A feature that changes state other features read, such as global settings, says `Runs alone.` in its Preconditions sentence. Prefer a fresh identity or namespace per recipe over deleting fixtures afterwards. Otherwise restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
@@ -103,7 +103,7 @@ Keep the project's test, lint and type-check guidance, and add the exact focused
 
 ## 7. Prove it
 
-Run `maintain-verify-<app>` on what you wrote. Drive the recipes from a fresh session, not from unrecorded exploratory state.
+Run `maintain-verify-<app>` on what you wrote. Drive the recipes with `bin/drive.sh` from a fresh session, not from unrecorded exploratory state. Drive them in parallel, check that parallel features stayed apart, and write the `--jobs` value that worked into the skill's Drive section.
 
 - **Default:** `full audit`. Every feature file is checked against source and every step is driven live. After the audit, run a representative state-changing feature, clean up, and run it in a newly created environment with no reset step. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that pre-existing resources are unchanged and evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
 - **`quick`:** drive each mapped feature once from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test.
@@ -114,7 +114,7 @@ A feature that is partial, blocked or failing is reported as such. Writing the m
 
 Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say that the map is partial and unaudited. Explain the maintenance calls:
 
-- `/maintain-verify-<app>` updates the map, adds features missing from it, and drives new and changed steps.
+- `/maintain-verify-<app>` updates the map, adds features missing from it, and drives the features with new or changed steps.
 - `/maintain-verify-<app> map only` updates the map without feature drives.
-- `/maintain-verify-<app> full audit` drives every step of every feature.
+- `/maintain-verify-<app> full audit` drives every feature.
 - `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes. It accepts the same three modes and runs focused checks for changed helpers in every mode.
