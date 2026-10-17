@@ -44,15 +44,20 @@ run_step() {
     __drive_state=$1 __drive_block=$2
     set --
     __drive_vars=$(compgen -v | sort) __drive_funcs=$(compgen -A function | sort)
+    __drive_save() {
+      local __drive_status=$?
+      set +eu
+      {
+        comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r name; do declare -p "$name"; done
+        comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | grep -v "^__drive_" | while read -r name; do declare -f "$name"; done
+      } > "$__drive_state.new"
+      mv "$__drive_state.new" "$__drive_state"
+      exit $__drive_status
+    }
+    trap __drive_save EXIT
     source "$__drive_state"
     set -euo pipefail
     source "$__drive_block"
-    set +eu
-    {
-      comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r name; do declare -p "$name"; done
-      comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | while read -r name; do declare -f "$name"; done
-    } > "$__drive_state.new"
-    mv "$__drive_state.new" "$__drive_state"
   ' _ "$state" "$block" >> "$log" 2>&1
   status=$?
   echo "exit=$status" >> "$log"
@@ -94,6 +99,7 @@ drive_feature() {
       echo "$feature / Clean up: pass"
     else
       echo "$feature / Clean up: fail (${cleanup#*	})"
+      echo "${cleanup#*	}" > "$dir/cleanup-failed"
     fi
   fi
   if [[ -n "$failed" ]]; then
@@ -144,5 +150,7 @@ for feature in "${features[@]}"; do
   fi
   result=1
   [[ -e "$dir/not-run" ]] && echo "  not run: $(paste -sd ',' "$dir/not-run" | sed 's/,/, /g')"
+  [[ -e "$dir/cleanup-failed" ]] && echo "  clean up: fail ($(cat "$dir/cleanup-failed"))"
 done
+rm -rf "$work"
 exit $result
