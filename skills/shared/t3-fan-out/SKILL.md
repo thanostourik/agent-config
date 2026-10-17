@@ -8,6 +8,12 @@ description: Use when the user wants several T3 threads or delegates started and
 You are the coordinator. Each task gets its own T3 thread and worktree. You
 start them, wait for them, hand out verification, and report once at the end.
 
+A fan-out request is not a request to study the task. Do not analyse the
+issue, propose fixes, or write code: that is each thread's work.
+
+Make no decisions about the tasks yourself. When coordinating needs one that
+the user or the issues haven't made, ask.
+
 ## Models
 
 A thread uses the provider, model, and effort the user names for it, for example
@@ -42,14 +48,21 @@ Start one thread per task with `t3_thread_launch`:
 - `message`: the first prompt.
 
 The child cannot see this conversation, so the first prompt stands alone. It
-holds the task, the issue key, the branch name, and everything the user said
-about this task. It ends with:
+passes the task on as the user gave it, not your version of it:
+
+- the issue key and link, or the user's own description, quoted as written
+- the branch name
+- decisions the user stated about this task, marked as theirs
+
+Do not restate the issue or repeat rules the child's own instructions already
+give, such as how to commit, open the PR, or verify. The prompt ends with:
 
 - Implement the change, commit, push, and open the PR.
 - Without parallel verification: do not verify yet. End your turn with the PR
-  link; the coordinator will tell you when to verify.
-- With parallel verification: then verify the way the project does, and end
-  with a one-line verdict, the PR link, and what is unverified.
+  link; the coordinator will tell you when the shared ports are free.
+- With parallel verification: then verify the way the project does.
+- When you verify, end with a one-line verdict, the PR link, and what is
+  unverified.
 
 Keep every returned `threadId`. If a launch fails or its response is lost,
 check `t3_thread_list` before you launch again.
@@ -73,9 +86,13 @@ After either answer, wait for that thread again.
 ## Verify one at a time
 
 Without parallel verification, once a thread has opened its PR, send it
-"verify now" with `t3_thread_send`: verify the way the project does, update the
-PR description, and end with a one-line verdict, the PR link, and what is
-unverified. Wait for it to finish before you send the next thread "verify now".
+exactly this with `t3_thread_send`, and nothing else:
+
+```
+Verify now: the shared ports are free. If one is taken, report it as a blocker.
+```
+
+Wait for it to finish before you send the next thread "verify now".
 
 ## Delegates
 
