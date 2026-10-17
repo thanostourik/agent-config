@@ -11,16 +11,11 @@ This directory is the maintained source for verifying the browser and CLI behavi
 
 ## Driving conventions
 
-- Every command runs from the repository root. `pw` means `.agents/skills/verify-notes/bin/pw.sh`, which runs `npx playwright cli -s=notes` with its files kept in the skill's `.cache/`.
-- `notes` in the recipes means `notes --data-dir=.agents/skills/verify-notes/.cache/data`. The recipes write the shorthands for brevity. When you run a step, type the full command, because no alias or environment variable from an earlier session exists.
-- Start every feature from the baseline unless its preconditions say otherwise.
+- Run features with `.agents/skills/verify-notes/bin/drive.sh --jobs 3 <feature...>`. It runs each step's `bash` block from the repository root with `bin/` on `PATH`, so blocks call `pw.sh` by name. `pw.sh` opens the browser session named after the feature, so parallel features never share one.
+- The Preconditions block defines what later steps use, such as the `notes` function that points the CLI at the run's data directory.
 - Prefer roles and accessible names over CSS selectors or DOM position.
-- Treat every command as literal. Keep quoted names and flags unchanged.
-- For terminal steps, record the command, stdout, stderr, and exit code.
-- Wait for the named UI state or command result within the deadline documented by `verify-notes`. Long operations report progress while waiting; timeout captures diagnostics and triggers run cleanup.
-- A feature that changes seeded data restores it before it ends.
-- Only one agent drives this environment. Source readers never change its browser or data.
-- Every recipe supplies its own prerequisites and removes its fixtures. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
+- Every block fails when its expected result is not met. A value the step only prints gets a check.
+- Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
 
 ## Feature file shape
@@ -29,7 +24,7 @@ Each feature file starts with an H1 and one paragraph describing the observable 
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with exact setup, then labeled bullets that pair each user action with an exact command and its observable result, ending with proof and fixture cleanup.
+3. `Driving it with <tool>`: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features

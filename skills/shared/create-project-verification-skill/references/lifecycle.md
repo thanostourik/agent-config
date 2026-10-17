@@ -42,7 +42,7 @@ An environment is **owned** when the ownership record in `.cache/` lists it and 
 Use it only when the user chose it. Write these rules into the generated skill.
 
 - The approved resources are listed by name in the Isolation section. Nothing else is touched.
-- One driver at a time. Do not drive while anyone else is using the resource.
+- Drive with `--jobs 1`, and never while anyone else is using the resource.
 - Reads are free. Writes go only to fixtures the run creates, named with the run id, and removed in cleanup.
 - Doctor checks that the targeted resources are the approved ones, for example the right host and database name, and refuses anything else.
 - A step that needs a write outside a marked fixture, or a resource that is not on the approved list, asks the user first and names the resource.

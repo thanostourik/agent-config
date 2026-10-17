@@ -19,23 +19,94 @@ Search lets a user find notes by title or body text, inspect a matching note, an
 
 ## Driving it with Playwright CLI and the notes CLI
 
-Preconditions:
+Preconditions: the baseline holds, and the disposable data directory contains `Quarterly plan` with body text `Draft budget`.
 
-- The baseline holds.
-- The disposable data directory contains `Quarterly plan` with body text `Draft budget`.
-- Run `mkdir -p .agents/skills/verify-notes/.cache/evidence/search`.
+```bash
+notes() { command notes --data-dir=.agents/skills/verify-notes/.cache/data "$@"; }
+evidence=.agents/skills/verify-notes/.cache/evidence/search
+mkdir -p "$evidence"
+notes list --format json | jq -e '.[] | select(.title == "Quarterly plan" and .body == "Draft budget")'
+```
 
-- **Toolbar entry.** Choose the `Search` button. Run `pw click "getByRole('button', { name: 'Search' })"`. A dialog named `Search notes` appears with focus in its searchbox.
-- **Keyboard entry.** Close the dialog, focus the page, and press `/`. Run `pw press Escape`, `pw click "getByRole('heading', { name: 'All notes' })"` and `pw press /`. The same dialog appears and the page does not insert a slash.
-- **Title match.** Type `quarterly`. Run `pw fill "getByRole('searchbox', { name: 'Search notes' })" "quarterly"`. The `Search results` list contains `Quarterly plan` and does not contain `Grocery list`.
-- **Body match.** Replace the query with `budget`. Run `pw fill "getByRole('searchbox', { name: 'Search notes' })" "budget"`. The result `Quarterly plan` remains visible with a body-match excerpt.
-- **Open result.** Choose `Quarterly plan`. Run `pw click "getByRole('link', { name: 'Quarterly plan' })"`. The dialog closes and the editor heading reads `Quarterly plan`.
-- **Empty state.** Reopen search and enter `volcano`. Run `pw click "getByRole('button', { name: 'Search' })"` and `pw fill "getByRole('searchbox', { name: 'Search notes' })" "volcano"`. A status named `No matching notes` appears after search completes.
-- **Clear query.** Choose `Clear search`. Run `pw click "getByRole('button', { name: 'Clear search' })"`. The searchbox is empty and the `Recent notes` region replaces the result list.
-- **CLI match.** Search from the terminal. Run `notes search "quarterly" --format json`. Exit code `0` and stdout contain one object whose title is `Quarterly plan`.
-- **CLI miss.** Search for an absent value. Run `notes search "volcano" --format json`. Exit code `0` and stdout are `[]`.
-- **Proof.** Restore the populated result state. Run `pw fill "getByRole('searchbox', { name: 'Search notes' })" "quarterly"` and `pw run-code "async page => { await page.getByRole('link', { name: 'Quarterly plan', exact: true }).waitFor(); }"`, then `pw snapshot --filename=.agents/skills/verify-notes/.cache/evidence/search/results.aria.txt` and `pw screenshot --filename=.agents/skills/verify-notes/.cache/evidence/search/results.png`. Both artifacts identify Notes, the query, and `Quarterly plan`.
-- **Clean up.** Run `pw press Escape` and `pw click "getByRole('link', { name: 'All notes' })"`. The baseline list returns. No data was changed; run cleanup closes the session and removes the disposable environment while retaining evidence.
+- **Toolbar entry.** Choose the `Search` button. A dialog named `Search notes` appears with focus in its searchbox.
+
+```bash
+pw.sh click "getByRole('button', { name: 'Search' })"
+pw.sh run-code "async page => { await page.getByRole('dialog', { name: 'Search notes' }).waitFor(); if (!await page.getByRole('searchbox', { name: 'Search notes' }).evaluate(e => e === document.activeElement)) throw new Error('focus is not in the searchbox'); }"
+```
+
+- **Keyboard entry.** Close the dialog, focus the page, and press `/`. The same dialog appears with an empty searchbox.
+
+```bash
+pw.sh press Escape
+pw.sh click "getByRole('heading', { name: 'All notes' })"
+pw.sh press /
+pw.sh run-code "async page => { await page.getByRole('dialog', { name: 'Search notes' }).waitFor(); if (await page.getByRole('searchbox', { name: 'Search notes' }).inputValue()) throw new Error('a slash was typed'); }"
+```
+
+- **Title match.** Type `quarterly`. The `Search results` list contains `Quarterly plan` and not `Grocery list`.
+
+```bash
+pw.sh fill "getByRole('searchbox', { name: 'Search notes' })" "quarterly"
+pw.sh run-code "async page => { const results = page.getByRole('list', { name: 'Search results' }); await results.getByRole('link', { name: 'Quarterly plan' }).waitFor(); if (await results.getByRole('link', { name: 'Grocery list' }).count()) throw new Error('Grocery list matched'); }"
+```
+
+- **Body match.** Replace the query with `budget`. `Quarterly plan` stays with a body-match excerpt.
+
+```bash
+pw.sh fill "getByRole('searchbox', { name: 'Search notes' })" "budget"
+pw.sh run-code "async page => { const results = page.getByRole('list', { name: 'Search results' }); await results.getByRole('link', { name: 'Quarterly plan' }).waitFor(); await results.getByText('Draft budget').waitFor(); }"
+```
+
+- **Open result.** Choose `Quarterly plan`. The dialog closes and the editor heading reads `Quarterly plan`.
+
+```bash
+pw.sh click "getByRole('link', { name: 'Quarterly plan' })"
+pw.sh run-code "async page => { await page.getByRole('dialog', { name: 'Search notes' }).waitFor({ state: 'hidden' }); await page.getByRole('heading', { name: 'Quarterly plan' }).waitFor(); }"
+```
+
+- **Empty state.** Reopen search and enter `volcano`. A status named `No matching notes` appears after search completes.
+
+```bash
+pw.sh click "getByRole('button', { name: 'Search' })"
+pw.sh fill "getByRole('searchbox', { name: 'Search notes' })" "volcano"
+pw.sh run-code "async page => { await page.getByRole('status', { name: 'No matching notes' }).waitFor(); }"
+```
+
+- **Clear query.** Choose `Clear search`. The searchbox is empty and the `Recent notes` region replaces the result list.
+
+```bash
+pw.sh click "getByRole('button', { name: 'Clear search' })"
+pw.sh run-code "async page => { await page.getByRole('region', { name: 'Recent notes' }).waitFor(); if (await page.getByRole('searchbox', { name: 'Search notes' }).inputValue()) throw new Error('query not cleared'); }"
+```
+
+- **CLI match.** Search from the terminal. The command succeeds and prints one note titled `Quarterly plan`.
+
+```bash
+notes search "quarterly" --format json | jq -e 'length == 1 and .[0].title == "Quarterly plan"'
+```
+
+- **CLI miss.** Search for an absent value. The command succeeds and prints `[]`.
+
+```bash
+test "$(notes search "volcano" --format json)" = "[]"
+```
+
+- **Proof.** Restore the populated result state. The snapshot and screenshot show the query and `Quarterly plan`.
+
+```bash
+pw.sh fill "getByRole('searchbox', { name: 'Search notes' })" "quarterly"
+pw.sh run-code "async page => { await page.getByRole('link', { name: 'Quarterly plan', exact: true }).waitFor(); }"
+pw.sh snapshot --filename="$evidence/results.aria.txt"
+pw.sh screenshot --filename="$evidence/results.png"
+```
+
+- **Clean up.** Close search and return to the list. No data was changed.
+
+```bash
+pw.sh press Escape
+pw.sh click "getByRole('link', { name: 'All notes' })"
+```
 
 ## Gotchas
 

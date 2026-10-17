@@ -39,14 +39,14 @@ Start a skill like this:
 | Skill | When | Modes |
 |---|---|---|
 | `create-project-verification-skill` | Once per project. It writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. | none: write all features, then fully audit<br>`quick`: write and drive one feature per surface, nothing more |
-| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive new and changed steps<br>`map only`: no drives<br>`full audit`: drive every step |
+| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. It brings the project's skills up to date. | none: update the map, drive the features with new and changed steps<br>`map only`: no drives<br>`full audit`: drive every feature |
 
 After generation, the project's own skills are the daily tools:
 
 | Skill | Use |
 |---|---|
 | `verify-<app>` | Agents use it on their own before calling work done. You can also ask for it by name. |
-| `/maintain-verify-<app>` | Keeps the feature map honest. Adds features missing from the map and drives new and changed steps. Add `map only` or `full audit`. |
+| `/maintain-verify-<app>` | Keeps the feature map honest. Adds features missing from the map and drives the features with new and changed steps. Add `map only` or `full audit`. |
 
 `quick` maps and proves only one feature per surface. The next
 `/maintain-verify-<app>` finds the other features in the source, adds them and
