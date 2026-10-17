@@ -37,8 +37,6 @@ Under `Driving it with <tool>`:
 
 ### Project helpers the runner relies on
 
-- `bin/recipe.sh`: sourced before every block. It defines the shorthands the
-  recipes use (`pw`, `as`, the run's ports). ccbot already has one.
 - `bin/doctor.sh`: the Doctor the spec already requires, at a fixed path.
 - `VERIFY_SESSION`: set by the runner to the feature name. The project's
   helpers use it to keep parallel features apart: the browser session name
@@ -48,6 +46,9 @@ Under `Driving it with <tool>`:
 ### The runner: `bin/drive.sh [--jobs N] [feature...]`
 
 - No feature names means every feature.
+- It puts the skill's `bin/` on `PATH`, so blocks call the helpers by name.
+  Anything else the steps need, such as the run's ports, the Preconditions
+  block loads.
 - Steps of one feature run in order. A variable set in one step is visible in
   later steps of the same feature.
 - A feature stops at its first failing step. Its `Clean up` step still runs,
@@ -78,7 +79,7 @@ Generator `SKILL.md`, `verify-skill-spec.md`, `maintain-verify.md`,
 - "Keep variable creation and use in one command block or persist them under
   `.cache/`": steps share variables through the runner.
 - "Type the full command, because no alias from an earlier session exists"
-  (example README): `bin/recipe.sh` provides the shorthands.
+  (example README): the runner puts the helpers on `PATH`.
 - "One agent owns all driving", "one driver at a time": the runner drives. The
   `shared` isolation level keeps one driver by using `--jobs 1`.
 - The per-step evidence naming and the report and progress lines for drives:
@@ -121,5 +122,7 @@ Generator `SKILL.md`, `verify-skill-spec.md`, `maintain-verify.md`,
   feature, a failing step (later steps not run, `Clean up` still runs), a
   variable carried between steps, a failing doctor that stops the run, and
   `--jobs 2` with one `Runs alone.` feature.
-- Upgrade `~/Devel/workspace/scratch` with `/maintain-project-verification-skill`
-  and run its features with `drive.sh --jobs 2`.
+- Upgrade `~/Devel/workspace/scratch` with `/maintain-project-verification-skill`.
+  Its verify skill then drives its features through the new runner, two at a
+  time. Check the summary, the cleanup, and that parallel features stayed
+  apart.
