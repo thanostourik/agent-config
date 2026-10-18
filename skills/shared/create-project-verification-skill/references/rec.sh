@@ -168,6 +168,7 @@ case "$action" in
       cat "$step"/*.sh | cmp -s - "$rec/check/$number.sh" || fail "the block of step \"$(< "$step/label")\" does not parse back; features/$feature.md is unchanged (see ${rec#"$PWD/"}/written.md)"
     done < <(paste <(printf '%s\n' "$rec"/[0-9][0-9]) <(cut -f1 "$rec/check/steps"))
     mv "$rec/written.md" "$target"
+    rm -rf "$rec"
     echo "rec.sh: wrote the Driving section of features/$feature.md"
     ;;
 esac

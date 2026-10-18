@@ -45,5 +45,7 @@ run_step() {
 }
 
 calls_run_script() {
-  grep -Ewo -m1 '(launch|cleanup|doctor)\.sh' "$1" | head -n1
+  local matches
+  matches=$(grep -Ewo -m1 '(launch|cleanup|doctor)\.sh' "$1") || return 1
+  echo "${matches%%$'\n'*}"
 }

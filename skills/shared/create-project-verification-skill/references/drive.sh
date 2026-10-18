@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # drive.sh [--jobs N] [feature...]: run the bash blocks of feature recipes, N features at a time.
+# drive.sh --check [feature...]: only list the steps drive.sh refuses to run; exit 2 when there are any.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
-max_jobs=1
-if [[ "${1:-}" == --jobs ]]; then max_jobs=${2:?--jobs needs a number}; shift 2; fi
+max_jobs=1 check=""
+if [[ "${1:-}" == --check ]]; then check=1; shift
+elif [[ "${1:-}" == --jobs ]]; then max_jobs=${2:?--jobs needs a number}; shift 2; fi
 [[ "$max_jobs" =~ ^[1-9][0-9]*$ ]] || { echo "drive.sh: --jobs must be a positive number" >&2; exit 2; }
 
 features=("$@")
@@ -19,9 +21,13 @@ for feature in "${features[@]}"; do
 done
 
 export PATH="$skill/bin:$PATH"
-work="$skill/.cache/drive"
-rm -rf "$work"
-mkdir -p "$work"
+if [[ -n "$check" ]]; then
+  work=$(mktemp -d)
+else
+  work="$skill/.cache/drive"
+  rm -rf "$work"
+  mkdir -p "$work"
+fi
 source "$skill/bin/steps.sh"
 
 refusals=()
@@ -41,6 +47,10 @@ if ((${#refusals[@]})); then
   printf 'drive.sh: %s\n' "${refusals[@]}" >&2
   rm -rf "$work"
   exit 2
+fi
+if [[ -n "$check" ]]; then
+  rm -rf "$work"
+  exit 0
 fi
 
 drive_feature() {

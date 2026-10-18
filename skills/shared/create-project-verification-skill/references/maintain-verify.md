@@ -36,11 +36,11 @@ In map-only mode, edit only the feature files and index. Report helper or lifecy
 
 ## Update the map
 
-Before editing, record the starting map and driving conventions so selection includes every change in this pass, even ones already committed during it. When the global maintenance skill invokes you, use its record from before conformance.
+Before editing, record the starting map and driving conventions so selection includes every change in this pass, even ones already committed during it. When the global maintenance skill invokes you, use its record from before conformance and its list of the features `bin/drive.sh --check` refused.
 
 1. **Index.** Read `features/README.md` and list its sibling files. Fix missing, extra, duplicate or dead entries. Inspect routes, navigation, commands and endpoints for features the index lacks: a list, not a read of every component. Check that the two Claude Code stubs still match the real skills' `name` and `description`.
 2. **Map only: read.** Readers cover every feature in small batches of related features. Return shape: feature summary / source entry points / likely drift or none / proposed recipe. Without subagents, read the groups yourself. Spot-check cited drift and update the files and index. Require concrete source evidence for additions and removals. Preserve expected behavior supported by a request, documented contract or established test. Current code alone does not prove a conflicting expectation is obsolete. Report possible product defects and unresolved expectations instead of writing them into the map as normal behavior. Each recipe keeps its exact setup and fixture cleanup so it runs from the baseline.
-3. **Modes that drive: record.** Follow `verify-<app>`'s Isolation, Launch and Doctor sections. Then give every feature to a recorder, a few recorders at a time, all on that one environment. Each feature keeps its own `VERIFY_SESSION`, so recorders work side by side like `drive.sh --jobs`. Features that change state other features read, such as global settings, go to a recorder that starts after the others return. In a full audit, tell recorders to convert. Read only the reports:
+3. **Modes that drive: record.** Follow `verify-<app>`'s Isolation, Launch and Doctor sections. Then give every feature to a recorder, all on that one environment. Run as many recorders at a time as the `--jobs` value in `verify-<app>`'s Drive section. Each feature keeps its own `VERIFY_SESSION`, so recorders work side by side like `drive.sh --jobs`. A project where editing a tracked file disturbs the running app, for example a dev server that reloads every open page when a file changes, records one feature at a time: one recorder's `rec.sh finish` would wipe another recorder's browser state. Features that change state other features read, such as global settings, go to a recorder that starts after the others return. Tell recorders to convert in a full audit and for the refused features on that list. In each brief, list the driving-convention changes since the starting record. Read only the reports:
    - Compare the Names lists. When two features create the same account, fixture or resource name, send one of them back to a recorder to rename it.
    - Make the helper changes that reports name as blockers yourself, then send the blocked features back to a recorder.
    - Add new features to the index.
@@ -49,18 +49,20 @@ Before editing, record the starting map and driving conventions so selection inc
 ## Select what to drive
 
 - **Map only:** go to Ship. No drives.
-- **Changed recipes:** select each feature that the recorders' Files lists name as new, or as having a step that is new or whose action, command, expected result, proof or cleanup changed meaningfully. If the baseline or the driving conventions changed since the recorded starting point, select every feature that change affects. Wording, formatting, index repairs, unchanged renames and deletions select nothing. If nothing qualifies, run Cleanup and go to Ship.
+- **Changed recipes:** select each feature that the recorders' Files lists name as new, or as having a step that is new or whose action, command, expected result, proof or cleanup changed meaningfully. If the baseline or the driving conventions changed since the recorded starting point, select every feature that change affects. Select the refused features the global maintenance skill listed. Wording, formatting, index repairs, unchanged renames and deletions select nothing. If nothing qualifies, run Cleanup and go to Ship.
 - **Full audit:** every feature.
 
-A selected feature whose steps lack `bash` blocks goes to a recorder to be converted before the drive. `drive.sh` refuses to run it otherwise, and its refusal names the step. Unselected recipes stay as they are.
+`bin/drive.sh --check [feature...]` finds the recipes that need conversion. It launches nothing and names each step that has no `bash` block or calls `launch.sh`, `cleanup.sh` or `doctor.sh`. A selected feature it names goes to a recorder to be converted before the drive; `drive.sh` refuses to run it otherwise. Unselected recipes stay as they are.
 
 Do not treat unselected features as verified.
 
 ## Drive the selected features
 
-Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, When a drive fails, Evidence and Cleanup sections. They set the driver, the isolation level, the deadlines and the failure rules. Run Doctor, then drive all selected features in one `bin/drive.sh` call. Then drive them once more without relaunching: that proves each `Clean up` step leaves the app ready for the next run. The two summaries are the record of the pass. After an aborted run, clean up its recorded leftovers, create a new environment, drive the features without a result and keep the evidence.
+Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, When a drive fails, Evidence and Cleanup sections. They set the driver, the isolation level, the deadlines and the failure rules.
 
-Send each failing feature to a fresh fixer with the feature name, the failing step and its log path. Read only the line it returns. Run one fixer at a time and never next to your own drive: two `drive.sh` runs share `.cache/drive/`.
+Drive from a fresh environment, not from the state the recorders left: run `bin/cleanup.sh`, launch again with `bin/launch.sh` and run `bin/doctor.sh`. Then drive all selected features in one `bin/drive.sh` call. Send each failing feature to a fresh fixer with the feature name, the failing step and its log path, and read only the line it returns. Run one fixer at a time and never beside your own drive: two `drive.sh` runs share `.cache/drive/`, and the fixer drives its feature twice after a repair. When the fixers are done, drive all selected features once more without relaunching. That proves each `Clean up` step leaves the app ready for the next run. This second summary and the fixers' lines are the record of the pass. A feature that fails the second drive goes back to a fixer, and then the second drive is repeated.
+
+After an aborted run, clean up its recorded leftovers, create a new environment, drive the features without a result and keep the evidence.
 
 Change an expected result only when there is evidence that the contract changed, never because the app disagrees. A known product failure stays failed.
 
@@ -79,16 +81,19 @@ Paste a brief as the helper's whole task. Replace each `[...]` with this run's v
 ```
 You are a recorder for verify-<app>. You check feature recipes against source and record them against the live app with rec.sh. The app is already running. Another agent owns its lifecycle.
 
-Features: [3 to 5 related feature names]. New ones: [names, or none]. Convert recipes whose steps lack bash blocks: [yes or no].
+Repository root: [absolute path]; run everything from there.
 
-Read .agents/skills/verify-<app>/features/README.md for the baseline, the driving conventions and the feature file shape, and the Drive section of .agents/skills/verify-<app>/SKILL.md. Drive only with <driver>. You may call .agents/skills/verify-<app>/bin/rec.sh and [the driver helpers, such as bin/pw.sh]. Never call launch.sh, cleanup.sh or doctor.sh. Never edit helpers, SKILL.md, features/README.md, product code, or tracked files other than your features' files.
+Features: [3 to 5 related feature names]. New ones: [names, or none]. Convert recipes whose steps lack bash blocks: [yes or no].
+Conventions changed in this pass: [list, or none].
+
+Read .agents/skills/verify-<app>/features/README.md for the baseline, the driving conventions and the feature file shape, and the Drive section of .agents/skills/verify-<app>/SKILL.md. Drive only with <driver>. You may call .agents/skills/verify-<app>/bin/rec.sh and [the driver helpers, such as bin/pw.sh]. Never call launch.sh, cleanup.sh or doctor.sh. Never edit helpers, SKILL.md, features/README.md or product code. Do not commit or push; the main agent ships. Write no tracked file other than your features' files.
 
 rec.sh: rec.sh <feature> start | pre '<command>' | step '<Label>' '<command>' | say '<Label>' '<sentence>' | undo | show | finish | finish --tool '<tool>'. It runs each command the way drive.sh does, with VERIFY_SESSION=<feature>, and keeps it only when it exits 0. Steps are recorded in order; say also takes Preconditions.
 
 For each feature:
 1. Learn its contract: what it should do, from [contract sources: the project's tests, docs, specs, request text]. Read source only for that and for drift, and only for your features.
-2. When a feature is not new, matches its contract and source, and needs no conversion, change nothing.
-3. Otherwise record its recipe. Look at the app with VERIFY_SESSION=<feature> set, for example VERIFY_SESSION=<feature> .agents/skills/verify-<app>/bin/pw.sh snapshot for a web UI. Every command that changes the app goes through rec.sh. Start with rec.sh <feature> start. Replay unchanged steps' commands and sentences as they are, and record new commands only for new or drifted steps. To convert, record each step's commands without changing what the step checks: add a check where a step only printed a value, and where a step relied on the pause between agent turns, wait for the observable state it needs. Data the baseline lacks is created in Preconditions with the project's own APIs or documented setup. Use names no other feature uses. The last step is Clean up and removes what the recipe created. End with rec.sh <feature> finish, adding --tool '[the tool named in the Driving headings]' when the file does not exist yet.
+2. When a feature is not new, matches its contract and source, breaks none of the changed conventions, and needs no conversion, change nothing. A recipe that breaks a changed convention has drifted: re-record it.
+3. Otherwise record its recipe. Start with rec.sh <feature> start. Every command that changes the app goes through rec.sh. Look at the app after your Preconditions commands have run, with VERIFY_SESSION=<feature> set, for example with an accessibility snapshot through <driver>. Replay unchanged steps' commands and sentences as they are, and record new commands only for new or drifted steps. To convert, record each step's commands without changing what the step checks: add a check where a step only printed a value, and where a step relied on the pause between agent turns, wait for the observable state it needs. Data the baseline lacks is created in Preconditions with the project's own APIs or documented setup. Use names no other feature uses. The last step is Clean up and removes what the recipe created. End with rec.sh <feature> finish, adding --tool '[the tool named in the Driving headings]' when the file does not exist yet.
 4. Write or update the file's other sections yourself: the H1, the paragraph, Sub-features, How to get to it (user POV) and Gotchas.
 
 Change an expected result only when the contract changed. When the app does not do what the contract says, never record a check that accepts it: record the other steps and report the difference. Stop when your features are done. If you cannot finish one, remove what your commands created in the app and report the steps you did record and the blocker.
@@ -105,7 +110,9 @@ Return only this report:
 ```
 You are a fixer for verify-<app>. One recipe failed a drive. Feature: [feature]. Failing step: [label]. Log: [log path].
 
-Read the log, the feature's file in .agents/skills/verify-<app>/features/, .agents/skills/verify-<app>/features/README.md, and the Drive and When a drive fails sections of .agents/skills/verify-<app>/SKILL.md. Classify the failure as one of the four kinds there. Read the contract ([contract sources]) only when the kind depends on it. Drive only with <driver>. You may call .agents/skills/verify-<app>/bin/rec.sh, .agents/skills/verify-<app>/bin/drive.sh and [the driver helpers]. Never call launch.sh, cleanup.sh or doctor.sh. Never edit helpers, SKILL.md, features/README.md, product code, or tracked files other than this feature's file.
+Repository root: [absolute path]; run everything from there.
+
+Read the log, the feature's file in .agents/skills/verify-<app>/features/, .agents/skills/verify-<app>/features/README.md, and the Drive and When a drive fails sections of .agents/skills/verify-<app>/SKILL.md. Classify the failure as one of the four kinds there. Read the contract ([contract sources]) only when the kind depends on it. Drive only with <driver>. You may call .agents/skills/verify-<app>/bin/rec.sh, .agents/skills/verify-<app>/bin/drive.sh and [the driver helpers]. Never call launch.sh, cleanup.sh or doctor.sh. Never edit helpers, SKILL.md, features/README.md or product code. Do not commit or push; the main agent ships. Write no tracked file other than this feature's file.
 
 rec.sh: rec.sh <feature> start | pre '<command>' | step '<Label>' '<command>' | say '<Label>' '<sentence>' | undo | show | finish. It runs each command the way drive.sh does and keeps it only when it exits 0.
 
