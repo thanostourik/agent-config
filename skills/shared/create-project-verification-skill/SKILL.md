@@ -112,7 +112,7 @@ A feature that is partial, blocked or failing is reported as such. Writing the m
 
 ## 8. Hand over
 
-Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. In `quick` mode, say that the map is partial and unaudited. Explain the maintenance calls:
+Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. When you break something on purpose to test a helper and the helper correctly stops, write "stopped it, as expected", not "failed". Example: "Doctor: I stopped a container, and Doctor correctly refused to continue." In `quick` mode, say that the map is partial and unaudited. Explain the maintenance calls:
 
 - `/maintain-verify-<app>` updates the map, adds features missing from it, and drives the features with new or changed steps.
 - `/maintain-verify-<app> map only` updates the map without feature drives.
