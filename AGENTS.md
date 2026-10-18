@@ -38,6 +38,8 @@ Two things to keep as they are:
   in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `squash-merge-pr` needs `git`, a logged-in `gh`, and `jq`.
+  `usage-report` reads the Codex and Claude Code session logs and prints what
+  each session and its subagents cost in tokens. It needs only Python.
   `render-plan` needs `npx`, fetches `marked` and `postplan`
   through `npx` and a one-time Postplan login (`npx postplan auth login`).
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
