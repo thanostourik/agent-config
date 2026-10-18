@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
-# rec.sh <feature> run [--known-failure '<Label>']: run the staged file's Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail.
+# rec.sh <feature> run [--known-failure '<Label>']: empty .cache/evidence/<feature>/, then run the staged file's Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail.
 # rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
 set -uo pipefail
 shopt -s nullglob
@@ -116,8 +116,8 @@ if ((${#problems[@]})); then
   exit 2
 fi
 
-rm -rf "$logs" "$rec/passed"
-mkdir -p "$logs"
+rm -rf "$logs" "$rec/passed" "$skill/.cache/evidence/$feature"
+mkdir -p "$logs" "$skill/.cache/evidence/$feature"
 export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
 : > "$work/state"
 
