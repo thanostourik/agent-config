@@ -19,6 +19,12 @@ This directory is the maintained source for verifying the browser and CLI behavi
 - Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
 
+## Change triggers
+
+- The note editor, the create form, the notes API and `notes create`: create-note
+- The search index, the toolbar search box, its keyboard shortcut and `notes search`: search
+- The data directory format, server startup or the CLI's argument parsing: create-note and search
+
 ## Feature file shape
 
 Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly four H2s in this order:

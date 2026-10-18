@@ -1,6 +1,6 @@
 # Spec for the generated `verify-<app>/SKILL.md`
 
-The generated skill is read cold, mid-task, by an agent that has never seen the app and cannot read this generator. Make it self-contained. Fill every section with this project's real commands, ports, selectors and names. Leave no placeholders. State rules briefly and put the detail in `features/` and `bin/`. Aim for about 8 KB. Move long lists, such as a per-file trigger mapping, into `features/README.md`.
+The generated skill is read cold, mid-task, by an agent that has never seen the app and cannot read this generator. Make it self-contained. Fill every section with this project's real commands, ports, selectors and names. Leave no placeholders. State rules briefly and put the detail in `features/` and `bin/`. Aim for about 8 KB. Move long lists, such as the trigger mapping, into `features/README.md`, where it sits under `## Change triggers`.
 
 ## Frontmatter
 
@@ -12,7 +12,7 @@ Before the first section, put a short block in the user's voice: "The user expli
 
 ## Sections, in this order
 
-- **Pick features.** Read `features/README.md`. Select the behaviors the change adds, changes or could break, using this project's triggers. State each selected feature and why in one line. A refactor can need a live drive even when behavior should not change. If nothing needs a live drive, say why and run the focused checks instead. Editing documentation does not need a drive.
+- **Pick features.** Read `features/README.md`. Select the behaviors the change adds, changes or could break, using the triggers under `## Change triggers` in `features/README.md`. State each selected feature and why in one line. A refactor can need a live drive even when behavior should not change. If nothing needs a live drive, say why and run the focused checks instead. Editing documentation does not need a drive.
 - **Update the map first.** Before driving, make the map describe the app as it is after the change. New feature: new feature file and index entry. Altered feature: edit its file. Removed feature: delete its file and entry. This is part of the change, like updating tests, so it is in scope even when the request did not mention it. Then drive the picked features, whole, with `bin/drive.sh`.
 - **Isolation.** The level from `lifecycle.md`, the resources the run owns, and what isolation makes unreachable. For `shared`, the approved resources. Existing services and data are never verification targets.
 - **Launch.** `bin/launch.sh`: the exact commands that create and start the run's app, dependencies and baseline, and how to tell each is ready. Register resources as they are created. Back up local files that startup must rewrite. If startup fails, clean up what already started. For a short-lived CLI or TUI, launch means preparing disposable data, building once and starting each drive in its own session.
