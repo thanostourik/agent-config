@@ -12,11 +12,13 @@ This directory is the maintained source for verifying the browser and CLI behavi
 ## Driving conventions
 
 - Run features with `.agents/skills/verify-notes/bin/drive.sh --jobs 3 <feature...>`. It runs each step's `bash` block from the repository root with `bin/` on `PATH`, so blocks call `pw.sh` by name. `pw.sh` opens the browser session named after the feature, so parallel features never share one.
-- Record new and changed steps against the running app with `.agents/skills/verify-notes/bin/rec.sh <feature> ...`. It keeps a command only when it passes the way `drive.sh` would run it.
+- Record new and changed steps against the running app with `.agents/skills/verify-notes/bin/rec.sh <feature> ...`. It keeps a command only when it passes the way `drive.sh` would run it. A contract check the app fails is recorded with `rec.sh <feature> step --keep` as the last step before `Clean up`, and its sentence states the contract.
 - The Preconditions block defines what later steps use, such as the `notes` function that points the CLI at the run's data directory.
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Every block fails when its expected result is not met. A value the step only prints gets a check.
-- Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
+- Each step is one action and its result. Blocks wait with Playwright's `waitFor` or a CLI command's own exit, never with `sleep`.
+- The proof step saves evidence under `.agents/skills/verify-notes/.cache/evidence/<feature>/`: an accessibility snapshot and a screenshot for the browser, the JSON output for the CLI.
+- Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step, which ends with a check that they are gone. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
 
 ## Change triggers

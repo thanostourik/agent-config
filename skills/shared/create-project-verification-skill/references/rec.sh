@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rec.sh <feature> start|pre|step|say|undo|show|finish ...: record a feature's Driving section from commands that pass under drive.sh's executor.
+# rec.sh <feature> start|pre|step|say|undo|show|finish ...: record a feature's Driving section from commands that pass under drive.sh's executor; step --keep also records one that fails.
 set -uo pipefail
 shopt -s nullglob
 
@@ -7,7 +7,7 @@ skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
 source "$skill/bin/steps.sh"
 
-usage_all='usage: rec.sh <feature> start | pre <command> | step <Label> <command> | say <Label> <sentence> | undo | show | finish [--tool <tool>]'
+usage_all='usage: rec.sh <feature> start | pre <command> | step [--keep] <Label> <command> | say <Label> <sentence> | undo | show | finish [--tool <tool>]'
 fail() { echo "rec.sh: $*" >&2; exit 1; }
 usage() { echo "usage: rec.sh <feature> $1" >&2; exit 2; }
 
@@ -27,7 +27,7 @@ check_label() {
 }
 
 record() {
-  local label=$1 command=$2 current step attempt="$rec/attempt.sh" log="$rec/attempt.log" status number script file
+  local label=$1 command=$2 keep=${3:-} current step attempt="$rec/attempt.sh" log="$rec/attempt.log" status number script file
   [[ -n "${command//[[:space:]]/}" ]] || fail "the command is empty"
   grep -q '^```[[:space:]]*$' <<< "$command" && fail "a command may not contain a line that closes a fence"
   current=$(current_step)
@@ -52,7 +52,7 @@ record() {
   run_step "$rec/state" "$attempt" "$log"; status=$?
   tail -n +$(( $(wc -l < "$attempt") + 2 )) "$log"
   { echo "== $label"; cat "$log"; } >> "$rec/log"
-  if ((status != 0)); then
+  if ((status != 0)) && [[ -z "$keep" ]]; then
     mv "$rec/state.before" "$rec/state"
     echo "rec.sh: not recorded"
     exit $status
@@ -64,7 +64,11 @@ record() {
   number=$(printf '%03d' "$number")
   mv "$attempt" "$step/$number.sh"
   mv "$rec/state.before" "$step/$number.state"
-  echo "rec.sh: recorded as command $((10#$number)) of \"$label\""
+  if ((status != 0)); then
+    echo "rec.sh: recorded as command $((10#$number)) of \"$label\" although it failed (exit=$status)"
+  else
+    echo "rec.sh: recorded as command $((10#$number)) of \"$label\""
+  fi
 }
 
 render() {
@@ -101,9 +105,11 @@ case "$action" in
     record Preconditions "$1"
     ;;
   step)
-    (($# == 2)) || usage "step <Label> <command>"
+    keep=""
+    [[ "${1:-}" == --keep ]] && { keep=1; shift; }
+    (($# == 2)) || usage "step [--keep] <Label> <command>"
     check_label "$1"
-    record "$1" "$2"
+    record "$1" "$2" "$keep"
     ;;
   say)
     (($# == 2)) || usage "say <Label> <sentence>"
