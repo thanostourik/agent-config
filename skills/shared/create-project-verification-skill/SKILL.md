@@ -66,7 +66,7 @@ Decide these now, with the user where needed, and write the concrete choice into
 
 ## 3. Write `verify-<app>`
 
-Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Include the failure rules from [`references/drive-failures.md`](references/drive-failures.md). Copy [`references/drive.sh`](references/drive.sh) to `bin/drive.sh` unchanged. Write the other helpers in `bin/` and make them executable.
+Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Include the failure rules from [`references/drive-failures.md`](references/drive-failures.md). Copy [`references/drive.sh`](references/drive.sh), [`references/steps.sh`](references/steps.sh) and [`references/rec.sh`](references/rec.sh) to `bin/` unchanged. Write the other helpers in `bin/` and make them executable.
 
 ## 4. Map every feature
 

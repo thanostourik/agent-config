@@ -22,55 +22,32 @@ export PATH="$skill/bin:$PATH"
 work="$skill/.cache/drive"
 rm -rf "$work"
 mkdir -p "$work"
-step_timeout=600
+source "$skill/bin/steps.sh"
 
-split_steps() {
-  awk -v out="$2" '
-    function start(label) { n++; file = sprintf("%s/%02d.sh", out, n); printf "%02d\t%s\n", n, label > (out "/steps") }
-    /^## Driving it with/ { driving = 1; next }
-    driving && /^## / { driving = 0 }
-    !driving { next }
-    in_block { if ($0 ~ /^```[[:space:]]*$/) in_block = 0; else print > file; next }
-    /^Preconditions:/ { start("Preconditions"); next }
-    /^- \*\*/ { label = $0; sub(/^- \*\*/, "", label); sub(/\*\*.*/, "", label); sub(/\.$/, "", label); start(label); next }
-    /^```bash[[:space:]]*$/ && n { in_block = 1; printf "" > file }
-  ' "$1"
-}
-
-run_step() {
-  local state=$1 block=$2 log=$3 status
-  { cat "$block"; echo "---"; } > "$log"
-  timeout --kill-after=10 "$step_timeout" bash -c '
-    __drive_state=$1 __drive_block=$2
-    set --
-    __drive_vars=$(compgen -v | sort) __drive_funcs=$(compgen -A function | sort)
-    __drive_save() {
-      local __drive_status=$?
-      set +eu
-      {
-        comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r name; do declare -p "$name"; done
-        comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | grep -v "^__drive_" | while read -r name; do declare -f "$name"; done
-      } > "$__drive_state.new"
-      mv "$__drive_state.new" "$__drive_state"
-      exit $__drive_status
-    }
-    trap __drive_save EXIT
-    source "$__drive_state"
-    set -euo pipefail
-    source "$__drive_block"
-  ' _ "$state" "$block" >> "$log" 2>&1 < /dev/null 3<&-
-  status=$?
-  echo "exit=$status" >> "$log"
-  ((status == 124)) && echo "timed out after ${step_timeout}s" >> "$log"
-  return $status
-}
+refusals=()
+for feature in "${features[@]}"; do
+  dir="$work/$feature"
+  mkdir -p "$dir" && : > "$dir/steps"
+  split_steps "$skill/features/$feature.md" "$dir"
+  while IFS=$'\t' read -r number label; do
+    if [[ ! -f "$dir/$number.sh" ]]; then
+      refusals+=("features/$feature.md: step \"$label\" has no bash block; convert the recipe before driving")
+    elif script=$(calls_run_script "$dir/$number.sh"); then
+      refusals+=("features/$feature.md: step \"$label\" calls $script; recipes may not start, check or clean up the whole run")
+    fi
+  done < "$dir/steps"
+done
+if ((${#refusals[@]})); then
+  printf 'drive.sh: %s\n' "${refusals[@]}" >&2
+  rm -rf "$work"
+  exit 2
+fi
 
 drive_feature() {
   local feature=$1 dir="$work/$feature" evidence="$skill/.cache/evidence/$feature/steps"
   local number label block log status failed="" stopped="" ran="" cleanup=""
-  mkdir -p "$dir" && : > "$dir/state" && : > "$dir/steps"
+  : > "$dir/state"
   rm -rf "$evidence" && mkdir -p "$evidence"
-  split_steps "$skill/features/$feature.md" "$dir"
   export VERIFY_SESSION=$feature
   while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"
@@ -81,11 +58,7 @@ drive_feature() {
       [[ "$label" == "Clean up" ]] || echo "$label" >> "$dir/not-run"
       continue
     fi
-    if [[ ! -f "$block" ]]; then
-      echo "no bash block under this step" > "$log"; status=1
-    else
-      run_step "$dir/state" "$block" "$log"; status=$?
-    fi
+    run_step "$dir/state" "$block" "$log"; status=$?
     ran=1
     if ((status == 0)); then
       echo "$feature / $label: pass"
