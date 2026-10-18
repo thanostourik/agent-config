@@ -65,18 +65,21 @@ record() {
   mv "$attempt" "$step/$number.sh"
   mv "$rec/state.before" "$step/$number.state"
   if ((status != 0)); then
-    echo "rec.sh: recorded as command $((10#$number)) of \"$label\" although it failed (exit=$status)"
+    echo "$status" > "$step/$number.failed"
+    echo "rec.sh: recorded as command $((10#$number)) of \"$label\" although it failed (exit=$status); finish accepts it only as the last command of the last step before \"Clean up\""
   else
     echo "rec.sh: recorded as command $((10#$number)) of \"$label\""
   fi
 }
 
 render() {
-  local step label sentence separator=""
+  local mark=${1:-} step label sentence known separator=""
   for step in "$rec"/[0-9][0-9]; do
     label=$(< "$step/label")
     sentence="(no sentence yet)"
     [[ -s "$step/sentence" ]] && sentence=$(< "$step/sentence")
+    known=("$step"/*.failed)
+    [[ -n "$mark" ]] && ((${#known[@]})) && sentence+=" (known failure)"
     printf '%s' "$separator"
     separator=$'\n'
     if [[ "$label" == Preconditions ]]; then echo "Preconditions: $sentence"; else echo "- **$label.** $sentence"; fi
@@ -126,7 +129,7 @@ case "$action" in
     echo "rec.sh: removed from \"$(< "$step/label")\":"
     cat "$last"
     mv "${last%.sh}.state" "$rec/state"
-    rm "$last"
+    rm -f "$last" "${last%.sh}.failed"
     if ((${#commands[@]} == 1)); then
       echo "rec.sh: step \"$(< "$step/label")\" is empty and was removed"
       rm -rf "$step"
@@ -134,15 +137,28 @@ case "$action" in
     ;;
   show)
     (($# == 0)) || usage show
-    render
+    render --mark
     ;;
   finish)
     tool=""
     if (($# == 2)) && [[ "$1" == --tool && -n "$2" ]]; then tool=$2; elif (($# != 0)); then usage "finish [--tool <tool>]"; fi
     problems=()
     [[ -d "$rec/00" ]] || problems+=("no Preconditions block")
+    known=""
     for step in "$rec"/[0-9][0-9]; do
-      [[ -s "$step/sentence" ]] || problems+=("step \"$(< "$step/label")\" has no sentence")
+      label=$(< "$step/label")
+      [[ -s "$step/sentence" ]] || problems+=("step \"$label\" has no sentence")
+      [[ -z "$known" || "$label" == "Clean up" ]] || problems+=("step \"$label\" comes after \"$known\", whose kept failure stops drive.sh before it; a known failure goes in the last step before \"Clean up\"")
+      commands=("$step"/*.sh)
+      for file in "${commands[@]}"; do
+        [[ -f "${file%.sh}.failed" ]] || continue
+        if [[ "$label" == "Clean up" ]]; then
+          problems+=("\"Clean up\" keeps a failing command; Clean up must pass")
+        elif [[ "$file" != "${commands[-1]}" ]]; then
+          problems+=("command $((10#$(basename "$file" .sh))) of \"$label\" keeps a failure, so drive.sh never runs the commands after it in that step")
+        fi
+        known=$label
+      done
     done
     current=$(current_step)
     [[ -n "$current" && "$(< "$current/label")" == "Clean up" ]] || problems+=("the last step is not \"Clean up\"")

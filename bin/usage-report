@@ -253,7 +253,7 @@ def table_rows(session, depth=0):
 
 
 def print_table(sessions):
-    header = ["provider", "model", "started", "cwd", "steps", "tokens", "largest context", "window", "session"]
+    header = ["provider", "model", "started (local)", "cwd", "steps", "tokens", "largest context", "window", "session"]
     rows = [header] + [row for session in sessions for row in table_rows(session)]
     widths = [max(len(row[column]) for row in rows) for column in range(len(header))]
     right_aligned = {4, 5, 6}
@@ -277,7 +277,8 @@ def as_json(session):
 def main():
     parser = argparse.ArgumentParser(
         description="Token cost of Codex and Claude Code sessions, read from their logs.",
-        epilog="Grok and Cursor keep no token counts on disk, so they are not covered.",
+        epilog="The started (local) column is in this computer's time zone, not UTC. "
+               "Grok and Cursor keep no token counts on disk, so they are not covered.",
     )
     parser.add_argument("--cwd", metavar="PATH", type=lambda path: os.path.abspath(os.path.expanduser(path)),
                         help="keep sessions whose cwd is PATH or under it")

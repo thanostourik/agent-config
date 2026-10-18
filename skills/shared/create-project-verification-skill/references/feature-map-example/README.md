@@ -33,7 +33,7 @@ Each feature file starts with an H1 and one paragraph describing the observable 
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`.
+3. `Driving it with <tool>`: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`. The section holds at most about 15 steps, `Clean up` included; a feature that needs more is split into several features.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features
