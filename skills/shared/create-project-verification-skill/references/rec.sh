@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# rec.sh <feature> start|pre|step|undo|show|finish ...: record a feature's Driving section into a staged copy of its file, one whole step per call, from blocks that pass under drive.sh's executor; step --keep also records one that fails.
-# rec.sh install [feature...]: move staged feature files into features/ and check them with drive.sh --check.
+# rec.sh <feature> start: stage features/<feature>.md as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
+# rec.sh <feature> run [--known-failure '<Label>']: run the staged file's Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail.
+# rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
 set -uo pipefail
 shopt -s nullglob
 
@@ -8,29 +9,40 @@ skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
 source "$skill/bin/steps.sh"
 
-usage_all='usage: rec.sh <feature> start | pre <sentence> <block> | step [--keep] <Label> <sentence> <block> | undo | show | finish [--tool <tool>]
-       rec.sh install [<feature>...]'
+usage_all="usage: rec.sh <feature> start
+       rec.sh <feature> run [--known-failure '<Label>']
+       rec.sh install [<feature>...]"
 fail() { echo "rec.sh: $*" >&2; exit 1; }
-usage() { echo "usage: rec.sh <feature> $1" >&2; exit 2; }
+usage() { echo "$usage_all" >&2; exit 2; }
 check_feature() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "a feature is the feature file name without .md"; }
 relative() { echo "${1#"$PWD/"}"; }
+hash_of() { sha256sum "$1" | cut -d' ' -f1; }
+
+unpassed() {
+  local rec="$skill/.cache/record/$1"
+  [[ -f "$rec/$1.md" ]] || { echo "$1 has no staged file; run rec.sh $1 start"; return; }
+  [[ -f "$rec/passed" ]] || { echo "$1 has not passed rec.sh $1 run"; return; }
+  [[ "$(head -n 1 "$rec/passed")" == "$(hash_of "$rec/$1.md")" ]] || echo "$1 changed since it passed; run it again"
+}
 
 if [[ "${1:-}" == install ]]; then
   shift
-  features=("$@")
-  if ((${#features[@]} == 0)); then
+  features=()
+  if (($#)); then
+    for feature in "$@"; do
+      check_feature "$feature"
+      problem=$(unpassed "$feature")
+      [[ -z "$problem" ]] || fail "$problem"
+      features+=("$feature")
+    done
+  else
     for staged in "$skill"/.cache/record/*/*.md; do
       feature=$(basename "$staged" .md)
       [[ "$feature" == "$(basename "$(dirname "$staged")")" ]] || continue
-      if [[ -f "$(dirname "$staged")/state" ]]; then echo "rec.sh: skipped $feature; its recording is not finished"; else features+=("$feature"); fi
+      problem=$(unpassed "$feature")
+      if [[ -n "$problem" ]]; then echo "rec.sh: skipped: $problem"; else features+=("$feature"); fi
     done
   fi
-  for feature in "${features[@]}"; do
-    check_feature "$feature"
-    rec="$skill/.cache/record/$feature"
-    [[ -f "$rec/$feature.md" ]] || fail "$feature has no staged file; run rec.sh $feature finish first"
-    [[ ! -f "$rec/state" ]] || fail "the recording of $feature is not finished; run rec.sh $feature finish, or remove $(relative "$rec") to drop it"
-  done
   ((${#features[@]})) || { echo "rec.sh: nothing to install"; exit 0; }
   mkdir -p "$skill/features"
   for feature in "${features[@]}"; do
@@ -38,13 +50,19 @@ if [[ "${1:-}" == install ]]; then
   done
   "$skill/bin/drive.sh" --check "${features[@]}"; status=$?
   for feature in "${features[@]}"; do
-    rm -rf "$skill/.cache/record/$feature"
-    echo "rec.sh: installed $(relative "$skill/features/$feature.md")"
+    rec="$skill/.cache/record/$feature"
+    known=$(sed -n '2p' "$rec/passed")
+    if [[ -n "$known" ]]; then
+      echo "rec.sh: installed $(relative "$skill/features/$feature.md"), known failure at \"$known\""
+    else
+      echo "rec.sh: installed $(relative "$skill/features/$feature.md")"
+    fi
+    rm -rf "$rec"
   done
   exit $status
 fi
 
-(($# >= 2)) || { echo "$usage_all" >&2; exit 2; }
+(($# >= 2)) || usage
 feature=$1 action=$2
 shift 2
 check_feature "$feature"
@@ -52,168 +70,92 @@ rec="$skill/.cache/record/$feature"
 staged="$rec/$feature.md"
 target="$skill/features/$feature.md"
 
-step_of() { local step; for step in "$rec"/[0-9][0-9]; do [[ "$(< "$step/label")" == "$1" ]] && { echo "$step"; return 0; }; done; return 1; }
-current_step() { local steps=("$rec"/[0-9][0-9]); ((${#steps[@]})) && echo "${steps[-1]}"; }
-
-check_label() {
-  [[ -n "$1" && "$1" != *[$'\n\t*']* ]] || fail "a label is one line without tabs or *"
-  [[ "$1" != Preconditions ]] || fail "use rec.sh $feature pre for the Preconditions block"
-}
-
-record() {
-  local label=$1 sentence=$2 block=$3 keep=${4:-} current step number script status
-  local attempt="$rec/attempt.sh" log="$rec/attempt.log"
-  [[ -n "$sentence" && "$sentence" != *$'\n'* ]] || fail "a sentence is one non-empty line"
-  while [[ "$block" == *$'\n' ]]; do block=${block%$'\n'}; done
-  [[ -n "${block//[[:space:]]/}" ]] || fail "the block is empty"
-  grep -q '^```[[:space:]]*$' <<< "$block" && fail "a block may not contain a line that closes a fence"
-  current=$(current_step)
-  if [[ "$label" == Preconditions ]]; then
-    [[ -z "$current" ]] || fail "Preconditions are recorded already; undo every step to record them again, or start again"
-    step="$rec/00"
-  else
-    [[ -n "$current" ]] || fail "record the Preconditions block first with rec.sh $feature pre"
-    step_of "$label" > /dev/null && fail "step \"$label\" is recorded already; undo back to it, or start again"
-    number=$(( 10#${current##*/} + 1 ))
-    ((number <= 99)) || fail "a recording holds at most 99 steps"
-    step=$(printf '%s/%02d' "$rec" "$number")
-  fi
-  printf '%s\n' "$block" > "$rec/block.sh"
-  if script=$(calls_run_script "$rec/block.sh"); then
-    fail "the block calls $script; recipes may not start, check or clean up the whole run"
-  fi
-  { echo "PS4='+[rec] '"; echo 'set -x'; cat "$rec/block.sh"; } > "$attempt"
-  cp "$rec/state" "$rec/state.before"
-  run_step "$rec/state" "$attempt" "$log"; status=$?
-  { echo "== $label"; cat "$log"; } >> "$rec/log"
-  tail -n +$(( $(wc -l < "$attempt") + 2 )) "$log" | sed '/^+*\[rec\] __drive_save$/,/^exit=/{/^exit=/!d}' > "$rec/output"
-  if ((status == 0)); then sed '/^+*\[rec\] /d' "$rec/output"; else cat "$rec/output"; fi
-  if ((status != 0)) && [[ -z "$keep" ]]; then
-    mv "$rec/state.before" "$rec/state"
-    echo "rec.sh: not recorded"
-    exit $status
-  fi
-  mkdir -p "$step"
-  printf '%s\n' "$label" > "$step/label"
-  printf '%s\n' "$sentence" > "$step/sentence"
-  mv "$rec/block.sh" "$step/block.sh"
-  mv "$rec/state.before" "$step/state"
-  if ((status != 0)); then
-    echo "$status" > "$step/failed"
-    echo "rec.sh: recorded \"$label\" although it failed (exit=$status); finish accepts it only as the last step before \"Clean up\""
-  else
-    echo "rec.sh: recorded \"$label\""
-  fi
-}
-
-render() {
-  local mark=${1:-} step label sentence separator=""
-  for step in "$rec"/[0-9][0-9]; do
-    label=$(< "$step/label")
-    sentence=$(< "$step/sentence")
-    [[ -n "$mark" && -f "$step/failed" ]] && sentence+=" (known failure)"
-    printf '%s' "$separator"
-    separator=$'\n'
-    if [[ "$label" == Preconditions ]]; then echo "Preconditions: $sentence"; else echo "- **$label.** $sentence"; fi
-    echo
-    echo '```bash'
-    cat "$step/block.sh"
-    echo '```'
-  done
-}
-
-remove_recording() {
-  local entry
-  for entry in "$rec"/*; do [[ "$entry" == "$staged" ]] || rm -rf "$entry"; done
-}
-
 if [[ "$action" == start ]]; then
-  (($# == 0)) || usage start
+  (($# == 0)) || usage
   mkdir -p "$rec"
-  remove_recording
-  : > "$rec/state"
   if [[ -f "$staged" ]]; then
-    echo "rec.sh: recording $feature; edit only the staged file $(relative "$staged"), kept from before"
+    echo "rec.sh: kept the staged file $(relative "$staged")"
   elif [[ -f "$target" ]]; then
     cp "$target" "$staged"
-    echo "rec.sh: recording $feature; edit only the staged file $(relative "$staged")"
+    echo "rec.sh: staged $(relative "$target") as $(relative "$staged")"
   else
-    echo "rec.sh: recording $feature; finish --tool creates the staged file $(relative "$staged")"
+    echo "rec.sh: write the new feature file at $(relative "$staged")"
   fi
   exit 0
 fi
-case "$action" in pre | step | undo | show | finish) ;; *) echo "$usage_all" >&2; exit 2 ;; esac
-[[ -f "$rec/state" ]] || fail "no recording for $feature; run rec.sh $feature start first"
-export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
+[[ "$action" == run ]] || usage
 
-case "$action" in
-  pre)
-    (($# == 2)) || usage "pre <sentence> <block>"
-    record Preconditions "$1" "$2"
-    ;;
-  step)
-    keep=""
-    [[ "${1:-}" == --keep ]] && { keep=1; shift; }
-    (($# == 3)) || usage "step [--keep] <Label> <sentence> <block>"
-    check_label "$1"
-    record "$1" "$2" "$3" "$keep"
-    ;;
-  undo)
-    (($# == 0)) || usage undo
-    step=$(current_step)
-    [[ -n "$step" ]] || fail "nothing recorded"
-    mv "$step/state" "$rec/state"
-    echo "rec.sh: removed \"$(< "$step/label")\" and restored the shell state from before it"
-    rm -rf "$step"
-    ;;
-  show)
-    (($# == 0)) || usage show
-    render --mark
-    ;;
-  finish)
-    tool=""
-    if (($# == 2)) && [[ "$1" == --tool && -n "$2" ]]; then tool=$2; elif (($# != 0)); then usage "finish [--tool <tool>]"; fi
-    problems=()
-    [[ -d "$rec/00" ]] || problems+=("no Preconditions block")
-    known=""
-    for step in "$rec"/[0-9][0-9]; do
-      label=$(< "$step/label")
-      [[ -z "$known" || "$label" == "Clean up" ]] || problems+=("step \"$label\" comes after \"$known\", whose kept failure stops drive.sh before it; a known failure goes in the last step before \"Clean up\"")
-      [[ -f "$step/failed" ]] || continue
-      [[ "$label" == "Clean up" ]] && problems+=("\"Clean up\" keeps a failure; Clean up must pass")
-      known=$label
-    done
-    current=$(current_step)
-    [[ -n "$current" && "$(< "$current/label")" == "Clean up" ]] || problems+=("the last step is not \"Clean up\"")
-    if [[ -f "$staged" ]]; then
-      grep -q '^## Driving it with' "$staged" || problems+=("$(relative "$staged") has no \"## Driving it with\" section")
+known=""
+if (($# == 2)) && [[ "$1" == --known-failure && -n "$2" ]]; then known=$2; elif (($# != 0)); then usage; fi
+[[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
+
+work="$rec/run" logs="$rec/steps"
+rm -rf "$work"
+mkdir -p "$work" && : > "$work/steps"
+split_steps "$staged" "$work"
+mapfile -t numbers < <(cut -f1 "$work/steps")
+mapfile -t labels < <(cut -f2 "$work/steps")
+count=${#labels[@]}
+
+problems=()
+((count)) && [[ "${labels[0]}" == Preconditions ]] || problems+=("$(relative "$staged") has no Preconditions block under \"## Driving it with\"")
+((count)) && [[ "${labels[-1]}" == "Clean up" ]] || problems+=("the last step is not \"Clean up\"")
+for ((i = 0; i < count; i++)); do
+  if [[ ! -f "$work/${numbers[i]}.sh" ]]; then
+    problems+=("step \"${labels[i]}\" has no bash block")
+  elif script=$(calls_run_script "$work/${numbers[i]}.sh"); then
+    problems+=("step \"${labels[i]}\" calls $script; recipes may not start, check or clean up the whole run")
+  fi
+done
+if [[ -n "$known" ]]; then
+  ((count >= 3)) && [[ "${labels[-1]}" == "Clean up" && "${labels[-2]}" == "$known" ]] ||
+    problems+=("--known-failure \"$known\" is not the last step before \"Clean up\"; a known failure goes only there")
+fi
+if ((${#problems[@]})); then
+  printf 'rec.sh: %s\n' "${problems[@]}" >&2
+  exit 2
+fi
+
+rm -rf "$logs" "$rec/passed"
+mkdir -p "$logs"
+export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
+: > "$work/state"
+
+attempt() {
+  local number=$1 label=$2
+  log="$logs/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
+  { echo "PS4='+[rec] '; set -x"; cat "$work/$number.sh"; } > "$work/$number.attempt.sh"
+  run_step "$work/state" "$work/$number.attempt.sh" "$log"
+}
+
+show_failure() {
+  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | sed '/^+*\[rec\] __drive_save$/,/^exit=/{/^exit=/!d}'
+}
+
+known_failed=""
+for ((i = 0; i < count; i++)); do
+  label=${labels[i]}
+  if attempt "${numbers[i]}" "$label"; then
+    echo "$feature / $label: pass"
+    continue
+  fi
+  if [[ "$label" == "$known" ]]; then
+    echo "$feature / $label: known failure, failed as expected"
+    known_failed=1
+    continue
+  fi
+  echo "$feature / $label: fail ($(relative "$log"))"
+  show_failure "${numbers[i]}"
+  if [[ "$label" != "Clean up" ]]; then
+    if attempt "${numbers[-1]}" "Clean up"; then
+      echo "$feature / Clean up: pass"
     else
-      [[ -n "$tool" ]] || problems+=("$feature has no feature file yet; pass --tool <tool> to create it")
+      echo "$feature / Clean up: fail ($(relative "$log"))"
+      show_failure "${numbers[-1]}"
     fi
-    if ((${#problems[@]})); then
-      printf 'rec.sh: %s\n' "${problems[@]}" >&2
-      exit 1
-    fi
-    render > "$rec/section.md"
-    if [[ -f "$staged" ]]; then
-      awk -v section="$rec/section.md" '
-        /^## Driving it with/ && !done { print; print ""; while ((getline line < section) > 0) print line; skipping = 1; done = 1; next }
-        skipping && /^## / { skipping = 0; print "" }
-        !skipping { print }
-      ' "$staged" > "$rec/written.md"
-    else
-      { echo "## Driving it with $tool"; echo; cat "$rec/section.md"; } > "$rec/written.md"
-    fi
-    rm -rf "$rec/check" && mkdir -p "$rec/check" && : > "$rec/check/steps"
-    split_steps "$rec/written.md" "$rec/check"
-    if ! diff <(cat "$rec"/[0-9][0-9]/label) <(cut -f2 "$rec/check/steps") > /dev/null; then
-      fail "the written section does not parse back to the recorded labels; the staged file is unchanged (see $(relative "$rec/written.md"))"
-    fi
-    while IFS=$'\t' read -r step number; do
-      cmp -s "$step/block.sh" "$rec/check/$number.sh" || fail "the block of step \"$(< "$step/label")\" does not parse back; the staged file is unchanged (see $(relative "$rec/written.md"))"
-    done < <(paste <(printf '%s\n' "$rec"/[0-9][0-9]) <(cut -f1 "$rec/check/steps"))
-    mv "$rec/written.md" "$staged"
-    remove_recording
-    echo "rec.sh: wrote the Driving section into $(relative "$staged")"
-    ;;
-esac
+  fi
+  exit 1
+done
+[[ -z "$known" || -n "$known_failed" ]] || fail "the known failure \"$known\" passed; drop the flag"
+{ hash_of "$staged"; [[ -z "$known" ]] || echo "$known"; } > "$rec/passed"
+echo "rec.sh: passed; rec.sh install $feature installs it"
