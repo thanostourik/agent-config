@@ -48,4 +48,4 @@ Run the conformed `maintain-verify-<app>` with the same mode: **changed recipes*
 
 ## 5. Report
 
-Say what changed to match the generator, which helper checks ran and their cleanup result, and which mode ran. Follow that mode's Ship report. Keep source-reviewed edits, feature drives and helper checks separate. Helper checks do not prove feature coverage. Unfinished required helper checks make the outcome incomplete even if the map update finished.
+Say what changed to match the generator, which helper checks ran and their cleanup result, and which mode ran. Follow that mode's Ship report. Keep source-reviewed edits, feature drives and helper checks separate. Helper checks do not prove feature coverage. When you break something on purpose to test a helper and the helper correctly stops, write "stopped it, as expected", not "failed". Example: "Doctor: I stopped a container, and Doctor correctly refused to continue." Unfinished required helper checks make the outcome incomplete even if the map update finished.
