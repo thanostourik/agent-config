@@ -14,10 +14,10 @@ When you need me to make a choice before you can continue, use your question too
 
 ## Modes
 
-- `/create-project-verification-skill` (default): write everything, then run a full audit (step 7).
-- `/create-project-verification-skill quick`: map only one feature per surface, drive each of them once as a smoke proof, and stop. `/maintain-verify-<app>` finds the other features in the source and adds them later.
+- `/create-project-verification-skill` (default): record every feature against the live app, then prove the whole map from a fresh environment (step 7).
+- `/create-project-verification-skill quick`: record only one feature per surface, drive each of them once as a smoke proof, and stop. `/maintain-verify-<app>` finds the other features in the source and adds them later.
 
-Honor an equivalent request, such as "without the audit". Do not ask which mode to use.
+Honor an equivalent request. Do not ask which mode to use.
 
 If `.agents/skills/verify-*` or `.agents/skills/maintain-verify-*` already exists, stop before writing anything. Ask the user whether to replace those skills (delete them and generate again) or to upgrade them with `/maintain-project-verification-skill`. Never overwrite them silently.
 
@@ -41,7 +41,7 @@ Messages you post anyway may carry progress lines such as `map 3/15: projects.md
 
 `<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`. Claude Code reads only `.claude/skills/`, so the stubs exist for it. Never use symlinks: Windows checkouts turn them into plain files.
 
-Helper agents may read source in small concurrent batches, with related features grouped per reader. They return findings and proposed recipes. They never edit files or drive the app. You integrate their findings and run every drive through `bin/drive.sh`. Do not create one agent per feature by default.
+Helper agents build and repair the recipes, so your own context stays small. A **recorder** takes 3 to 5 related features and records their recipes against the live app with `bin/rec.sh` (step 4). A **fixer** repairs one recipe that failed a drive (step 7). Both briefs are under Helper briefs in [`references/maintain-verify.md`](references/maintain-verify.md); paste them with `<app>` and `<driver>` replaced. Read only what helpers return, never the feature files they wrote. Do not create one agent per feature by default.
 
 ## 1. Interview the repo, not the user
 
@@ -70,20 +70,24 @@ Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill
 
 ## 4. Map every feature
 
-Create `features/README.md` and one file per feature the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. Find them from code and docs. Do not map internal functions. In `quick` mode, map only one feature per surface, the ones step 7 drives. Follow [`references/feature-map-example/`](references/feature-map-example/).
+List the features the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. Take them from routes, navigation, command definitions, endpoints and docs: a list, not a read of every component. Do not map internal functions. In `quick` mode, keep only one feature per surface, the ones step 7 drives. Follow [`references/feature-map-example/`](references/feature-map-example/).
 
-`features/README.md` holds the baseline every feature starts from, the driving conventions, the feature file shape and the index.
+Write `features/README.md` first. It holds the baseline every feature starts from, the driving conventions, the feature file shape and the index. Recorders read only this file and the skill's Drive section, so its driving conventions state the recipe rules below.
 
 Each feature file starts with an H1 and one paragraph on the observable behavior, then exactly four H2s in this order:
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with its setup, then labeled bullets `- **<Label>.**`, each a **step**. Every step states the user action and its observable result in a sentence, followed by a fenced `bash` block. The block exits non-zero when the result is not met: a command that only prints a value gets a check, such as `test`. Blocks run under `set -euo pipefail`, where `! command` never fails a block, so write negative checks with `test` or `if`. Preconditions get a block too. End with proof, then a last step labeled `Clean up` that removes the feature's fixtures; `drive.sh` runs it even after a failure. A fixture that is itself a user action worth proving gets its own step.
+3. `Driving it with <tool>`: `Preconditions:` with its setup, then labeled bullets `- **<Label>.**`, each a **step**. Every step states the user action and its observable result in a sentence, followed by a fenced `bash` block. The block exits non-zero when the result is not met: a command that only prints a value gets a check, such as `test`. Blocks run under `set -euo pipefail`, where `! command` never fails a block, so write negative checks with `test` or `if`. Preconditions get a block too. End with proof, then a last step labeled `Clean up` that removes the feature's fixtures; `drive.sh` runs it even after a failure. A fixture that is itself a user action worth proving gets its own step. Recorders write this section with `bin/rec.sh`, never by hand.
 4. `Gotchas`: traps that waste or invalidate a run.
 
-Keep code paths out of the map. The agent maps a change to features by reasoning, and the audit reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
+Keep code paths out of the map. The agent maps a change to features by reasoning, and maintenance reads the source. A proof that drives one convenient entry point is incomplete when the file lists others.
 
 Each recipe runs from the documented baseline in its own session, possibly while other features run. It sets up its own data instead of relying on another feature having run. Steps of one feature share shell variables and functions, so the Preconditions block can define what later steps use. A feature that changes state other features read, such as global settings, says `Runs alone.` in its Preconditions sentence. Prefer a fresh identity or namespace per recipe over deleting fixtures afterwards. Otherwise restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
+
+Then record the features. At isolation level `checks-only`, skip launching and recording: write each Driving section as step sentences without `bash` blocks, and its steps stay `blocked: no isolation`. Otherwise launch once with `bin/launch.sh` and run `bin/doctor.sh`. Give the features to recorders in groups of related features, such as one screen area or features that share a login or fixtures, a few recorders at a time on that one environment. Each feature keeps its own `VERIFY_SESSION`, so recorders work side by side like `drive.sh --jobs`. Features that change state other features read, such as global settings, go to a recorder that starts after the others return. Mark every feature new in the brief. Without a subagent tool, do the same work yourself, one group at a time, still through `bin/rec.sh`.
+
+Read only the reports. Compare their Names lists: when two features create the same account, fixture or resource name, send one of them back to a recorder to rename it. Make the helper changes that reports name as blockers yourself, then send those features back. Keep every Difference for the hand-over as a possible product defect; it never goes into a recipe as normal behavior.
 
 ## 5. Write `maintain-verify-<app>` and the stubs
 
@@ -103,18 +107,20 @@ Keep the project's test, lint and type-check guidance, and add the exact focused
 
 ## 7. Prove it
 
-Run `maintain-verify-<app>` on what you wrote. Drive the recipes with `bin/drive.sh` from a fresh session, not from unrecorded exploratory state. Drive them in parallel, check that parallel features stayed apart, and write the `--jobs` value that worked into the skill's Drive section.
+Prove the recipes from a fresh environment, not from the state the recorders left. Run `bin/cleanup.sh`, launch again, run doctor and drive every feature in one `bin/drive.sh` call. Drive them in parallel, check that parallel features stayed apart, and write the `--jobs` value that worked into the skill's Drive section. Send each failing feature to a fresh fixer with the feature name, the failing step and its log path. Run one fixer at a time and never next to your own drive: two `drive.sh` runs share `.cache/drive/`. Read only the line it returns.
 
-- **Default:** `full audit`. Every feature file is checked against source and every step is driven live. After the audit, run a representative state-changing feature, clean up, and run it in a newly created environment with no reset step. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that pre-existing resources are unchanged and evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
-- **`quick`:** drive each mapped feature once from a fresh session, then clean up and check that evidence survives. Skip the audit and the failure test.
+- **Default:** after the first drive, drive every feature once more without relaunching. That proves each `Clean up` step leaves the app ready for the next run. The fresh launch already showed that recipes run in a newly created environment with no reset step. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that pre-existing resources are unchanged and evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
+- **`quick`:** drive each recorded feature once, then clean up and check that evidence survives. Skip the second drive and the failure test.
 
 A feature that is partial, blocked or failing is reported as such. Writing the map does not complete the proof. A generated skill without live proof is a draft, even if a PR is already open.
 
 ## 8. Hand over
 
-Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level and the lifecycle checks. When you break something on purpose to test a helper and the helper correctly stops, write "stopped it, as expected", not "failed". Example: "Doctor: I stopped a container, and Doctor correctly refused to continue." In `quick` mode, say that the map is partial and unaudited. Explain the maintenance calls:
+Commit everything following the repo's branch and commit conventions. Report per the generated Report section, plus the isolation level, the lifecycle checks and the recorders' Differences as possible product defects. When you break something on purpose to test a helper and the helper correctly stops, write "stopped it, as expected", not "failed". Example: "Doctor: I stopped a container, and Doctor correctly refused to continue." In `quick` mode, say that the map is partial. Say that keeping the map in step with the app from now on is `/maintain-verify-<app>`'s job, and explain the maintenance calls:
 
 - `/maintain-verify-<app>` updates the map, adds features missing from it, and drives the features with new or changed steps.
 - `/maintain-verify-<app> map only` updates the map without feature drives.
 - `/maintain-verify-<app> full audit` drives every feature.
 - `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes. It accepts the same three modes and runs focused checks for changed helpers in every mode.
+
+When `usage-report` is on `PATH`, end the report with the output of `usage-report --cwd <repository> --since <today>`, with the repository's absolute path and today's date as `YYYY-MM-DD`.
