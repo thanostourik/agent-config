@@ -20,7 +20,9 @@ if [[ "${1:-}" == install ]]; then
   features=("$@")
   if ((${#features[@]} == 0)); then
     for staged in "$skill"/.cache/record/*/*.md; do
-      [[ "$(basename "$staged" .md)" == "$(basename "$(dirname "$staged")")" ]] && features+=("$(basename "$staged" .md)")
+      feature=$(basename "$staged" .md)
+      [[ "$feature" == "$(basename "$(dirname "$staged")")" ]] || continue
+      if [[ -f "$(dirname "$staged")/state" ]]; then echo "rec.sh: skipped $feature; its recording is not finished"; else features+=("$feature"); fi
     done
   fi
   for feature in "${features[@]}"; do
