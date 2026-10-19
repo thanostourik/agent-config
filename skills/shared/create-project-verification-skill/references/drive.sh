@@ -57,7 +57,7 @@ drive_feature() {
   local feature=$1 dir="$work/$feature" evidence="$skill/.cache/evidence/$feature/steps"
   local number label block log status failed="" stopped="" ran="" cleanup=""
   : > "$dir/state"
-  rm -rf "$evidence" && mkdir -p "$evidence"
+  rm -rf "$skill/.cache/evidence/$feature" && mkdir -p "$evidence"
   export VERIFY_SESSION=$feature
   while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"

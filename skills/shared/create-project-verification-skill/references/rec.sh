@@ -45,11 +45,20 @@ if [[ "${1:-}" == install ]]; then
   fi
   ((${#features[@]})) || { echo "rec.sh: nothing to install"; exit 0; }
   mkdir -p "$skill/features"
+  moved=() status=0
   for feature in "${features[@]}"; do
-    mv "$skill/.cache/record/$feature/$feature.md" "$skill/features/$feature.md"
+    target="$skill/features/$feature.md"
+    if [[ ! -d "$target" ]] && mv "$skill/.cache/record/$feature/$feature.md" "$target"; then
+      moved+=("$feature")
+    else
+      echo "rec.sh: could not install $feature; its staged file is unchanged" >&2
+      status=1
+    fi
   done
-  "$skill/bin/drive.sh" --check "${features[@]}"; status=$?
-  for feature in "${features[@]}"; do
+  ((${#moved[@]})) || exit 1
+  "$skill/bin/drive.sh" --check "${moved[@]}"; check=$?
+  ((status)) || status=$check
+  for feature in "${moved[@]}"; do
     rec="$skill/.cache/record/$feature"
     known=$(sed -n '2p' "$rec/passed")
     if [[ -n "$known" ]]; then
