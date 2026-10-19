@@ -1,6 +1,6 @@
 # Spec for the generated `verify-<app>/SKILL.md`
 
-The generated skill is read cold, mid-task, by an agent that has never seen the app and cannot read this generator. Make it self-contained. Fill every section with this project's real commands, ports, selectors and names. Leave no placeholders. State rules briefly and put the detail in `features/` and `bin/`. Aim for about 8 KB. Move long lists, such as the trigger mapping, into `features/README.md`, where it sits under `## Change triggers`.
+The generated skill is read cold, mid-task, by an agent that has never seen the app and cannot read this generator. Make it self-contained. Fill every section with this project's real commands, ports, selectors and names. Leave no placeholders. State rules briefly and put the detail in `features/` and `bin/`. Aim for about 8 KB. Move long lists, such as the trigger mapping, into `features/README.md`, where it sits under `## Change triggers`. The recipe rules that step 4 of the generator lists sit once in the Driving conventions of `features/README.md`; recorders learn them only from there, through the common brief file.
 
 ## Frontmatter
 

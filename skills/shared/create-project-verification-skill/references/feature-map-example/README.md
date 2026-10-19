@@ -12,13 +12,15 @@ This directory is the maintained source for verifying the browser and CLI behavi
 ## Driving conventions
 
 - Run features with `.agents/skills/verify-notes/bin/drive.sh --jobs 3 <feature...>`. It runs each step's `bash` block from the repository root with `bin/` on `PATH`, so blocks call `pw.sh` by name. `pw.sh` opens the browser session named after the feature, so parallel features never share one.
-- Write a new or changed recipe into a staged copy of its feature file with `.agents/skills/verify-notes/bin/rec.sh <feature> start`, then run the whole copy against the running app with `rec.sh <feature> run`: it runs it the way `drive.sh` would and shows each command of a failing step before its output. `rec.sh install` moves the copies that passed into `features/`. A contract check the app fails stays as the last step before `Clean up`, run with `--known-failure '<Label>'`, and its sentence states the contract.
+- Write a new or changed recipe into a staged copy of its feature file with `.agents/skills/verify-notes/bin/rec.sh <feature> start`, then run the whole copy against the running app with `rec.sh <feature> run`: it runs it the way `drive.sh` would and shows each command of a failing step before its output. `rec.sh install` moves the copies that passed into `features/`.
 - The Preconditions block defines what later steps use, such as the `notes` function that points the CLI at the run's data directory.
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Every block fails when its expected result is not met. A value the step only prints gets a check.
-- Each step is one action and its result. Blocks wait with Playwright's `waitFor` or a CLI command's own exit, never with `sleep`.
+- Each step is one action and its result; split a step that proves several. A recipe drives the app and never runs the project's tests or build.
+- Blocks wait with Playwright's `waitFor` or a CLI command's own exit, never with `sleep`. A contract that states a time is checked with a wait bounded to that time plus a small margin.
 - The proof step saves evidence under `.agents/skills/verify-notes/.cache/evidence/<feature>/`: an accessibility snapshot and a screenshot for the browser, the JSON output for the CLI.
-- Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step, which ends with a check that they are gone. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
+- An expected result changes only when the contract changed. The checks the app fails stay in one step, right after the proof step and last before `Clean up`, with any setup it needs inside it: its sentence states the contract, its block runs every check and fails at the end, and `rec.sh <feature> run --known-failure '<Label>'` runs it. It is never weakened, dropped or moved to Gotchas.
+- Every recipe supplies its own prerequisites, uses titles no other feature uses, and in its `Clean up` step removes its fixtures and closes its sessions, ending with a check that they are gone. `|| true` goes only on a command that check covers. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
 
 ## Change triggers
@@ -33,7 +35,7 @@ Each feature file starts with an H1 and one paragraph describing the observable 
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`. The section holds at most about 15 steps, `Clean up` included; a feature that needs more is split into several features.
+3. `Driving it with <tools>`, naming every driver the recipe uses: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`. The section holds at most about 15 steps, `Clean up` included; a feature that needs more is split into several features.
 4. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features
