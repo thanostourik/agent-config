@@ -27,8 +27,8 @@ run_step() {
       local __drive_status=$?
       set +eu
       {
-        comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r name; do declare -p "$name"; done
-        comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | grep -v "^__drive_" | while read -r name; do declare -f "$name"; done
+        comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r __drive_name; do declare -p "$__drive_name"; done
+        comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | grep -v "^__drive_" | while read -r __drive_name; do declare -f "$__drive_name"; done
       } > "$__drive_state.new"
       mv "$__drive_state.new" "$__drive_state"
       exit $__drive_status
