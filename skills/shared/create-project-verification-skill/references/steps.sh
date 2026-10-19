@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, run_step <state> <block> <log>, calls_run_script <block>.
+# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir>, run_step <state> <block> <log>, calls_run_script <block>.
 
 step_timeout=600
 
@@ -16,6 +16,20 @@ split_steps() {
   ' "$1"
 }
 
+check_steps() {
+  local number label script syntax
+  while IFS=$'\t' read -r number label; do
+    if [[ ! -f "$1/$number.sh" ]]; then
+      echo "step \"$label\" has no bash block; convert the recipe before driving"
+    elif script=$(calls_run_script "$1/$number.sh"); then
+      echo "step \"$label\" calls $script; recipes may not start, check or clean up the whole run"
+    elif ! syntax=$(bash -n "$1/$number.sh" 2>&1); then
+      syntax=$(head -n 1 <<< "$syntax")
+      echo "step \"$label\" is not valid bash: ${syntax#"$1/$number.sh: "}"
+    fi
+  done < "$1/steps"
+}
+
 run_step() {
   local state=$1 block=$2 log=$3 status
   { cat "$block"; echo "---"; } > "$log"
@@ -24,7 +38,6 @@ run_step() {
     set --
     __drive_vars=$(compgen -v | sort) __drive_funcs=$(compgen -A function | sort)
     __drive_save() {
-      local __drive_status=$?
       set +eu
       {
         comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r __drive_name; do declare -p "$__drive_name"; done
@@ -33,7 +46,7 @@ run_step() {
       mv "$__drive_state.new" "$__drive_state"
       exit $__drive_status
     }
-    trap __drive_save EXIT
+    trap "{ __drive_status=\$?; set +x; } 2> /dev/null; __drive_save" EXIT
     source "$__drive_state"
     set -euo pipefail
     source "$__drive_block"

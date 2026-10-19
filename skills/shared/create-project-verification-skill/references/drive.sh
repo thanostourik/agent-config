@@ -35,13 +35,7 @@ for feature in "${features[@]}"; do
   dir="$work/$feature"
   mkdir -p "$dir" && : > "$dir/steps"
   split_steps "$skill/features/$feature.md" "$dir"
-  while IFS=$'\t' read -r number label; do
-    if [[ ! -f "$dir/$number.sh" ]]; then
-      refusals+=("features/$feature.md: step \"$label\" has no bash block; convert the recipe before driving")
-    elif script=$(calls_run_script "$dir/$number.sh"); then
-      refusals+=("features/$feature.md: step \"$label\" calls $script; recipes may not start, check or clean up the whole run")
-    fi
-  done < "$dir/steps"
+  while IFS= read -r problem; do refusals+=("features/$feature.md: $problem"); done < <(check_steps "$dir")
 done
 if ((${#refusals[@]})); then
   printf 'drive.sh: %s\n' "${refusals[@]}" >&2
