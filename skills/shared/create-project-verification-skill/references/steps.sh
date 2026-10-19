@@ -46,6 +46,6 @@ run_step() {
 
 calls_run_script() {
   local matches
-  matches=$(grep -Ewo -m1 '(launch|cleanup|doctor)\.sh' "$1") || return 1
-  echo "${matches%%$'\n'*}"
+  matches=$(grep -Eo -m1 '(^|[;&|(`])[[:space:]]*([^[:space:];&|()`]*/)?(launch|cleanup|doctor)\.sh([[:space:];&|)`]|$)' "$1") || return 1
+  sed -E '1!d; s/.*(launch|cleanup|doctor)\.sh.*/\1.sh/' <<< "$matches"
 }

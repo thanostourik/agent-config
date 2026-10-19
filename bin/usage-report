@@ -100,9 +100,10 @@ def codex_usage(header, seen_ids):
                 percents.append(primary["used_percent"])
             info = payload.get("info")
             if info and info["total_token_usage"] != previous_total:
-                counts.append(info["last_token_usage"])
+                if not records:
+                    counts.append(info["last_token_usage"])
                 previous_total = info["total_token_usage"]
-    calls = [(usage["input_tokens"], usage["output_tokens"]) for usage in records or counts]
+    calls = [(usage["input_tokens"], usage["output_tokens"]) for usage in counts + records]
     window = f"{percents[0]:g}% -> {percents[-1]:g}%" if percents else ""
     return calls, models, window
 
