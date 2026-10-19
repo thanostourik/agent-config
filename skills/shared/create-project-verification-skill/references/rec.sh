@@ -6,6 +6,8 @@
 set -uo pipefail
 shopt -s nullglob
 
+fail_tail=60
+
 skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
 source "$skill/bin/steps.sh"
@@ -154,7 +156,24 @@ attempt() {
 }
 
 show_failure() {
-  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | sed '/^+*\[rec\] __drive_save$/,/^exit=/{/^exit=/!d}'
+  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | sed '/^+*\[rec\] __drive_save$/,/^exit=/{/^exit=/!d}' | awk -v keep="$fail_tail" '
+    function scan(s,   i, c) {
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (q == 1) { if (c == "\047") q = 0 }
+        else if (q == 2) { if (c == "\\") i++; else if (c == "\047") q = 0 }
+        else if (c == "\\") i++
+        else if (c == "$" && substr(s, i + 1, 1) == "\047") { q = 2; i++ }
+        else if (c == "\047") q = 1
+      }
+    }
+    /^exit=/ { done = 1 }
+    done { rest = rest $0 "\n"; next }
+    q || /^\++\[rec\] / { print; scan($0); next }
+    { out[++n] = $0 }
+    END { for (i = n > keep ? n - keep + 1 : 1; i <= n; i++) print out[i]; printf "%s", rest }
+  '
+  echo "full log: $(relative "$log")"
 }
 
 clean_up() {
