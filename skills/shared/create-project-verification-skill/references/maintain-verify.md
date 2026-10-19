@@ -96,12 +96,14 @@ The command in Update the map step 3 writes this file from the project's files. 
 
 ## Example recipe, from this project
 
-[the shortest feature file in .agents/skills/verify-<app>/features/]
+[the shortest feature file in .agents/skills/verify-<app>/features/ that bin/drive.sh --check accepts]
 
 ## The app's main screen, as an accessibility snapshot taken after the baseline sign-in
 
 [.agents/skills/verify-<app>/.cache/record/main-screen.txt]
 ```
+
+When no feature file passes `bin/drive.sh --check` yet, leave out the Example recipe section, so the Feature file shape stands alone, until a staged feature file has passed `rec.sh run`. From then on the section holds the first such file, and you write the common file again before the next wave.
 
 ### Recorder
 
@@ -113,7 +115,7 @@ Feature: [name]. Index line: [the feature's line from the index in features/READ
 Contract files: [paths of the README, docs, specs, tests and plans that say what this feature should do, and the request text when this pass has one].
 Conventions changed in this pass: [list, or none].
 
-Read .agents/skills/verify-<app>/.cache/record/brief-common.md first, in the same command as the contract files. It holds the Baseline, Driving conventions, Feature file shape and whole feature index from features/README.md, the helpers with one call each, an example recipe and an accessibility snapshot of the app's main screen.
+Read .agents/skills/verify-<app>/.cache/record/brief-common.md first, in the same command as the contract files. It holds the Baseline, Driving conventions, Feature file shape and whole feature index from features/README.md, the helpers with one call each, an example recipe once the project has one and an accessibility snapshot of the app's main screen.
 
 This brief and that file are all you need: read no skill file, no other recipe and no helper script. Use the helpers the way the example recipe and the helper list show, and copy the example's Preconditions, evidence and Clean up idioms. Take element names and texts from the main-screen snapshot and the example recipe, not from guesses out of source. Drive only with <driver>. You may call rec.sh <feature> start, rec.sh <feature> run and the helpers in that file. Never run drive.sh or rec.sh install. Never call launch.sh, cleanup.sh or doctor.sh. Never edit helpers, SKILL.md, features/README.md or product code. Write no tracked file: write only the staged copy that rec.sh <feature> start names, never under features/. Do not commit or push; the main agent installs your file and ships.
 
@@ -125,7 +127,7 @@ Work in these steps. Each takes the tool calls it names; put commands that belon
 5. Report.
 
 Every recipe follows these rules:
-- Every behavior on the contract list gets a step. So does every sub-feature line and every entry point you write in the file, or it goes under Blocked with the reason.
+- Every behavior on the contract list gets a step. So does every sub-feature line and every entry point you write in the file, or it goes under Blocked with the reason. A test case names a behavior to drive through the app; a recipe never runs the project's own tests or build.
 - The feature's index line bounds it: a step belongs to the feature whose index line names the behavior. The other features' index lines are in the common brief file. A behavior another feature's index line names stays off your contract list and is not tested again here. When the recipe needs it, it is setup, done in the fewest commands and with no check beyond what the recipe's own steps need. Report a behavior that fits no index line under Split or Blocked instead of testing it in passing.
 - A step is one user action and its observable result, in one or two short sentences. Split a step that proves several results.
 - The Driving section holds at most about 15 steps, Clean up included. When a feature needs more, write the first coherent group of sub-features in this file, list only those under Sub-features, name the remaining groups under Split in your report, and stop there: the main agent adds their index lines and sends each to a new recorder. Behaviors you leave to those groups go under Split, not Blocked.
