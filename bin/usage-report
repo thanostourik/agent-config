@@ -108,14 +108,17 @@ def codex_usage(header, seen_ids):
 
 
 def claude_usage(header, seen_ids):
-    calls, models = [], []
+    messages = {}
     for entry in read_entries(header["path"]):
         message = entry.get("message") if entry.get("type") == "assistant" else None
         if not message or not message.get("usage") or message.get("model") == "<synthetic>":
             continue
         if message["id"] in seen_ids:
             continue
-        seen_ids.add(message["id"])
+        messages[message["id"]] = message
+    seen_ids.update(messages)
+    calls, models = [], []
+    for message in messages.values():
         usage = message["usage"]
         context = (
             usage.get("input_tokens", 0)
