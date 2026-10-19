@@ -12,7 +12,7 @@ This directory is the maintained source for verifying the browser and CLI behavi
 ## Driving conventions
 
 - Run features with `.agents/skills/verify-notes/bin/drive.sh --jobs 3 <feature...>`. It runs each step's `bash` block from the repository root with `bin/` on `PATH`, so blocks call `pw.sh` by name. `pw.sh` opens the browser session named after the feature, so parallel features never share one.
-- Write a new or changed recipe into a staged copy of its feature file with `.agents/skills/verify-notes/bin/rec.sh <feature> start`, then run the whole copy against the running app with `rec.sh <feature> run`: it runs it the way `drive.sh` would and shows each command of a failing step, the end of its output and the path of its full log. `rec.sh install` moves the copies that passed into `features/`.
+- Write a new or changed recipe into a staged copy of its feature file with `.agents/skills/verify-notes/bin/rec.sh <feature> start`, then run the whole copy against the running app with `rec.sh <feature> run`: it runs it the way `drive.sh` would and ends a failure with the failing step, the page snapshot `pw.sh` wrote during it, if any, and the path of its full log. `rec.sh install` moves the copies that passed into `features/`.
 - The Preconditions block defines what later steps use, such as the `notes` function that points the CLI at the run's data directory.
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Every block fails when its expected result is not met. A value the step only prints gets a check.
