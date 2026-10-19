@@ -116,7 +116,7 @@ Repository root: {{root}}; run every command from there. rec.sh is .agents/skill
 Feature: {{feature}}. Index line: {{index_line}} New: {{new}}. Convert a recipe whose steps lack bash blocks: {{convert}}.
 Other features: {{other_features}}.
 Contract files: {{contract_files}}.
-Driving conventions changed in this pass, as diff lines (< removed, > added), or none:
+Driving conventions changed in this pass, as diff lines (< removed, > added), a note that they were rewritten, or none:
 {{conventions_changed}}
 
 The common file .agents/skills/verify-<app>/.cache/record/brief-common.md holds the Baseline, Driving conventions, Feature file shape, the helpers, an example recipe once the project has one and a snapshot of the main screen. Follow its Driving conventions, copy the example's idioms, and take element names from the snapshot and the example, not from source. Read no other skill file, recipe or helper script.
@@ -164,7 +164,7 @@ Return one line: <feature>: <kind>: <what you changed, or what is wrong and wher
 
 ### Brief files
 
-Once per run, in the call that writes the common brief file, from the repository root. Replace only the two `printf` lists: the first with each feature and its contract files, the paths of the README, docs, specs, tests and plans that say what it should do; the second with the features to convert, or in a full audit with `$(ls $v/features | sed -n 's/\.md$//p')`. When this pass has a request text, write it to `.agents/skills/verify-<app>/.cache/record/request.md` in the same call and list that path among the contract files.
+Once per run, in the call that writes the common brief file, from the repository root. Replace only the `mode` value and the two `printf` lists: `mode` is `full` in a full audit and `changed` otherwise; the first list with each feature and its contract files, the paths of the README, docs, specs, tests and plans that say what it should do; the second list with the features to convert, or in a full audit with `$(ls $v/features | sed -n 's/\.md$//p')`. When this pass has a request text, write it to `.agents/skills/verify-<app>/.cache/record/request.md` in the same call and list that path among the contract files.
 
 ```
 v=.agents/skills/verify-<app>; r=$v/.cache/record
@@ -172,15 +172,17 @@ template() { awk -v h="### $1" '$0 == h {s = 1; next} s && /^```/ {if (f) exit; 
 mkdir -p $r && template Recorder > $r/brief-template.md && template Fixer > $r/fix-brief-template.md
 printf '%s\t%s\n' <feature> '<contract files>' <feature> '<contract files>' > $r/contract-map.tsv
 printf '%s\n' <feature> <feature> > $r/convert.txt
+mode=<full or changed>; echo $mode > $r/mode.txt
 ```
 
-Per recorder start, from the repository root, for one feature or several. Only the feature names after `for feature in` change. It takes the index line and the other features' names from `features/README.md`, the contract files from `contract-map.tsv`, New from whether `features/<feature>.md` exists, Convert from `convert.txt` and the convention changes from a diff against the starting record, and prints a line for each feature without an index line or contract files.
+Per recorder start, from the repository root, for one feature or several. Only the feature names after `for feature in` change. It takes the index line and the other features' names from `features/README.md`, the contract files from `contract-map.tsv`, New from whether `features/<feature>.md` exists, Convert from `convert.txt` and the convention changes from a diff against the starting record, which is `none` in a full audit, where every recipe is converted to the current conventions, and a single line saying they were rewritten when the diff is longer than 8 lines, and prints a line for each feature without an index line or contract files.
 
 ```
 v=.agents/skills/verify-<app>; r=$v/.cache/record
 export root=$PWD feature index_line other_features contract_files new convert conventions_changed=none
 section() { awk '/^## /{p = /^## Driving conventions$/} p' "$1"; }
-test -f $v/.cache/starting-README.md && conventions_changed=$(diff <(section $v/.cache/starting-README.md) <(section $v/features/README.md) | grep '^[<>]' || echo none)
+test -f $v/.cache/starting-README.md && test "$(cat $r/mode.txt)" = changed && conventions_changed=$(diff <(section $v/.cache/starting-README.md) <(section $v/features/README.md) | grep '^[<>]' || echo none)
+test $(printf '%s\n' "$conventions_changed" | wc -l) -gt 8 && conventions_changed='the Driving conventions were rewritten; follow the current ones in the common file'
 for feature in <feature> <feature>; do
   index_line=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && index($0, "](./" f ".md)") {print; exit}' $v/features/README.md)
   other_features=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && (i = index($0, "](./")) {n = substr($0, i + 4); n = substr(n, 1, index(n, ".md)") - 1); if (n != f) o = o (o == "" ? "" : ", ") n} END {print o}' $v/features/README.md)
