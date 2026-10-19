@@ -23,6 +23,10 @@ This directory is the maintained source for verifying the browser and CLI behavi
 - Every recipe supplies its own prerequisites, uses titles no other feature uses, and in its `Clean up` step removes its fixtures and closes its sessions, ending with a check that they are gone. `|| true` goes only on a command that check covers. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
 
+## Gotchas
+
+- `notes` exits 0 when a note it was asked for is missing; check its JSON output, not its exit code.
+
 ## Change triggers
 
 - The note editor, the create form, the notes API and `notes create`: create-note

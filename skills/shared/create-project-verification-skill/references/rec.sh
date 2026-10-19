@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
 # rec.sh <feature> run [--known-failure '<Label>']: empty .cache/evidence/<feature>/, then run the staged file's Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail.
+# rec.sh <feature> peek [--after '<Label>']: run the staged file's Preconditions (and the steps through <Label>) as run does, save one snapshot of the screen they leave to .cache/record/<feature>/peek.txt, then run Clean up; the snapshot command is $REC_PEEK with that path appended as it is, so the path is its last argument.
 # rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
 set -uo pipefail
 shopt -s nullglob
@@ -11,6 +12,7 @@ source "$skill/bin/steps.sh"
 
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
+       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']
        rec.sh install [<feature>...]"
 fail() { echo "rec.sh: $*" >&2; exit 1; }
 usage() { echo "$usage_all" >&2; exit 2; }
@@ -92,10 +94,19 @@ if [[ "$action" == start ]]; then
   fi
   exit 0
 fi
-[[ "$action" == run ]] || usage
+[[ "$action" == run || "$action" == peek ]] || usage
 
-known=""
-if (($# == 2)) && [[ "$1" == --known-failure && -n "$2" ]]; then known=$2; elif (($# != 0)); then usage; fi
+known="" after=""
+if (($# == 0)); then
+  :
+elif (($# == 2)) && [[ "$action" == run && "$1" == --known-failure && -n "$2" ]]; then
+  known=$2
+elif (($# == 2)) && [[ "$action" == peek && "$1" == --after && -n "$2" ]]; then
+  after=$2
+else
+  usage
+fi
+[[ "$action" == run || -n "${REC_PEEK:-}" ]] || fail "set REC_PEEK to the snapshot command the maintenance skill names; peek appends the output path to it"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
 
 work="$rec/run" logs="$rec/steps"
@@ -120,6 +131,11 @@ if [[ -n "$known" ]]; then
   ((count >= 3)) && [[ "${labels[-1]}" == "Clean up" && "${labels[-2]}" == "$known" ]] ||
     problems+=("--known-failure \"$known\" is not the last step before \"Clean up\"; a known failure goes only there")
 fi
+last=0
+if [[ -n "$after" ]]; then
+  for ((last = 1; last < count - 1; last++)); do [[ "${labels[last]}" == "$after" ]] && break; done
+  ((last < count - 1)) || problems+=("--after \"$after\" names no step between Preconditions and \"Clean up\"")
+fi
 if ((${#problems[@]})); then
   printf 'rec.sh: %s\n' "${problems[@]}" >&2
   exit 2
@@ -141,6 +157,41 @@ show_failure() {
   tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | sed '/^+*\[rec\] __drive_save$/,/^exit=/{/^exit=/!d}'
 }
 
+clean_up() {
+  if attempt "${numbers[-1]}" "Clean up"; then
+    echo "$feature / Clean up: pass"
+  else
+    echo "$feature / Clean up: fail ($(relative "$log"))"
+    show_failure "${numbers[-1]}"
+    return 1
+  fi
+}
+
+if [[ "$action" == peek ]]; then
+  peek="$rec/peek.txt" status=0
+  rm -f "$peek"
+  for ((i = 0; i <= last; i++)); do
+    if attempt "${numbers[i]}" "${labels[i]}"; then
+      echo "$feature / ${labels[i]}: pass"
+    else
+      echo "$feature / ${labels[i]}: fail ($(relative "$log"))"
+      show_failure "${numbers[i]}"
+      status=1
+      break
+    fi
+  done
+  printf '%s%q\n' "$REC_PEEK" "$(relative "$peek")" > "$work/peek.sh"
+  if attempt peek Snapshot && [[ -s "$peek" ]]; then
+    echo "rec.sh: peek written to $(relative "$peek")"
+  else
+    echo "rec.sh: the peek command wrote no $(relative "$peek") ($(relative "$log"))"
+    show_failure peek
+    status=1
+  fi
+  clean_up || status=1
+  exit $status
+fi
+
 known_failed=""
 for ((i = 0; i < count; i++)); do
   label=${labels[i]}
@@ -155,14 +206,7 @@ for ((i = 0; i < count; i++)); do
   fi
   echo "$feature / $label: fail ($(relative "$log"))"
   show_failure "${numbers[i]}"
-  if [[ "$label" != "Clean up" ]]; then
-    if attempt "${numbers[-1]}" "Clean up"; then
-      echo "$feature / Clean up: pass"
-    else
-      echo "$feature / Clean up: fail ($(relative "$log"))"
-      show_failure "${numbers[-1]}"
-    fi
-  fi
+  [[ "$label" == "Clean up" ]] || clean_up
   exit 1
 done
 [[ -z "$known" || -n "$known_failed" ]] || fail "the known failure \"$known\" passed; drop the flag"
