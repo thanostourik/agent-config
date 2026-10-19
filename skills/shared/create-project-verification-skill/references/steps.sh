@@ -45,7 +45,20 @@ run_step() {
 }
 
 calls_run_script() {
-  local matches
-  matches=$(grep -Eo -m1 '(^|[;&|(`])[[:space:]]*([^[:space:];&|()`]*/)?(launch|cleanup|doctor)\.sh([[:space:];&|)`]|$)' "$1") || return 1
-  sed -E '1!d; s/.*(launch|cleanup|doctor)\.sh.*/\1.sh/' <<< "$matches"
+  awk '
+    {
+      n = split($0, commands, /[;&|(`]/)
+      for (i = 1; i <= n; i++) {
+        command = commands[i]
+        sub(/^[[:space:]]+/, "", command)
+        while (match(command, /^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|bash|sh|source|\.|exec|env|nohup|setsid|sudo|timeout([[:space:]]+--kill-after=[0-9.]+[smhd]?)?[[:space:]]+[0-9.]+[smhd]?)[[:space:]]+/))
+          command = substr(command, RLENGTH + 1)
+        sub(/^["\047]/, "", command)
+        sub(/["\047[:space:])].*/, "", command)
+        sub(/.*\//, "", command)
+        if (command ~ /^(launch|cleanup|doctor)\.sh$/) { print command; found = 1; exit }
+      }
+    }
+    END { exit !found }
+  ' "$1"
 }

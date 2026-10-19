@@ -86,12 +86,13 @@ def read_header(path):
 
 
 def codex_usage(header, seen_ids):
-    records, counts, models, percents = [], [], [], []
-    previous_total = None
+    usages, models, percents = [], [], []
+    previous_total = record_usage = None
     for entry in read_entries(header["path"]):
         kind, payload = entry.get("type"), entry.get("payload") or {}
         if kind == "token_usage_record" and payload.get("thread_id") == header["id"]:
-            records.append(payload["usage"])
+            record_usage = payload["usage"]
+            usages.append(record_usage)
         elif kind == "turn_context" and payload.get("model"):
             models.append(payload["model"])
         elif kind == "event_msg" and payload.get("type") == "token_count":
@@ -100,10 +101,10 @@ def codex_usage(header, seen_ids):
                 percents.append(primary["used_percent"])
             info = payload.get("info")
             if info and info["total_token_usage"] != previous_total:
-                if not records:
-                    counts.append(info["last_token_usage"])
+                if info["last_token_usage"] != record_usage:
+                    usages.append(info["last_token_usage"])
                 previous_total = info["total_token_usage"]
-    calls = [(usage["input_tokens"], usage["output_tokens"]) for usage in counts + records]
+    calls = [(usage["input_tokens"], usage["output_tokens"]) for usage in usages]
     window = f"{percents[0]:g}% -> {percents[-1]:g}%" if percents else ""
     return calls, models, window
 
