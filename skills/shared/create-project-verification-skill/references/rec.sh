@@ -186,7 +186,6 @@ export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
 
 attempt() {
   local number=$1 label=$2
-  touch "$work/started"
   log="$logs/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
   { echo "PS4='+[rec] '; set -x"; cat "$work/$number.sh"; } > "$work/$number.attempt.sh"
   run_step "$work/state" "$work/$number.attempt.sh" "$log"
@@ -212,8 +211,8 @@ show_failure() {
   '
 }
 
-newest_snapshot() {
-  find "$skill/.cache" -type f -newer "$work/started" \( -name 'page-*.yml' -o -name '*.snapshot.*' \) -printf '%T@\t%p\n' 2> /dev/null | sort -n | tail -n 1 | cut -f2-
+step_snapshot() {
+  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | grep -o '\[Snapshot\]([^)]*)' | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//'
 }
 
 record_failure() {
@@ -275,7 +274,7 @@ for ((i = 0; i < count; i++)); do
   fi
   echo "$feature / $label: fail"
   show_failure "${numbers[i]}"
-  failed_log=$log snapshot=$(newest_snapshot)
+  failed_log=$log snapshot=$(step_snapshot "${numbers[i]}")
   record_failure "$label" "${numbers[i]}"
   [[ "$label" == "Clean up" ]] || clean_up
   echo "failing step: $label"
