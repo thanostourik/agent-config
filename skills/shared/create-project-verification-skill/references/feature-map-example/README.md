@@ -12,20 +12,43 @@ This directory is the maintained source for verifying the browser and CLI behavi
 ## Driving conventions
 
 - Run features with `.agents/skills/verify-notes/bin/drive.sh --jobs 3 <feature...>`. It runs each step's `bash` block from the repository root with `bin/` on `PATH`, so blocks call `pw.sh` by name. `pw.sh` opens the browser session named after the feature, so parallel features never share one.
+- Write a new or changed recipe into a staged copy of its feature file with `.agents/skills/verify-notes/bin/rec.sh <feature> start`, then run the whole copy against the running app with `rec.sh <feature> run`: it runs it the way `drive.sh` would and ends a failure with the failing step, its snapshot, if any, and the path of its full log. `rec.sh install` moves the copies that passed into `features/`.
 - The Preconditions block defines what later steps use, such as the `notes` function that points the CLI at the run's data directory.
 - Prefer roles and accessible names over CSS selectors or DOM position.
 - Every block fails when its expected result is not met. A value the step only prints gets a check.
-- Every recipe supplies its own prerequisites, uses titles no other feature uses, and removes its fixtures in its `Clean up` step. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
+- Each step is one action and its result; split a step that proves several. A recipe drives the app and never runs the project's tests or build.
+- Blocks wait with Playwright's `waitFor` or a CLI command's own exit, never with `sleep`. A contract that states a time is checked with a wait bounded to that time plus a small margin.
+- The proof step saves evidence under `.agents/skills/verify-notes/.cache/evidence/<feature>/`: an accessibility snapshot and a screenshot for the browser, the JSON output for the CLI.
+- An expected result changes only when the contract changed. A check the app fails is a known failure. All of a feature's known failures stay in one known-failure step, right after the proof step and last before `Clean up`, with any setup it needs inside it: its sentence states the contract, its block runs every check and fails at the end, and `rec.sh <feature> run --known-failure '<Label>'` runs it. It is never weakened, dropped or moved to Gotchas.
+- Every recipe supplies its own prerequisites, uses titles no other feature uses, and in its `Clean up` step removes its fixtures and closes its sessions, ending with a check that they are gone. `|| true` goes only on a command that check covers. After driving, including a failed drive, `bin/cleanup.sh` stops the run's app and browser and removes its data directory and temporary sessions. Pre-existing resources remain unchanged. No reset-before step is needed; evidence survives cleanup.
+- Driver limits of the Playwright CLI:
+  - `pw.sh click` and `fill` do not wait for the element; wait for it first.
+  - No command prints a confirm dialog's text, and every command fails while one is open; wrap `window.confirm` in `run-code`.
+  - A multi-line string breaks `run-code`; join its lines.
+  - A locator containing `"` goes inside `run-code`, not on the command line.
+  - `locator.ariaSnapshot()` drops generic names; read attributes instead.
+  - A role name matches as a case-insensitive substring; pass `exact: true` when another name contains yours.
 - Reports use pass, fail, partial or blocked, list any omitted checks, and link evidence using absolute Markdown targets resolved from the current checkout. Check those files exist after cleanup. Source-only map maintenance reports `Source-reviewed; no live drives run` instead of pass.
+
+## Gotchas
+
+- `notes` exits 0 when a note it was asked for is missing; check its JSON output, not its exit code.
+
+## Change triggers
+
+- `web/src/editor/*`, `web/src/routes/new.tsx`, `server/api/notes.ts`, `cli/commands/create.ts`: create-note
+- `server/search/*`, `web/src/toolbar/*`, `web/src/shortcuts.ts`, `cli/commands/search.ts`: search
+- `server/storage/*`, `server/main.ts`, `cli/args.ts`: create-note, search
 
 ## Feature file shape
 
-Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly four H2s in this order:
+Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly five H2s in this order:
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tool>`: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`.
-4. `Gotchas`: traps that waste or invalidate a run.
+3. `Driving it with <tools>`, naming every driver the recipe uses: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`. The section holds at most about 15 steps, `Clean up` included; a feature that needs more is split into several features.
+4. `Contract`: one line per contract section mapped to the feature, `- <file>:<heading> → <step labels>`, or `- <file>:<heading> → not driven: <reason>` when no step drives it.
+5. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features
 

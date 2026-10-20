@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+# usage-report: show what Codex and Claude Code sessions cost in tokens, read
+# from the session logs both tools keep on disk.
+#
+#   usage-report [--cwd PATH] [--since YYYY-MM-DD] [--provider codex|claude]
+#                [--json] [FILE...]
+#
+# One row per session, an indented row per subagent, and a total row for each
+# session that has subagents. With no --cwd, --since, or FILE it shows today.
+
+import argparse
+import datetime
+import glob
+import json
+import os
+import re
+import sys
+
+HOME = os.path.expanduser("~")
+CODEX_GLOB = os.path.join(HOME, ".codex/sessions/*/*/*/*.jsonl")
+CLAUDE_GLOB = os.path.join(HOME, ".claude/projects/*/*.jsonl")
+CLAUDE_SUBAGENT_GLOB = os.path.join(HOME, ".claude/projects/*/*/subagents/**/*.jsonl")
+
+
+def read_entries(path):
+    with open(path) as file:
+        for line in file:
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                pass  # a session that is still running can end in a half-written line
+
+
+def parse_time(text):
+    return datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone()
+
+
+def codex_header(path):
+    with open(path) as file:
+        meta = json.loads(file.readline())["payload"]
+    source = meta.get("source")
+    subagent = source.get("subagent") if isinstance(source, dict) else None
+    if isinstance(subagent, dict):
+        subagent = meta.get("agent_path", "").rsplit("/", 1)[-1] or meta.get("agent_nickname")
+    return {
+        "provider": "codex",
+        "path": path,
+        "id": meta["id"],
+        "parent": meta.get("parent_thread_id"),
+        "name": subagent or meta["id"][:8],
+        "cwd": meta.get("cwd", ""),
+        "started": parse_time(meta["timestamp"]),
+    }
+
+
+def claude_header(path):
+    for entry in read_entries(path):
+        if "cwd" in entry and "timestamp" in entry:
+            break
+    else:
+        return None
+    agent_id = entry.get("agentId")
+    name = agent_id or entry["sessionId"][:8]
+    if agent_id:
+        meta_path = path[: -len(".jsonl")] + ".meta.json"
+        if os.path.exists(meta_path):
+            with open(meta_path) as file:
+                name = json.load(file).get("description") or name
+    return {
+        "provider": "claude",
+        "path": path,
+        "id": agent_id or entry["sessionId"],
+        "parent": entry["sessionId"] if agent_id else None,
+        "name": name,
+        "cwd": entry["cwd"],
+        "started": parse_time(entry["timestamp"]),
+    }
+
+
+def read_header(path):
+    with open(path) as file:
+        first = file.readline()
+    if '"type":"session_meta"' in first:
+        return codex_header(path)
+    return claude_header(path)
+
+
+def codex_usage(header, seen_ids):
+    usages, models, percents = [], [], []
+    previous_total = record_usage = None
+    for entry in read_entries(header["path"]):
+        kind, payload = entry.get("type"), entry.get("payload") or {}
+        if kind == "token_usage_record" and payload.get("thread_id") == header["id"]:
+            record_usage = payload["usage"]
+            usages.append(record_usage)
+        elif kind == "turn_context" and payload.get("model"):
+            models.append(payload["model"])
+        elif kind == "event_msg" and payload.get("type") == "token_count":
+            primary = (payload.get("rate_limits") or {}).get("primary") or {}
+            if primary.get("used_percent") is not None:
+                percents.append(primary["used_percent"])
+            info = payload.get("info")
+            if info and info["total_token_usage"] != previous_total:
+                if info["last_token_usage"] != record_usage:
+                    usages.append(info["last_token_usage"])
+                previous_total = info["total_token_usage"]
+    calls = [(usage["input_tokens"], usage["output_tokens"]) for usage in usages]
+    window = f"{percents[0]:g}% -> {percents[-1]:g}%" if percents else ""
+    return calls, models, window
+
+
+def claude_usage(header, seen_ids):
+    messages = {}
+    for entry in read_entries(header["path"]):
+        message = entry.get("message") if entry.get("type") == "assistant" else None
+        if not message or not message.get("usage") or message.get("model") == "<synthetic>":
+            continue
+        if message["id"] in seen_ids:
+            continue
+        messages[message["id"]] = message
+    seen_ids.update(messages)
+    calls, models = [], []
+    for message in messages.values():
+        usage = message["usage"]
+        context = (
+            usage.get("input_tokens", 0)
+            + usage.get("cache_read_input_tokens", 0)
+            + usage.get("cache_creation_input_tokens", 0)
+        )
+        calls.append((context, usage.get("output_tokens", 0)))
+        models.append(message["model"])
+    return calls, models, ""
+
+
+def measure(header, seen_ids):
+    reader = codex_usage if header["provider"] == "codex" else claude_usage
+    calls, models, window = reader(header, seen_ids)
+    return {
+        "provider": header["provider"],
+        "id": header["id"],
+        "name": header["name"],
+        "model": ",".join(dict.fromkeys(models)),
+        "started": header["started"],
+        "cwd": header["cwd"],
+        "path": header["path"],
+        "steps": len(calls),
+        "tokens": sum(context + output for context, output in calls),
+        "largest_context": max((context for context, _ in calls), default=0),
+        "window": window,
+    }
+
+
+def under(cwd, root):
+    return cwd == root or cwd.startswith(root.rstrip("/") + "/")
+
+
+def flatten_path(text):
+    return re.sub(r"[^A-Za-z0-9]", "-", text)
+
+
+def candidate_paths(provider, cwd, since):
+    paths = []
+    if provider in (None, "codex"):
+        paths += glob.glob(CODEX_GLOB)
+    if provider in (None, "claude"):
+        claude_paths = glob.glob(CLAUDE_GLOB) + glob.glob(CLAUDE_SUBAGENT_GLOB, recursive=True)
+        if cwd:
+            projects = os.path.join(HOME, ".claude/projects") + "/"
+            claude_paths = [
+                path
+                for path in claude_paths
+                if flatten_path(path[len(projects):].split("/")[0]).startswith(flatten_path(cwd))
+            ]
+        paths += claude_paths
+    if since:
+        paths = [path for path in paths if os.path.getmtime(path) >= since.timestamp()]
+    return paths
+
+
+def select_sessions(args):
+    since = None
+    if args.since:
+        since = datetime.datetime.strptime(args.since, "%Y-%m-%d").astimezone()
+    elif not args.cwd and not args.files:
+        since = datetime.datetime.combine(datetime.date.today(), datetime.time()).astimezone()
+
+    if args.files:
+        root_paths = list(dict.fromkeys(os.path.abspath(path) for path in args.files))
+        roots = [header for header in map(read_header, root_paths) if header]
+        earliest = min((root["started"] for root in roots), default=None)
+        others = [path for path in candidate_paths(None, None, earliest) if path not in root_paths]
+        headers = roots + [header for header in map(read_header, others) if header]
+    else:
+        headers = [header for header in map(read_header, candidate_paths(args.provider, args.cwd, since)) if header]
+        roots = [
+            header
+            for header in headers
+            if (not args.cwd or under(header["cwd"], args.cwd))
+            and (not since or header["started"] >= since)
+        ]
+
+    children = {}
+    for header in headers:
+        if header["parent"]:
+            children.setdefault((header["provider"], header["parent"]), []).append(header)
+    root_keys = {(root["provider"], root["id"]) for root in roots}
+    top = [root for root in roots if (root["provider"], root["parent"]) not in root_keys]
+
+    def build(header, seen_ids):
+        session = measure(header, seen_ids)
+        kids = sorted(children.get((header["provider"], header["id"]), []), key=lambda kid: kid["started"])
+        session["subagents"] = [build(kid, seen_ids) for kid in kids]
+        return session
+
+    return [build(root, set()) for root in sorted(top, key=lambda root: root["started"])]
+
+
+def descendants(session):
+    for kid in session["subagents"]:
+        yield kid
+        yield from descendants(kid)
+
+
+def total(session):
+    group = [session, *descendants(session)]
+    return {
+        "steps": sum(item["steps"] for item in group),
+        "tokens": sum(item["tokens"] for item in group),
+        "largest_context": max(item["largest_context"] for item in group),
+    }
+
+
+def short_cwd(cwd):
+    return "~" + cwd[len(HOME):] if under(cwd, HOME) else cwd
+
+
+def table_rows(session, depth=0):
+    indent = "  " * depth
+    yield [
+        indent + session["provider"],
+        session["model"],
+        session["started"].strftime("%Y-%m-%d %H:%M"),
+        short_cwd(session["cwd"]),
+        str(session["steps"]),
+        f"{session['tokens'] / 1e6:.1f}M",
+        f"{session['largest_context'] / 1e3:.0f}k",
+        session["window"],
+        indent + session["name"],
+    ]
+    for kid in session["subagents"]:
+        yield from table_rows(kid, depth + 1)
+    if depth == 0 and session["subagents"]:
+        group = total(session)
+        yield [
+            "total", "", "", "", str(group["steps"]), f"{group['tokens'] / 1e6:.1f}M",
+            f"{group['largest_context'] / 1e3:.0f}k", "", "",
+        ]
+
+
+def print_table(sessions):
+    header = ["provider", "model", "started (local)", "cwd", "steps", "tokens", "largest context", "window", "session"]
+    rows = [header] + [row for session in sessions for row in table_rows(session)]
+    widths = [max(len(row[column]) for row in rows) for column in range(len(header))]
+    right_aligned = {4, 5, 6}
+    for row in rows:
+        cells = [
+            cell.rjust(width) if column in right_aligned else cell.ljust(width)
+            for column, (cell, width) in enumerate(zip(row, widths))
+        ]
+        print("  ".join(cells).rstrip())
+
+
+def as_json(session):
+    data = {key: value for key, value in session.items() if key != "subagents"}
+    data["started"] = session["started"].isoformat(timespec="seconds")
+    data["subagents"] = [as_json(kid) for kid in session["subagents"]]
+    if session["subagents"]:
+        data["total"] = total(session)
+    return data
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Token cost of Codex and Claude Code sessions, read from their logs.",
+        epilog="The started (local) column is in this computer's time zone, not UTC. "
+               "Grok and Cursor keep no token counts on disk, so they are not covered.",
+    )
+    parser.add_argument("--cwd", metavar="PATH", type=lambda path: os.path.abspath(os.path.expanduser(path)),
+                        help="keep sessions whose cwd is PATH or under it")
+    parser.add_argument("--since", metavar="YYYY-MM-DD", help="keep sessions started on or after this date")
+    parser.add_argument("--provider", choices=["codex", "claude"])
+    parser.add_argument("--json", action="store_true", help="print JSON instead of a table")
+    parser.add_argument("files", nargs="*", metavar="FILE", help="session logs to read instead of scanning")
+    args = parser.parse_args()
+
+    sessions = select_sessions(args)
+    if args.json:
+        json.dump([as_json(session) for session in sessions], sys.stdout, indent=2)
+        print()
+    else:
+        print_table(sessions)
+
+
+main()

@@ -108,6 +108,12 @@ pw.sh press Escape
 pw.sh click "getByRole('link', { name: 'All notes' })"
 ```
 
+## Contract
+
+- README.md:## Search → Toolbar entry, Keyboard entry, Title match, Body match, Open result
+- README.md:## Command line → CLI match, CLI miss
+- test/search.test.ts:40-72 → Empty state, Clear query
+
 ## Gotchas
 
 - Pressing `/` while the editor or searchbox has focus inserts text instead of opening search.

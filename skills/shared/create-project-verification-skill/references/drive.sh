@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # drive.sh [--jobs N] [feature...]: run the bash blocks of feature recipes, N features at a time.
+# drive.sh --check [feature...]: only list the steps drive.sh refuses to run and the findings rec.sh run refuses, coverage only when .cache/record/contract-map.tsv exists; exit 2 when there are any.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
-max_jobs=1
-if [[ "${1:-}" == --jobs ]]; then max_jobs=${2:?--jobs needs a number}; shift 2; fi
+max_jobs=1 check=""
+if [[ "${1:-}" == --check ]]; then check=1; shift
+elif [[ "${1:-}" == --jobs ]]; then max_jobs=${2:?--jobs needs a number}; shift 2; fi
 [[ "$max_jobs" =~ ^[1-9][0-9]*$ ]] || { echo "drive.sh: --jobs must be a positive number" >&2; exit 2; }
 
 features=("$@")
@@ -19,91 +21,68 @@ for feature in "${features[@]}"; do
 done
 
 export PATH="$skill/bin:$PATH"
-work="$skill/.cache/drive"
-rm -rf "$work"
-mkdir -p "$work"
-step_timeout=600
+if [[ -n "$check" ]]; then
+  work=$(mktemp -d)
+else
+  work="$skill/.cache/drive"
+  rm -rf "$work"
+  mkdir -p "$work"
+fi
+source "$skill/bin/steps.sh"
 
-split_steps() {
-  awk -v out="$2" '
-    function start(label) { n++; file = sprintf("%s/%02d.sh", out, n); printf "%02d\t%s\n", n, label > (out "/steps") }
-    /^## Driving it with/ { driving = 1; next }
-    driving && /^## / { driving = 0 }
-    !driving { next }
-    in_block { if ($0 ~ /^```[[:space:]]*$/) in_block = 0; else print > file; next }
-    /^Preconditions:/ { start("Preconditions"); next }
-    /^- \*\*/ { label = $0; sub(/^- \*\*/, "", label); sub(/\*\*.*/, "", label); sub(/\.$/, "", label); start(label); next }
-    /^```bash[[:space:]]*$/ && n { in_block = 1; printf "" > file }
-  ' "$1"
-}
-
-run_step() {
-  local state=$1 block=$2 log=$3 status
-  { cat "$block"; echo "---"; } > "$log"
-  timeout --kill-after=10 "$step_timeout" bash -c '
-    __drive_state=$1 __drive_block=$2
-    set --
-    __drive_vars=$(compgen -v | sort) __drive_funcs=$(compgen -A function | sort)
-    __drive_save() {
-      local __drive_status=$?
-      set +eu
-      {
-        comm -13 <(echo "$__drive_vars") <(compgen -v | sort) | grep -v "^__drive_" | while read -r name; do declare -p "$name"; done
-        comm -13 <(echo "$__drive_funcs") <(compgen -A function | sort) | grep -v "^__drive_" | while read -r name; do declare -f "$name"; done
-      } > "$__drive_state.new"
-      mv "$__drive_state.new" "$__drive_state"
-      exit $__drive_status
-    }
-    trap __drive_save EXIT
-    source "$__drive_state"
-    set -euo pipefail
-    source "$__drive_block"
-  ' _ "$state" "$block" >> "$log" 2>&1 < /dev/null 3<&-
-  status=$?
-  echo "exit=$status" >> "$log"
-  ((status == 124)) && echo "timed out after ${step_timeout}s" >> "$log"
-  return $status
-}
+refusals=()
+for feature in "${features[@]}"; do
+  dir="$work/$feature"
+  mkdir -p "$dir" && : > "$dir/steps"
+  split_steps "$skill/features/$feature.md" "$dir"
+  checks=("$dir" "$skill/features/$feature.md")
+  [[ -z "$check" ]] || checks+=("$feature" "$skill/.cache/record/contract-map.tsv")
+  while IFS= read -r problem; do refusals+=("features/$feature.md: $problem"); done < <(check_steps "${checks[@]}")
+done
+if ((${#refusals[@]})); then
+  printf 'drive.sh: %s\n' "${refusals[@]}" >&2
+  rm -rf "$work"
+  exit 2
+fi
+if [[ -n "$check" ]]; then
+  rm -rf "$work"
+  exit 0
+fi
 
 drive_feature() {
   local feature=$1 dir="$work/$feature" evidence="$skill/.cache/evidence/$feature/steps"
-  local number label block log status failed="" stopped="" ran="" cleanup=""
-  mkdir -p "$dir" && : > "$dir/state" && : > "$dir/steps"
-  rm -rf "$evidence" && mkdir -p "$evidence"
-  split_steps "$skill/features/$feature.md" "$dir"
+  local number label block log status failed="" failed_log="" stopped="" ran="" cleanup="" cleanup_log=""
+  : > "$dir/state"
+  rm -rf "$skill/.cache/evidence/$feature" && mkdir -p "$evidence"
   export VERIFY_SESSION=$feature
   while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"
-    log="$evidence/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
-    if [[ "$label" == "Clean up" ]]; then cleanup="$block	$log"; fi
+    log="$evidence/$number-$(slug "$label").log"
+    if [[ "$label" == "Clean up" ]]; then cleanup=$block cleanup_log=$log; fi
     [[ -e "$work/stop" ]] && stopped=1
     if [[ -n "$failed$stopped" ]]; then
       [[ "$label" == "Clean up" ]] || echo "$label" >> "$dir/not-run"
       continue
     fi
-    if [[ ! -f "$block" ]]; then
-      echo "no bash block under this step" > "$log"; status=1
-    else
-      run_step "$dir/state" "$block" "$log"; status=$?
-    fi
+    run_step "$dir/state" "$block" "$log"; status=$?
     ran=1
     if ((status == 0)); then
       echo "$feature / $label: pass"
     else
       echo "$feature / $label: fail ($log)"
-      failed="$label	$log"
+      failed=$label failed_log=$log
     fi
   done 3< "$dir/steps"
-  if [[ -n "$failed$stopped" && -n "$ran" && -n "$cleanup" && "${failed%%	*}" != "Clean up" ]]; then
-    if run_step "$dir/state" "${cleanup%%	*}" "${cleanup#*	}"; then
+  if [[ -n "$failed$stopped" && -n "$ran" && -n "$cleanup" && "$failed" != "Clean up" ]]; then
+    if run_step "$dir/state" "$cleanup" "$cleanup_log"; then
       echo "$feature / Clean up: pass"
     else
-      echo "$feature / Clean up: fail (${cleanup#*	})"
-      echo "${cleanup#*	}" > "$dir/cleanup-failed"
+      echo "$feature / Clean up: fail ($cleanup_log)"
+      echo "$cleanup_log" > "$dir/cleanup-failed"
     fi
   fi
   if [[ -n "$failed" ]]; then
-    echo "$failed" > "$dir/failed"
+    printf '%s\t%s\n' "$failed" "$failed_log" > "$dir/failed"
     if [[ ! -e "$work/stop" ]] && ! "$skill/bin/doctor.sh" > "$evidence/doctor.log" 2>&1 < /dev/null 3<&-; then
       echo "doctor failed after $feature ($evidence/doctor.log); stopping the run"
       : > "$work/stop"
