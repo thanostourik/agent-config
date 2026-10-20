@@ -5,7 +5,7 @@
 # rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK, else .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
-# rec.sh install [<feature>...]: add each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds to the staged file's Gotchas, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
+# rec.sh install [<feature>...]: give a staged file with no ## Gotchas section one, holding each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
 set -uo pipefail
 shopt -s nullglob
 
@@ -79,18 +79,10 @@ not_ready() {
 
 carry_gotchas() {
   local staged="$skill/.cache/record/$1/$1.md" lost
+  grep -q '^## Gotchas[[:space:]]*$' "$staged" && return 0
   lost=$(lost_gotchas "$1")
   [[ -n "$lost" ]] || return 0
-  LOST=$lost awk '
-    function carry() { if (!content) print ""; print ENVIRON["LOST"]; printf "%s", gap; gotchas = 0 }
-    /^## / && gotchas { carry() }
-    { line = $0; sub(/[[:space:]]+$/, "", line) }
-    line == "## Gotchas" { gotchas = found = 1; print; next }
-    gotchas && line == "" { gap = gap $0 "\n"; next }
-    gotchas { printf "%s", gap; gap = ""; content = 1 }
-    { print }
-    END { if (gotchas) carry(); else if (!found) printf "\n## Gotchas\n\n%s\n", ENVIRON["LOST"] }
-  ' "$staged" > "$staged.new" && mv "$staged.new" "$staged"
+  printf '\n## Gotchas\n\n%s\n' "$lost" >> "$staged"
   echo "rec.sh: carried $(wc -l <<< "$lost") gotcha lines into $1"
 }
 
