@@ -36,9 +36,9 @@ This directory is the maintained source for verifying the browser and CLI behavi
 
 ## Change triggers
 
-- The note editor, the create form, the notes API and `notes create`: create-note
-- The search index, the toolbar search box, its keyboard shortcut and `notes search`: search
-- The data directory format, server startup or the CLI's argument parsing: create-note and search
+- `web/src/editor/*`, `web/src/routes/new.tsx`, `server/api/notes.ts`, `cli/commands/create.ts`: create-note
+- `server/search/*`, `web/src/toolbar/*`, `web/src/shortcuts.ts`, `cli/commands/search.ts`: search
+- `server/storage/*`, `server/main.ts`, `cli/args.ts`: create-note, search
 
 ## Feature file shape
 
