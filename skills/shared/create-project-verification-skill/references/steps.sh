@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> [<feature file> <feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>...
+# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> [<feature file> <feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
 
 step_timeout=600
 
@@ -162,4 +162,65 @@ contract_map() {
     }
     END { flush(last) }
   ' "$@"
+}
+
+head_bytes() {
+  LC_ALL=C awk -v max="$1" '{n += length($0) + 1} n > max {exit} 1'
+}
+
+contract_bundle() {
+  local LC_ALL=C cap=20000 words title s k f p text marks=() texts=() cuts=() excerpts=() skipped=() order=() reserve=() rank i total=0 rest=0 full=""
+  words=$(awk -F '\t' -v f="$3" '$1 == f {print $2}' "$1")
+  title="(^|[^a-z0-9])(${3//-/[- ]}|$words)([^a-z0-9]|\$)"
+  while IFS=$'\t' read -r s k; do
+    f=${s%%:*} p=${s#*:}
+    case $p in
+      '#'*) text=$(awk -v h="$p" '$0 == h {n = index($0, " "); print; next} n && /^#+ / && index($0, " ") <= n {exit} n' "$f") ;;
+      *) text=$(sed -n "${p%-*},${p#*-}p" "$f") ;;
+    esac
+    i=${#marks[@]}
+    if [[ $k == mention ]]; then
+      rank=2 marks[i]="== $s (mentions)" cuts[i]="== $s (mentions)" skipped[i]="== $s (mentions) (not read: over the size cap)"
+      texts[i]=$(grep -i -E -C 2 "$words" <<< "$text")
+      excerpts[i]=$(head_bytes 1500 <<< "${texts[i]}")
+    else
+      rank=1 marks[i]="== $s" cuts[i]="== $s (excerpt)" skipped[i]="== $s (not read: over the size cap)" texts[i]=$text
+      head -n 1 <<< "$text" | grep -q -i -E "$title" && rank=0
+      excerpts[i]=$({ head -n 1 <<< "$text"; tail -n +2 <<< "$text" | grep -i -E -C 2 "$words"; } | head_bytes 1500)
+    fi
+    order[rank]+=" $i"
+  done < <(awk -F '\t' -v f="$3" '$1 == f {print $2 "\t" $3}' "$2")
+  order=(${order[0]} ${order[1]} ${order[2]})
+  for ((i = ${#order[@]} - 1; i >= 0; i--)); do reserve[i]=$rest; rest=$((rest + ${#skipped[order[i]]} + 1)); done
+  [[ ! -f $4 ]] || { cat "$4"; total=$(wc -c < "$4"); }
+  for i in "${!order[@]}"; do
+    k=${order[i]}
+    if [[ -z $full && ${#texts[k]} -lt 6000 ]] && ((total + ${#marks[k]} + ${#texts[k]} + 2 + reserve[i] < cap)); then
+      printf '%s\n%s\n' "${marks[k]}" "${texts[k]}"
+      total=$((total + ${#marks[k]} + ${#texts[k]} + 2))
+    elif [[ -z $full ]] && ((total + ${#cuts[k]} + ${#excerpts[k]} + 2 + reserve[i] < cap)); then
+      printf '%s\n%s\n' "${cuts[k]}" "${excerpts[k]}"
+      total=$((total + ${#cuts[k]} + ${#excerpts[k]} + 2))
+    else
+      full=1
+      echo "${skipped[k]}"
+    fi
+  done
+}
+
+fix_read() {
+  local snapshot
+  snapshot=$(grep -o '\[Snapshot\]([^)]*)' "$1" | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//')
+  {
+    echo "== Snapshot of the failing step: ${snapshot:-none}"
+    echo "== When a drive fails, from $4"
+    awk '/^## /{p = /^## When a drive fails$/} p' "$4"
+    echo "== Traps, $3"
+    cat "$3"
+    echo "== Last 60 lines of $1"
+    tail -n 60 "$1" | tail -c 6000
+    echo
+    echo "== Driving section of $2"
+    awk '/^## /{p = /^## Driving it with/} p' "$2"
+  } | head_bytes 20000
 }

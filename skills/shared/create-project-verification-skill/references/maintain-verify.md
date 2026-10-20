@@ -128,11 +128,11 @@ The common file .agents/skills/verify-<app>/.cache/record/brief-common.md holds 
 Drive only with <driver>. Call only rec.sh start, peek, run, result and index, for your feature and those you split off, and the helpers in the common file; never drive.sh, rec.sh install, launch.sh, cleanup.sh or doctor.sh. Write only the staged copies rec.sh start names, plus the README index through rec.sh index. Do not commit or push.
 
 Put commands that belong together in one call. Look at screens only with rec.sh peek; never run pw.sh or curl outside rec.sh run and peek. Do not narrate.
-1. Contract: run each command below in its own call, nothing else. failures.txt: other recorders' failed steps (feature, step, command, last output line); contract.md, your feature file, then contract sections.
+1. Contract: run each command below in its own call, nothing else. failures.txt: other recorders' failed steps (feature, step, command, last output line); contract.md, your feature file, then contract sections, large ones as excerpts or not-read lines.
 {{read_commands}}
    List every behavior they name: test cases, README sentences, plan acceptance lines, entry points. Each gets a step, and so does every sub-feature and entry point the file lists, or it goes under Blocked. When your only section is the README overview, the list comes from the sub-features and entry points that the source grep and your peek show.
-2. Source, one command: one grep for the routes and names the steps target, or for drift. Your only source read.
-3. Write. When the feature is not new, matches contract and source, covers the list and every == line, breaks no changed convention and needs no conversion, change nothing. Otherwise run rec.sh <feature> start and write the Preconditions and Clean up first, into the path it prints. Before the first run, write the steps that reach every screen the recipe will touch, direct URLs, error pages, second tabs and Clean up's first screen included, and look at them in one peek: rec.sh <feature> peek --after '<Label>' --after '<Label>' --find '<locator>' runs Preconditions, those steps and Clean up, snapshotting after each named step to .agents/skills/verify-<app>/.cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several. Pass the last screen's locators as --find and fix every !! line: a name from a fixture, plan or source is a guess until a peek shows it, and grep hides repeats and case, so --find is the check; never print a whole snapshot. Then write the whole file in one write, its ## Contract section filled from the == lines of contract.md without (mentions), one line each: '- <file>:<heading> → <step labels>' or '- <file>:<heading> → not driven: <reason>'; rec.sh run refuses a copy that skips one. Go to step 4. Keep unchanged steps; converting gives each step a block without changing what it checks.
+2. Source, one command: one grep for the routes and names the steps target, for drift, or for what excerpts leave out. Your only source read.
+3. Write. When the feature is not new, matches contract and source, covers the list and every == line, breaks no changed convention and needs no conversion, change nothing. Otherwise run rec.sh <feature> start and write the Preconditions and Clean up first, into the path it prints. Before the first run, write the steps that reach every screen the recipe will touch, direct URLs, error pages, second tabs and Clean up's first screen included, and look at them in one peek: rec.sh <feature> peek --after '<Label>' --after '<Label>' --find '<locator>' runs Preconditions, those steps and Clean up, snapshotting after each named step to .agents/skills/verify-<app>/.cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several. Pass the last screen's locators as --find and fix every !! line: a name from a fixture, plan or source is a guess until a peek shows it, and grep hides repeats and case, so --find is the check; never print a whole snapshot. Then write the whole file in one write, its ## Contract section filled from the == lines of contract.md except (mentions), one line each: '- <file>:<heading> → <step labels>' or '- <file>:<heading> → not driven: <reason>'; rec.sh run refuses a copy that skips one. Go to step 4. Keep unchanged steps; converting gives each step a block without changing what it checks.
 4. Run: rec.sh <feature> run is one call and prints the result, attempt <n> first, when the run ends; if your tool returned before that, run rec.sh <feature> result, which waits for the run and prints the same result; never poll, never rerun a run still going. A failure prints the failing step's commands and output end, runs Clean up and ends with: failing step: the step to fix; snapshot: the failing screen, read instead of rerunning; full log: the whole output. Fix and rerun until it prints "passed", and after a failed value check assert the printed value when the contract allows, never a second guess; later edits to prose or Gotchas keep it passed. When the app or a missing prerequisite blocks the recipe, stop: leave the staged file as is, put the failing step, failed command and log path under Blocked, and return the line with blocked.
 5. Report, then return its line.
 
@@ -159,7 +159,7 @@ You are a fixer for verify-<app>. One recipe failed a drive. Feature: {{feature}
 
 Repository root: {{root}}; run every command from there. rec.sh is .agents/skills/verify-<app>/bin/rec.sh.
 
-In one command, read .agents/skills/verify-<app>/.cache/record/brief-common.md, .agents/skills/verify-<app>/.cache/record/traps.md, the log, .agents/skills/verify-<app>/features/<feature>.md and the When a drive fails section of .agents/skills/verify-<app>/SKILL.md. Follow the common file's Driving conventions. Classify the failure as one of the four kinds in When a drive fails. Read the contract only when the kind depends on it, with: sed -n '/^== /,$p' .agents/skills/verify-<app>/.cache/record/{{feature}}/contract.md
+In two calls, read .agents/skills/verify-<app>/.cache/record/brief-common.md and .agents/skills/verify-<app>/.cache/record/{{feature}}/fix-read.md: snapshot path, When a drive fails, traps, the log's end and your Driving section. Follow the common file's Driving conventions. Classify the failure as one of the four kinds in When a drive fails. Read the contract only when the kind depends on it, with: sed -n '/^== /,$p' .agents/skills/verify-<app>/.cache/record/{{feature}}/contract.md
 
 Drive only with <driver>. Call only rec.sh <feature> start, run and result, and the helpers in the common file; never drive.sh, rec.sh install, launch.sh, cleanup.sh or doctor.sh. Edit no helper, SKILL.md, features/README.md or product code, and write no tracked file. Do not commit or push.
 
@@ -172,7 +172,7 @@ Return one line: <feature>: <kind>: <what you changed, or what is wrong and wher
 
 Once per run, in the call that writes the common brief file, from the repository root. Replace only the `mode` value, the peek command, the contract sources after `contract_map` and the two `printf` lists: `mode` is `full` in a full audit and `changed` otherwise; the first list with pairs of a feature and its name and index words, as `<word>|<word>`; the second list with `$($v/bin/drive.sh --check <features> 2>&1 | sed -n 's|^drive.sh: features/\(.*\)\.md: .*|\1|p' | sort -u)`, `<features>` being the listed refused features, none in a full audit. A request text goes to `$r/request.md` in the same call, with `printf '%s\t%s\tsection\n' <feature> "$r/request.md:1-\$" >> $r/contract-map.tsv` for each feature it concerns.
 
-A contract section says what one feature should do: `README.md:## Search` is that heading down to the next at its level or above; `test/search.test.ts:40-72` is a `describe`, `it` or `test` line down to the next. Contract sources are the README, docs, plans, tests and specs. `contract_map` maps each line holding a feature's word to the section above it: `section` when the word is in the heading line, else `mention`, whose matching lines alone reach `contract.md`. With no contract sources beyond a high-level README, replace `contract_map` with `section` rows mapping every feature to the README's overview, such as `README.md:1-40`; recorders then take their behavior list from the source and the screen, and Ship says so.
+A contract section says what one feature should do: `README.md:## Search` is that heading down to the next at its level or above; `test/search.test.ts:40-72` is a `describe`, `it` or `test` line down to the next. Contract sources are the README, docs, plans, tests and specs. `contract_map` maps each line holding a feature's word to the section above it: `section` when the word is in the heading line, else `mention`, whose matching lines alone reach `contract.md`. `contract_bundle` keeps `contract.md` under 20,000 bytes: sections whose heading holds a feature word, other sections, then mentions; a section over 6,000 bytes or the cap becomes an excerpt, and past the cap a `not read` line, still needing its Contract line. With no contract sources beyond a high-level README, replace `contract_map` with `section` rows mapping every feature to the README's overview, such as `README.md:1-40`; recorders then take their behavior list from the source and the screen, and Ship says so.
 
 ```
 v=.agents/skills/verify-<app>; r=$v/.cache/record
@@ -188,7 +188,7 @@ mode=<full or changed>; echo $mode > $r/mode.txt; echo '<peek command>' > $r/pee
 Recorder briefs, from the repository root: in the step 3 call for every feature, and again for each feature that goes back. Only the feature names after `for feature in` change. It prints a line for each feature without an index line or contract sections, and writes each feature's `contract.md`.
 
 ```
-v=.agents/skills/verify-<app>; r=$v/.cache/record
+v=.agents/skills/verify-<app>; r=$v/.cache/record; . $v/bin/steps.sh
 export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none
 section() { awk '/^## /{p = /^## Driving conventions$/} p' "$1"; }
 test -f $v/.cache/starting-README.md && test "$(cat $r/mode.txt)" = changed && conventions_changed=$(diff <(section $v/.cache/starting-README.md) <(section $v/features/README.md) | grep '^[<>]' || echo none)
@@ -199,8 +199,7 @@ for feature in <feature> <feature>; do
   new=$(test -f $v/features/$feature.md && echo no || echo yes)
   convert=$(grep -qsx "$feature" $r/convert.txt && echo yes || echo no)
   c=$r/$feature/contract.md h="   cat $r/brief-common.md $r/traps.md $r/failures.txt"
-  w=$(awk -F '\t' -v f="$feature" '$1 == f {print $2}' $r/contract-words.tsv)
-  mkdir -p $r/$feature && { cat $v/features/$feature.md 2>/dev/null; awk -F '\t' -v f="$feature" '$1 == f {print $2 "\t" $3}' $r/contract-map.tsv | while IFS=$'\t' read -r s k; do f=${s%%:*} p=${s#*:}; case $p in '#'*) awk -v h="$p" '$0 == h {n = index($0, " "); print; next} n && /^#+ / && index($0, " ") <= n {exit} n' "$f";; *) sed -n "${p%-*},${p#*-}p" "$f";; esac | if test "$k" = mention; then echo "== $s (mentions)"; grep -i -E -C 2 "$w"; else echo "== $s"; cat; fi; done; } > $c
+  mkdir -p $r/$feature && contract_bundle $r/contract-words.tsv $r/contract-map.tsv $feature $v/features/$feature.md > $c
   test -n "$index_line" && grep -q '^== ' $c || echo "$feature: no index line or no contract sections"
   read_commands=$(test $($h $c | wc -c) -le 20000 && echo "$h $c" || { echo "$h"; for o in $(seq 1 20000 $(wc -c < $c)); do echo "   tail -c +$o $c | head -c 20000"; done; })
   awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/brief-template.md > $r/$feature/brief.md
@@ -216,12 +215,12 @@ You are a recorder for verify-<app>. Read <repository root>/.agents/skills/verif
 Fixer briefs, the same way, once for every failing feature. It takes each feature's failing step and log from the drive summary in `.cache/drive.txt` and prints a line for each feature the summary shows no failure for.
 
 ```
-v=.agents/skills/verify-<app>; r=$v/.cache/record
+v=.agents/skills/verify-<app>; r=$v/.cache/record; . $v/bin/steps.sh
 export root=$PWD feature label log
 for feature in <feature> <feature>; do
   IFS=$'\t' read -r label log < <(awk -v p="$feature: fail at \"" 'index($0, p) == 1 {s = substr($0, length(p) + 1); i = index(s, "\" ("); print substr(s, 1, i - 1) "\t" substr(s, i + 3, length(s) - i - 3)}' $v/.cache/drive.txt)
   test -n "$log" || echo "$feature: no failure in the drive summary"
-  mkdir -p $r/$feature && awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/fix-brief-template.md > $r/$feature/fix-brief.md
+  mkdir -p $r/$feature && fix_read "$log" $v/features/$feature.md $r/traps.md $v/SKILL.md > $r/$feature/fix-read.md && awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/fix-brief-template.md > $r/$feature/fix-brief.md
 done
 ```
 
