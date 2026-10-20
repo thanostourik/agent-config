@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file, empty .cache/evidence/<feature>/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file, empty .cache/evidence/<feature>/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
+# rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
 # rec.sh <feature> peek [--after '<Label>']: run the staged file's Preconditions (and the steps through <Label>) as run does, save one snapshot of the screen they leave to .cache/record/<feature>/peek.txt, then run Clean up; the snapshot command is $REC_PEEK with that path appended as it is, so the path is its last argument.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
@@ -15,6 +16,7 @@ source "$skill/bin/steps.sh"
 
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
+       rec.sh <feature> result
        REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']
        rec.sh <feature> index '<index line>'
        rec.sh install [<feature>...]"
@@ -139,6 +141,13 @@ if [[ "$action" == index ]]; then
   if ((found)); then echo "rec.sh: replaced the index line of $feature"; else echo "rec.sh: added the index line of $feature"; fi
   exit 0
 fi
+if [[ "$action" == result ]]; then
+  (($# == 0)) || usage
+  while [[ -e "$rec/running" ]]; do sleep 2; done
+  [[ -f "$rec/result.txt" ]] || { echo "no run yet for $feature"; exit 1; }
+  cat "$rec/result.txt"
+  exit 0
+fi
 [[ "$action" == run || "$action" == peek ]] || usage
 
 known="" after=""
@@ -153,7 +162,26 @@ else
 fi
 [[ "$action" == run || -n "${REC_PEEK:-}" ]] || fail "set REC_PEEK to the snapshot command the maintenance skill names; peek appends the output path to it"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
+finish() {
+  exec >&- 2>&-
+  wait "$out_tee" "$err_tee"
+  mv "$rec/result.new" "$rec/result.txt"
+  rm -f "$rec/running"
+}
+
+killed() {
+  [[ -z "${current:-}" ]] || printf '%s / %s: killed\nfailing step: %s\n' "$feature" "$current" "$current"
+  exit "$1"
+}
+
 if [[ "$action" == run ]]; then
+  : > "$rec/running"
+  : > "$rec/result.new"
+  trap finish EXIT
+  trap 'killed 130' INT
+  trap 'killed 143' TERM
+  exec > >(trap '' INT TERM HUP; exec tee -p -a "$rec/result.new"); out_tee=$!
+  exec 2> >(trap '' INT TERM HUP; exec tee -p -a "$rec/result.new" >&2); err_tee=$!
   attempts=$(( $(cat "$rec/attempts" 2>/dev/null) + 1 ))
   echo "$attempts" > "$rec/attempts"
   echo "attempt $attempts of $feature"
@@ -192,6 +220,7 @@ export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
 
 attempt() {
   local number=$1 label=$2
+  current=$label
   log="$logs/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
   { echo "PS4='+[rec] '; set -x"; cat "$work/$number.sh"; } > "$work/$number.attempt.sh"
   run_step "$work/state" "$work/$number.attempt.sh" "$log"
