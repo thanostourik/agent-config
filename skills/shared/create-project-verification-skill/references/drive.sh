@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # drive.sh [--jobs N] [feature...]: run the bash blocks of feature recipes, N features at a time.
-# drive.sh --check [feature...]: only list the steps drive.sh refuses to run; exit 2 when there are any.
+# drive.sh --check [feature...]: only list the steps drive.sh refuses to run and the findings rec.sh run refuses, coverage only when .cache/record/contract-map.tsv exists; exit 2 when there are any.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
@@ -35,7 +35,9 @@ for feature in "${features[@]}"; do
   dir="$work/$feature"
   mkdir -p "$dir" && : > "$dir/steps"
   split_steps "$skill/features/$feature.md" "$dir"
-  while IFS= read -r problem; do refusals+=("features/$feature.md: $problem"); done < <(check_steps "$dir")
+  checks=("$dir")
+  [[ -z "$check" ]] || checks+=("$skill/features/$feature.md" "$feature" "$skill/.cache/record/contract-map.tsv")
+  while IFS= read -r problem; do refusals+=("features/$feature.md: $problem"); done < <(check_steps "${checks[@]}")
 done
 if ((${#refusals[@]})); then
   printf 'drive.sh: %s\n' "${refusals[@]}" >&2

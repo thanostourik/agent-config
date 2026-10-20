@@ -35,12 +35,13 @@ This directory is the maintained source for verifying the browser and CLI behavi
 
 ## Feature file shape
 
-Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly four H2s in this order:
+Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly five H2s in this order:
 
 1. `Sub-features`: short IDs, one line per behavior.
 2. `How to get to it (user POV)`: every entry point a user has.
 3. `Driving it with <tools>`, naming every driver the recipe uses: `Preconditions:` with its setup and a `bash` block, then labeled bullets, each pairing a user action and its observable result with a `bash` block that fails when the result is not met. The last step is `Clean up`. The section holds at most about 15 steps, `Clean up` included; a feature that needs more is split into several features.
-4. `Gotchas`: traps that waste or invalidate a run.
+4. `Contract`: one line per contract section mapped to the feature, `- <file>:<heading> → <step labels>`, or `- <file>:<heading> → not driven: <reason>` when no step drives it.
+5. `Gotchas`: traps that waste or invalidate a run.
 
 ## Features
 

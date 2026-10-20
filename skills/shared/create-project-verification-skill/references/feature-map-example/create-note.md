@@ -97,6 +97,13 @@ notes delete --title "CLI note" || true
 test "$(notes list --format json | jq '[.[] | select(.title == "Release checklist" or .title == "CLI note")] | length')" = 0
 ```
 
+## Contract
+
+- README.md:## Create a note → Open editor, Enter content, Save note, Confirm persistence, Keyboard entry
+- README.md:## Command line → CLI entry
+- test/editor.test.ts:12-48 → Cancel draft
+- docs/sync.md:## Offline drafts → not driven: needs a second device, which the baseline does not have
+
 ## Gotchas
 
 - Pressing `n` while a textbox has focus types the character instead of opening a new editor.

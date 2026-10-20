@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file, empty .cache/evidence/<feature>/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
-# rec.sh <feature> peek [--after '<Label>']: run the staged file's Preconditions (and the steps through <Label>) as run does, save one snapshot of the screen they leave to .cache/record/<feature>/peek.txt, then run Clean up; the snapshot command is $REC_PEEK with that path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
-# rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
+# rec.sh install [<feature>...]: move staged files that passed run and keep every Gotchas line of the installed file, there or in features/README.md, into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
 set -uo pipefail
 shopt -s nullglob
 
@@ -17,7 +18,8 @@ source "$skill/bin/steps.sh"
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
        rec.sh <feature> result
-       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']
+       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']...
+       rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
        rec.sh install [<feature>...]"
 fail() { echo "rec.sh: $*" >&2; exit 1; }
@@ -42,11 +44,39 @@ recipe_hash() {
   rm -rf "$dir"
 }
 
-unpassed() {
-  local rec="$skill/.cache/record/$1"
+set_facts() {
+  local file="$rec/facts.tsv"
+  [[ -f "$file" ]] || printf '%s\t\n' attempts passed_hash last_result last_log last_snapshot names > "$file"
+  awk -F '\t' -v OFS='\t' 'BEGIN { for (i = 2; i < ARGC; i += 2) value[ARGV[i]] = ARGV[i + 1]; ARGC = 2 } $1 in value { $0 = $1 OFS value[$1] } { print }' "$file" "$@" > "$file.new"
+  mv "$file.new" "$file"
+}
+
+fact() { awk -F '\t' -v k="$1" '$1 == k { print $2 }' "$rec/facts.tsv" 2>/dev/null; }
+
+staged_names() { fixture_names "$1" | awk 'NR > 1 { printf ", " } { printf "%s", $0 }'; }
+
+lost_gotchas() {
+  local readme="$skill/features/README.md"
+  [[ -f "$skill/features/$1.md" ]] || return 0
+  [[ -f "$readme" ]] || readme=/dev/null
+  awk '
+    FNR == 1 { gotchas = 0 }
+    { sub(/[[:space:]]+$/, "") }
+    /^## / { gotchas = $0 == "## Gotchas"; next }
+    FILENAME == ARGV[1] { kept[$0]; next }
+    !gotchas { next }
+    FILENAME == ARGV[2] { kept[$0]; next }
+    /[^[:space:]]/ && !($0 in kept)
+  ' "$skill/.cache/record/$1/$1.md" "$readme" "$skill/features/$1.md"
+}
+
+not_ready() {
+  local rec="$skill/.cache/record/$1" lost
   [[ -f "$rec/$1.md" ]] || { echo "$1 has no staged file; run rec.sh $1 start"; return; }
   [[ -f "$rec/passed" ]] || { echo "$1 has not passed rec.sh $1 run"; return; }
-  [[ "$(head -n 1 "$rec/passed")" == "$(recipe_hash "$rec/$1.md")" ]] || echo "$1 changed since it passed; run it again"
+  [[ "$(head -n 1 "$rec/passed")" == "$(recipe_hash "$rec/$1.md")" ]] || { echo "$1 changed since it passed; run it again"; return; }
+  lost=$(lost_gotchas "$1")
+  [[ -z "$lost" ]] || printf '%s drops Gotchas lines of features/%s.md; keep them in its Gotchas or in features/README.md Gotchas:\n%s\n' "$1" "$1" "$lost"
 }
 
 if [[ "${1:-}" == install ]]; then
@@ -55,7 +85,7 @@ if [[ "${1:-}" == install ]]; then
   if (($#)); then
     for feature in "$@"; do
       check_feature "$feature"
-      problem=$(unpassed "$feature")
+      problem=$(not_ready "$feature")
       [[ -z "$problem" ]] || fail "$problem"
       features+=("$feature")
     done
@@ -63,7 +93,7 @@ if [[ "${1:-}" == install ]]; then
     for staged in "$skill"/.cache/record/*/*.md; do
       feature=$(basename "$staged" .md)
       [[ "$feature" == "$(basename "$(dirname "$staged")")" ]] || continue
-      problem=$(unpassed "$feature")
+      problem=$(not_ready "$feature")
       if [[ -n "$problem" ]]; then echo "rec.sh: skipped: $problem"; else features+=("$feature"); fi
     done
   fi
@@ -90,7 +120,8 @@ if [[ "${1:-}" == install ]]; then
     else
       echo "rec.sh: installed $(relative "$skill/features/$feature.md")"
     fi
-    rm -rf "$rec"
+    find "$rec" -mindepth 1 -maxdepth 1 ! -name facts.tsv -exec rm -rf {} +
+    set_facts last_log "" last_snapshot ""
   done
   exit $status
 fi
@@ -106,7 +137,6 @@ target="$skill/features/$feature.md"
 if [[ "$action" == start ]]; then
   (($# == 0)) || usage
   mkdir -p "$rec"
-  rm -f "$rec/attempts"
   if [[ -f "$staged" ]]; then
     echo "rec.sh: kept the staged file $(relative "$staged")"
   elif [[ -f "$target" ]]; then
@@ -119,6 +149,7 @@ if [[ "$action" == start ]]; then
     printf '# %s\n\n## Sub-features\n\n## How to get to it (user POV)\n\n## Driving it with %s\n\nPreconditions:\n\n- **Clean up.**\n\n## Gotchas\n' "$feature" "$driver" > "$staged"
     echo "rec.sh: write the new feature file over the skeleton at $(relative "$staged")"
   fi
+  set_facts attempts 0 passed_hash "$(head -n 1 "$rec/passed" 2>/dev/null)" names "$(staged_names "$staged")"
   exit 0
 fi
 
@@ -141,6 +172,12 @@ if [[ "$action" == index ]]; then
   if ((found)); then echo "rec.sh: replaced the index line of $feature"; else echo "rec.sh: added the index line of $feature"; fi
   exit 0
 fi
+if [[ "$action" == facts ]]; then
+  (($# == 0)) || usage
+  [[ -f "$rec/facts.tsv" ]] || fail "no facts for $feature; run rec.sh $feature start"
+  cat "$rec/facts.tsv"
+  exit 0
+fi
 if [[ "$action" == result ]]; then
   (($# == 0)) || usage
   while [[ -e "$rec/running" ]]; do sleep 2; done
@@ -150,16 +187,17 @@ if [[ "$action" == result ]]; then
 fi
 [[ "$action" == run || "$action" == peek ]] || usage
 
-known="" after=""
-if (($# == 0)); then
-  :
-elif (($# == 2)) && [[ "$action" == run && "$1" == --known-failure && -n "$2" ]]; then
-  known=$2
-elif (($# == 2)) && [[ "$action" == peek && "$1" == --after && -n "$2" ]]; then
-  after=$2
-else
-  usage
-fi
+known="" afters=()
+while (($#)); do
+  if [[ "$action" == run && -z "$known" && "$1" == --known-failure && -n "${2:-}" ]]; then
+    known=$2
+  elif [[ "$action" == peek && "$1" == --after && -n "${2:-}" ]]; then
+    afters+=("$2")
+  else
+    usage
+  fi
+  shift 2
+done
 [[ "$action" == run || -n "${REC_PEEK:-}" ]] || fail "set REC_PEEK to the snapshot command the maintenance skill names; peek appends the output path to it"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
 finish() {
@@ -170,7 +208,10 @@ finish() {
 }
 
 killed() {
-  [[ -z "${current:-}" ]] || printf '%s / %s: killed\nfailing step: %s\n' "$feature" "$current" "$current"
+  if [[ -n "${current:-}" ]]; then
+    printf '%s / %s: killed\nfailing step: %s\n' "$feature" "$current" "$current"
+    set_facts last_result "killed: $current" last_log "$(relative "${log:-}")" last_snapshot ""
+  fi
   exit "$1"
 }
 
@@ -182,12 +223,12 @@ if [[ "$action" == run ]]; then
   trap 'killed 143' TERM
   exec > >(trap '' INT TERM HUP; exec tee -p -a "$rec/result.new"); out_tee=$!
   exec 2> >(trap '' INT TERM HUP; exec tee -p -a "$rec/result.new" >&2); err_tee=$!
-  attempts=$(( $(cat "$rec/attempts" 2>/dev/null) + 1 ))
-  echo "$attempts" > "$rec/attempts"
+  attempts=$(( $(fact attempts) + 1 ))
   echo "attempt $attempts of $feature"
 fi
 
-work="$rec/run" logs="$rec/steps"
+work="$rec/run" logs="$rec/steps" evidence="$skill/.cache/evidence/$feature"
+[[ "$action" == run ]] || logs="$rec/peek-steps"
 rm -rf "$work"
 mkdir -p "$work" && : > "$work/steps"
 split_steps "$staged" "$work"
@@ -198,23 +239,41 @@ count=${#labels[@]}
 problems=()
 ((count)) && [[ "${labels[0]}" == Preconditions ]] || problems+=("$(relative "$staged") has no Preconditions block under \"## Driving it with\"")
 ((count)) && [[ "${labels[-1]}" == "Clean up" ]] || problems+=("the last step is not \"Clean up\"")
-mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work")
+if [[ "$action" == run ]]; then
+  set_facts attempts "$attempts" names "$(staged_names "$staged")"
+  mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work" "$staged" "$feature" "$skill/.cache/record/contract-map.tsv")
+else
+  mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work")
+fi
 if [[ -n "$known" ]]; then
   ((count >= 3)) && [[ "${labels[-1]}" == "Clean up" && "${labels[-2]}" == "$known" ]] ||
     problems+=("--known-failure \"$known\" is not the last step before \"Clean up\"; a known failure goes only there")
 fi
-last=0
-if [[ -n "$after" ]]; then
-  for ((last = 1; last < count - 1; last++)); do [[ "${labels[last]}" == "$after" ]] && break; done
-  ((last < count - 1)) || problems+=("--after \"$after\" names no step between Preconditions and \"Clean up\"")
-fi
+stops=() last=0
+for after in "${afters[@]}"; do
+  for ((i = 1; i < count - 1; i++)); do [[ "${labels[i]}" == "$after" ]] && break; done
+  if ((i < count - 1)); then
+    stops+=("$i")
+    ((i > last)) && last=$i
+  else
+    problems+=("--after \"$after\" names no step between Preconditions and \"Clean up\"")
+  fi
+done
 if ((${#problems[@]})); then
   printf 'rec.sh: %s\n' "${problems[@]}" >&2
   exit 2
 fi
 
-rm -rf "$logs" "$rec/passed" "$skill/.cache/evidence/$feature"
-mkdir -p "$logs" "$skill/.cache/evidence/$feature"
+if [[ "$action" == run ]]; then
+  rm -rf "$rec/passed"
+  if [[ -d "$logs" || -d "$evidence" ]]; then
+    rm -rf "$rec/previous" && mkdir -p "$rec/previous"
+    [[ ! -d "$logs" ]] || mv "$logs" "$rec/previous/steps"
+    [[ ! -d "$evidence" ]] || mv "$evidence" "$rec/previous/evidence"
+  fi
+fi
+rm -rf "$logs"
+mkdir -p "$logs" "$evidence"
 export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
 : > "$work/state"
 
@@ -270,26 +329,42 @@ clean_up() {
   fi
 }
 
-if [[ "$action" == peek ]]; then
-  peek="$rec/peek.txt" status=0
-  rm -f "$peek"
-  for ((i = 0; i <= last; i++)); do
-    if attempt "${numbers[i]}" "${labels[i]}"; then
-      echo "$feature / ${labels[i]}: pass"
-    else
-      echo "$feature / ${labels[i]}: fail ($(relative "$log"))"
-      show_failure "${numbers[i]}"
-      status=1
-      break
-    fi
-  done
-  printf '%s%q\n' "$REC_PEEK" "$(relative "$peek")" > "$work/peek.sh"
-  if attempt peek Snapshot && [[ -s "$peek" ]]; then
-    echo "rec.sh: peek written to $(relative "$peek")"
+snapshot() {
+  local peek="$rec/peek.txt"
+  ((${#stops[@]} < 2)) || peek="$rec/peek-$1.txt"
+  printf '%s%q\n' "$REC_PEEK" "$(relative "$peek")" > "$work/peek-$1.sh"
+  if attempt "peek-$1" Snapshot && [[ -s "$peek" ]]; then
+    echo "rec.sh: peek written to $(relative "$peek")${2:+ (the screen where \"$2\" failed)}"
   else
     echo "rec.sh: the peek command wrote no $(relative "$peek") ($(relative "$log"))"
-    show_failure peek
+    show_failure "peek-$1"
     status=1
+  fi
+}
+
+if [[ "$action" == peek ]]; then
+  ((${#stops[@]})) || stops=(0)
+  status=0 failed=""
+  rm -f "$rec"/peek.txt "$rec"/peek-*.txt
+  for ((i = 0; i <= last; i++)); do
+    if ! attempt "${numbers[i]}" "${labels[i]}"; then
+      echo "$feature / ${labels[i]}: fail ($(relative "$log"))"
+      show_failure "${numbers[i]}"
+      status=1 failed=${labels[i]}
+      break
+    fi
+    echo "$feature / ${labels[i]}: pass"
+    for n in "${!stops[@]}"; do
+      ((stops[n] != i)) || snapshot $((n + 1))
+    done
+  done
+  if [[ -n "$failed" ]]; then
+    reached="" missed=""
+    for n in "${!stops[@]}"; do
+      if ((stops[n] < i)); then reached+=" \"${labels[stops[n]]}\""; else missed+=" \"${labels[stops[n]]}\""; fi
+    done
+    for n in "${!stops[@]}"; do ((stops[n] < i)) || { snapshot $((n + 1)) "$failed"; break; }; done
+    echo "rec.sh: reached:${reached:- none}; not reached:$missed"
   fi
   clean_up || status=1
   exit $status
@@ -311,6 +386,7 @@ for ((i = 0; i < count; i++)); do
   show_failure "${numbers[i]}"
   failed_log=$log snapshot=$(step_snapshot "${numbers[i]}")
   record_failure "$label" "${numbers[i]}"
+  set_facts last_result "failed: $label" last_log "$(relative "$failed_log")" last_snapshot "${snapshot:+$(relative "$snapshot")}"
   [[ "$label" == "Clean up" ]] || clean_up
   echo "failing step: $label"
   [[ -z "$snapshot" ]] || echo "snapshot: $(relative "$snapshot")"
@@ -319,4 +395,5 @@ for ((i = 0; i < count; i++)); do
 done
 [[ -z "$known" || -n "$known_failed" ]] || fail "the known failure \"$known\" passed; drop the flag"
 { steps_hash "$work"; [[ -z "$known" ]] || echo "$known"; } > "$rec/passed"
+set_facts passed_hash "$(head -n 1 "$rec/passed")" last_result passed last_log "" last_snapshot ""
 echo "rec.sh: passed; rec.sh install $feature installs it"
