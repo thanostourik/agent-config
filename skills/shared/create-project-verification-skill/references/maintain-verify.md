@@ -128,7 +128,8 @@ The common file .agents/skills/verify-<app>/.cache/record/brief-common.md holds 
 Drive only with <driver>. Call only rec.sh start, peek, run, result and index, for your feature and those you split off, and the helpers in the common file; never drive.sh, rec.sh install, launch.sh, cleanup.sh or doctor.sh. Write only the staged copies rec.sh start names, plus the README index through rec.sh index. Do not commit or push.
 
 Put commands that belong together in one call. Look at screens only with rec.sh peek; never run pw.sh or curl outside rec.sh run and peek. Do not narrate.
-1. Contract, one command: print the common file, .agents/skills/verify-<app>/.cache/record/traps.md, .agents/skills/verify-<app>/.cache/record/failures.txt (other recorders' failed steps: feature, step, command, last output line), .agents/skills/verify-<app>/features/<feature>.md if it exists, and your contract sections with: awk -F '\t' -v f={{feature}} '$1 == f {print $2}' .agents/skills/verify-<app>/.cache/record/contract-map.tsv | while IFS= read -r s; do echo "== $s"; f=${s%%:*} p=${s#*:}; case $p in '#'*) awk -v h="$p" '$0 == h {n = index($0, " "); print; next} n && /^#+ / && index($0, " ") <= n {exit} n' "$f";; *) sed -n "${p%-*},${p#*-}p" "$f";; esac; done
+1. Contract: run each command below in its own call, nothing else. failures.txt: other recorders' failed steps (feature, step, command, last output line); contract.md, your feature file, then contract sections.
+{{read_commands}}
    If the sections look thin for this feature, grep the contract files once for its names, with grep -n -i -E '<names>' $(cut -f2 .agents/skills/verify-<app>/.cache/record/contract-map.tsv | cut -d: -f1 | sort -u); that is your only extra contract read. List every behavior they name: test cases, README sentences, plan acceptance lines, entry points. Each gets a step, and so does every sub-feature and entry point the file lists, or it goes under Blocked. When your only section is the README overview, the list comes from the sub-features and entry points that the source grep and your peek show.
 2. Source, one command: one grep for the routes and names the steps target, or for drift. Your only source read.
 3. Write. When the feature is not new, matches contract and source, covers the list, breaks no changed convention and needs no conversion, change nothing. Otherwise run rec.sh <feature> start and write the Preconditions and Clean up first, into the path it prints. Before the first run, look at every screen the recipe will touch: REC_PEEK='<peek command>' rec.sh <feature> peek runs Preconditions, saves one snapshot of the screen they leave to .agents/skills/verify-<app>/.cache/record/<feature>/peek.txt and runs Clean up; for a screen a later step opens, write the steps that reach it and add --after '<that step>'. Grep peek.txt for the element names you need in the same call; never print a whole snapshot. Then write the whole file in one write and go to step 4. Keep unchanged steps; converting gives each step a block without changing what it checks.
@@ -160,11 +161,11 @@ You are a fixer for verify-<app>. One recipe failed a drive. Feature: {{feature}
 
 Repository root: {{root}}; run every command from there. rec.sh is .agents/skills/verify-<app>/bin/rec.sh.
 
-In one command, read .agents/skills/verify-<app>/.cache/record/brief-common.md, .agents/skills/verify-<app>/.cache/record/traps.md, the log, .agents/skills/verify-<app>/features/<feature>.md and the When a drive fails section of .agents/skills/verify-<app>/SKILL.md. Follow the common file's Driving conventions. Classify the failure as one of the four kinds in When a drive fails. Read the contract only when the kind depends on it, with: awk -F '\t' -v f={{feature}} '$1 == f {print $2}' .agents/skills/verify-<app>/.cache/record/contract-map.tsv | while IFS= read -r s; do echo "== $s"; f=${s%%:*} p=${s#*:}; case $p in '#'*) awk -v h="$p" '$0 == h {n = index($0, " "); print; next} n && /^#+ / && index($0, " ") <= n {exit} n' "$f";; *) sed -n "${p%-*},${p#*-}p" "$f";; esac; done
+In one command, read .agents/skills/verify-<app>/.cache/record/brief-common.md, .agents/skills/verify-<app>/.cache/record/traps.md, the log, .agents/skills/verify-<app>/features/<feature>.md and the When a drive fails section of .agents/skills/verify-<app>/SKILL.md. Follow the common file's Driving conventions. Classify the failure as one of the four kinds in When a drive fails. Read the contract only when the kind depends on it, with: sed -n '/^== /,$p' .agents/skills/verify-<app>/.cache/record/{{feature}}/contract.md
 
-Drive only with <driver>. Call only rec.sh <feature> start, rec.sh <feature> run and the helpers in the common file; never drive.sh, rec.sh install, launch.sh, cleanup.sh or doctor.sh. Edit no helper, SKILL.md, features/README.md or product code, and write no tracked file. Do not commit or push.
+Drive only with <driver>. Call only rec.sh <feature> start, run and result, and the helpers in the common file; never drive.sh, rec.sh install, launch.sh, cleanup.sh or doctor.sh. Edit no helper, SKILL.md, features/README.md or product code, and write no tracked file. Do not commit or push.
 
-When the recipe is wrong, run rec.sh <feature> start, fix the wrong step in the staged copy it names without changing what the step checks, and rerun rec.sh <feature> run until it prints "passed". On a failure it ends with the failing step, a snapshot of the screen at the failure when the driver wrote one, and the full log: grep the snapshot for the real names instead of running again to look, and never print it whole. A known-failure step runs with --known-failure '<Label>'. When the app or a missing prerequisite blocks the fix, stop, leave the staged copy as it is and return the line with the failing step, the exact command that failed and the log path. A product defect, an uncertain expectation, a helper defect or an unhealthy environment changes nothing: name it.
+When the recipe is wrong, run rec.sh <feature> start, fix the wrong step in the staged copy it names without changing what the step checks, and rerun rec.sh <feature> run (or result, if your tool returned first) until it prints "passed". On a failure it ends with the failing step, a snapshot of the screen at the failure when the driver wrote one, and the full log: grep the snapshot for the real names instead of running again to look, and never print it whole. A known-failure step runs with --known-failure '<Label>'. When the app or a missing prerequisite blocks the fix, stop, leave the staged copy as it is and return the line with the failing step, the exact command that failed and the log path. A product defect, an uncertain expectation, a helper defect or an unhealthy environment changes nothing: name it.
 
 Return one line: <feature>: <kind>: <what you changed, or what is wrong and where>; run: passed, passed with the known failure at "<step>", fail at "<step>", or not run; <k> attempts.
 ```
@@ -191,11 +192,11 @@ printf '%s\n' <feature> <feature> > $r/convert.txt
 mode=<full or changed>; echo $mode > $r/mode.txt
 ```
 
-Recorder briefs, from the repository root: in the step 3 call for every feature, and again for each feature that goes back. Only the feature names after `for feature in` change. It prints a line for each feature without an index line or contract sections in `contract-map.tsv`.
+Recorder briefs, from the repository root: in the step 3 call for every feature, and again for each feature that goes back. Only the feature names after `for feature in` change. It prints a line for each feature without an index line or contract sections, and writes each feature's `contract.md`.
 
 ```
 v=.agents/skills/verify-<app>; r=$v/.cache/record
-export root=$PWD feature index_line other_features new convert conventions_changed=none
+export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none
 section() { awk '/^## /{p = /^## Driving conventions$/} p' "$1"; }
 test -f $v/.cache/starting-README.md && test "$(cat $r/mode.txt)" = changed && conventions_changed=$(diff <(section $v/.cache/starting-README.md) <(section $v/features/README.md) | grep '^[<>]' || echo none)
 test $(printf '%s\n' "$conventions_changed" | wc -l) -gt 8 && conventions_changed='the Driving conventions were rewritten; follow the current ones in the common file'
@@ -204,8 +205,11 @@ for feature in <feature> <feature>; do
   other_features=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && (i = index($0, "](./")) {n = substr($0, i + 4); n = substr(n, 1, index(n, ".md)") - 1); if (n != f) o = o (o == "" ? "" : ", ") n} END {print o}' $v/features/README.md)
   new=$(test -f $v/features/$feature.md && echo no || echo yes)
   convert=$(grep -qsx "$feature" $r/convert.txt && echo yes || echo no)
-  test -n "$index_line" && awk -F '\t' -v f="$feature" '$1 == f {found = 1} END {exit !found}' $r/contract-map.tsv || echo "$feature: no index line or no contract sections"
-  mkdir -p $r/$feature && awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/brief-template.md > $r/$feature/brief.md
+  c=$r/$feature/contract.md h="   cat $r/brief-common.md $r/traps.md $r/failures.txt"
+  mkdir -p $r/$feature && { cat $v/features/$feature.md 2>/dev/null; awk -F '\t' -v f="$feature" '$1 == f {print $2}' $r/contract-map.tsv | while IFS= read -r s; do echo "== $s"; f=${s%%:*} p=${s#*:}; case $p in '#'*) awk -v h="$p" '$0 == h {n = index($0, " "); print; next} n && /^#+ / && index($0, " ") <= n {exit} n' "$f";; *) sed -n "${p%-*},${p#*-}p" "$f";; esac; done; } > $c
+  test -n "$index_line" && grep -q '^== ' $c || echo "$feature: no index line or no contract sections"
+  read_commands=$(test $($h $c | wc -c) -le 20000 && echo "$h $c" || { echo "$h"; for o in $(seq 1 20000 $(wc -c < $c)); do echo "   tail -c +$o $c | head -c 20000"; done; })
+  awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/brief-template.md > $r/$feature/brief.md
 done
 ```
 
