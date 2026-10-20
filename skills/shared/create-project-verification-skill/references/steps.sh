@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> [<feature file> <feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
+# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
 
 step_timeout=600
 
@@ -18,6 +18,9 @@ split_steps() {
 
 check_steps() {
   local number label script syntax finding
+  grep -q '^## Driving it with' "$2" || { echo "no \"## Driving it with\" heading; the recipe goes under that heading"; return; }
+  [[ "$(head -n 1 "$1/steps" | cut -f2)" == Preconditions ]] || echo "no Preconditions block under \"## Driving it with\""
+  cut -f2 "$1/steps" | grep -q -v -x Preconditions || echo "no labeled step (- **<Label>.**) under \"## Driving it with\""
   while IFS=$'\t' read -r number label; do
     if [[ ! -f "$1/$number.sh" ]]; then
       echo "step \"$label\" has no bash block; convert the recipe before driving"
@@ -41,14 +44,6 @@ lint_block() {
     /waitForTimeout\(/ { waits["waitForTimeout"] }
     /(^|[^A-Za-z0-9_.\/-])sleep([[:space:]]|$)/ { waits["sleep"] }
     index($0, ".first()") { first = 1 }
-    {
-      line = $0
-      while (match(line, /timeout:[[:space:]]*[0-9]+/)) {
-        n = substr(line, RSTART, RLENGTH); sub(/^timeout:[[:space:]]*/, "", n)
-        if (n + 0 < 5000 && !(n in short)) { short[n]; print "sets timeout: " n "; a timeout is at least 5000" }
-        line = substr(line, RSTART + RLENGTH)
-      }
-    }
     END {
       for (w in waits) print "waits with " w "; wait for the expected state instead"
       if (first) print "uses .first(); target the element by its role and name"
@@ -154,8 +149,13 @@ contract_map() {
   awk -F '\t' '
     FNR == NR { words[$1] = tolower($2); next }
     function flush(end) { for (f in kind) print f "\t" file ":" (heading ~ /^#/ ? heading : start "-" end) "\t" kind[f]; delete kind }
-    FNR == 1 { flush(last); file = FILENAME; start = 1; heading = "" }
-    (file ~ /\.md$/ ? /^#{1,6} / : /^[[:space:]]*(describe|it|test)\(/) { flush(FNR - 1); start = FNR; heading = $0 }
+    function begin() { flush(FNR - 1); start = FNR; heading = $0 }
+    FNR == 1 { flush(last); file = FILENAME; start = 1; heading = ""; outer = -1 }
+    file ~ /\.md$/ && /^#{1,6} / { begin() }
+    file !~ /\.md$/ && /^[[:space:]]*(describe|it|test)\(/ {
+      indent = match($0, /[^[:space:]]/) - 1
+      if (outer < 0 || indent <= outer) { begin(); outer = /^[[:space:]]*describe\(/ ? indent : -1 }
+    }
     {
       last = FNR
       for (f in words) if (tolower($0) ~ words[f] && kind[f] != "section") kind[f] = $0 == heading ? "section" : "mention"

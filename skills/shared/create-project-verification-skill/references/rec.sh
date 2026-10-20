@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
-# rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
+# rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt; a run whose process died first prints killed before it finished.
 # rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK, else .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
@@ -189,7 +189,20 @@ if [[ "$action" == facts ]]; then
 fi
 if [[ "$action" == result ]]; then
   (($# == 0)) || usage
-  while [[ -e "$rec/running" ]]; do sleep 2; done
+  while [[ -e "$rec/running" ]]; do
+    pid=$(cat "$rec/running" 2>/dev/null)
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      if [[ -f "$rec/result.new" ]]; then
+        { cat "$rec/result.new"; echo "$feature: killed before it finished"; } > "$rec/result.txt"
+        rm -f "$rec/result.new"
+      elif [[ ! -f "$rec/result.txt" ]]; then
+        echo "$feature: killed before it finished" > "$rec/result.txt"
+      fi
+      rm -f "$rec/running"
+      break
+    fi
+    sleep 2
+  done
   [[ -f "$rec/result.txt" ]] || { echo "no run yet for $feature"; exit 1; }
   cat "$rec/result.txt"
   exit 0
@@ -228,8 +241,8 @@ killed() {
 }
 
 if [[ "$action" == run ]]; then
-  : > "$rec/running"
   : > "$rec/result.new"
+  echo $$ > "$rec/running"
   trap finish EXIT
   trap 'killed 130' INT
   trap 'killed 143' TERM
@@ -249,13 +262,12 @@ mapfile -t labels < <(cut -f2 "$work/steps")
 count=${#labels[@]}
 
 problems=()
-((count)) && [[ "${labels[0]}" == Preconditions ]] || problems+=("$(relative "$staged") has no Preconditions block under \"## Driving it with\"")
 ((count)) && [[ "${labels[-1]}" == "Clean up" ]] || problems+=("the last step is not \"Clean up\"")
 if [[ "$action" == run ]]; then
   set_facts attempts "$attempts" names "$(staged_names "$staged")"
   mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work" "$staged" "$feature" "$skill/.cache/record/contract-map.tsv")
 else
-  mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work")
+  mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work" "$staged")
 fi
 if [[ -n "$known" ]]; then
   ((count >= 3)) && [[ "${labels[-1]}" == "Clean up" && "${labels[-2]}" == "$known" ]] ||

@@ -35,8 +35,8 @@ for feature in "${features[@]}"; do
   dir="$work/$feature"
   mkdir -p "$dir" && : > "$dir/steps"
   split_steps "$skill/features/$feature.md" "$dir"
-  checks=("$dir")
-  [[ -z "$check" ]] || checks+=("$skill/features/$feature.md" "$feature" "$skill/.cache/record/contract-map.tsv")
+  checks=("$dir" "$skill/features/$feature.md")
+  [[ -z "$check" ]] || checks+=("$feature" "$skill/.cache/record/contract-map.tsv")
   while IFS= read -r problem; do refusals+=("features/$feature.md: $problem"); done < <(check_steps "${checks[@]}")
 done
 if ((${#refusals[@]})); then
