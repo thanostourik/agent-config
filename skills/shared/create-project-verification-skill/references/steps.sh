@@ -87,6 +87,7 @@ check_contract() {
       line = substr($0, 3)
       if (!(i = index(line, arrow))) { print "## Contract line \"" $0 "\" has no \"" arrow "\""; next }
       section = substr(line, 1, i - 1); target = substr(line, i + length(arrow))
+      while (sub(/ \((excerpt|mentions|not read: [^)]*)\)$/, "", section)) {}
       covered[section]
       if (target ~ /^not driven/) {
         if (target !~ /^not driven:[[:space:]]*[^[:space:]]/) print "## Contract line for " section " says not driven without a reason"

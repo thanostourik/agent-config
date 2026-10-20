@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
+# rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there; it resets .cache/record/<feature>/reached.tsv. An installed feature keeps its attempts count.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, refuse it while a step's current block has no line in reached.tsv, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt; a run whose process died first prints killed before it finished.
-# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. Each step it ran, failed ones and Clean up included, gets a line of its label and block hash in .cache/record/<feature>/reached.tsv. The snapshot command is .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file; without one, attempts 0 and the other keys empty.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh affected: list in .cache/changed.txt the files changed since the commit in features/last-reviewed, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
@@ -335,6 +335,7 @@ target="$skill/features/$feature.md"
 if [[ "$action" == start ]]; then
   (($# == 0)) || usage
   mkdir -p "$rec"
+  rm -f "$rec/reached.tsv"
   if [[ -f "$staged" ]]; then
     echo "rec.sh: kept the staged file $(relative "$staged")"
   elif [[ -f "$target" ]]; then
@@ -460,6 +461,15 @@ if [[ "$action" == run ]]; then
 else
   mapfile -t -O "${#problems[@]}" problems < <(check_steps "$work" "$staged")
 fi
+block_hash() { sha256sum < "$work/$1.sh" | cut -d' ' -f1; }
+unpeeked() {
+  local i
+  for ((i = 0; i < count; i++)); do
+    [[ ! -f "$work/${numbers[i]}.sh" ]] || grep -qxF "${labels[i]}"$'\t'"$(block_hash "${numbers[i]}")" "$rec/reached.tsv" 2>/dev/null ||
+      echo "step \"${labels[i]}\" has not been peeked since its block changed"
+  done
+}
+[[ "$action" != run ]] || mapfile -t -O "${#problems[@]}" problems < <(unpeeked)
 if [[ -n "$known" ]]; then
   ((count >= 3)) && [[ "${labels[-1]}" == "Clean up" && "${labels[-2]}" == "$known" ]] ||
     problems+=("--known-failure \"$known\" is not the last step before \"Clean up\"; a known failure goes only there")
@@ -520,6 +530,11 @@ show_failure() {
     { out[++n] = $0 }
     END { for (i = n > keep ? n - keep + 1 : 1; i <= n; i++) print out[i]; printf "%s", rest }
   '
+}
+
+reach() {
+  { awk -F '\t' -v label="$1" '$1 != label' "$rec/reached.tsv" 2>/dev/null; printf '%s\t%s\n' "$1" "$(block_hash "$2")"; } > "$rec/reached.new"
+  mv "$rec/reached.new" "$rec/reached.tsv"
 }
 
 step_snapshot() { step_output "$1" | snapshot_path; }
@@ -601,7 +616,9 @@ if [[ "$action" == peek ]]; then
   status=0 failed=""
   rm -f "$rec"/peek.txt "$rec"/peek-*.txt
   for ((i = 0; i <= last; i++)); do
-    if ! attempt "${numbers[i]}" "${labels[i]}"; then
+    attempt "${numbers[i]}" "${labels[i]}"; step_status=$?
+    reach "${labels[i]}" "${numbers[i]}"
+    if ((step_status)); then
       echo "$feature / ${labels[i]}: fail ($(relative "$log"))"
       show_failure "${numbers[i]}"
       status=1 failed=${labels[i]}
@@ -622,6 +639,7 @@ if [[ "$action" == peek ]]; then
   fi
   find_locators
   clean_up || status=1
+  reach "Clean up" "${numbers[-1]}"
   exit $status
 fi
 
