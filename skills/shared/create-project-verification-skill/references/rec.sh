@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with REC_PEEK set, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
-# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK, else .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh install [<feature>...]: add each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds to the staged file's Gotchas, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
@@ -18,7 +18,7 @@ source "$skill/bin/steps.sh"
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
        rec.sh <feature> result
-       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...
+       rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...
        rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
        rec.sh install [<feature>...]"
@@ -217,7 +217,8 @@ while (($#)); do
   fi
   shift 2
 done
-[[ "$action" == run || -n "${REC_PEEK:-}" ]] || fail "set REC_PEEK to the snapshot command the maintenance skill names; peek appends the output path to it"
+peek_command=${REC_PEEK:-$(cat "$skill/.cache/record/peek-command.txt" 2>/dev/null)}
+[[ "$action" == run || -n "$peek_command" ]] || fail "set REC_PEEK or write .cache/record/peek-command.txt"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
 finish() {
   exec >&- 2>&-
@@ -350,7 +351,7 @@ clean_up() {
 
 peek_into() {
   rm -f "$2"
-  printf '%s%q\n' "$REC_PEEK" "$(relative "$2")" > "$work/$1.sh"
+  printf '%s%q\n' "$peek_command" "$(relative "$2")" > "$work/$1.sh"
   attempt "$1" Snapshot && [[ -s "$2" ]]
 }
 
@@ -445,7 +446,7 @@ for ((i = 0; i < count; i++)); do
   show_failure "${numbers[i]}"
   failed_log=$log snapshot=$(step_snapshot "${numbers[i]}")
   record_failure "$label" "${numbers[i]}"
-  [[ -z "${REC_PEEK:-}" ]] || ! peek_into failure "$rec/failure.txt" || snapshot=$rec/failure.txt
+  [[ -z "$peek_command" ]] || ! peek_into failure "$rec/failure.txt" || snapshot=$rec/failure.txt
   set_facts last_result "failed: $label" last_log "$(relative "$failed_log")" last_snapshot "${snapshot:+$(relative "$snapshot")}"
   [[ "$label" == "Clean up" ]] || clean_up
   echo "failing step: $label"
