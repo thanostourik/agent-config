@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
+# rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
 # rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
 # rec.sh <feature> peek [--after '<Label>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
-# rec.sh install [<feature>...]: move staged files that passed run and keep every Gotchas line of the installed file, there or in features/README.md, into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
+# rec.sh install [<feature>...]: add each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds to the staged file's Gotchas, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
 set -uo pipefail
 shopt -s nullglob
 
@@ -71,12 +71,27 @@ lost_gotchas() {
 }
 
 not_ready() {
-  local rec="$skill/.cache/record/$1" lost
+  local rec="$skill/.cache/record/$1"
   [[ -f "$rec/$1.md" ]] || { echo "$1 has no staged file; run rec.sh $1 start"; return; }
   [[ -f "$rec/passed" ]] || { echo "$1 has not passed rec.sh $1 run"; return; }
-  [[ "$(head -n 1 "$rec/passed")" == "$(recipe_hash "$rec/$1.md")" ]] || { echo "$1 changed since it passed; run it again"; return; }
+  [[ "$(head -n 1 "$rec/passed")" == "$(recipe_hash "$rec/$1.md")" ]] || echo "$1 changed since it passed; run it again"
+}
+
+carry_gotchas() {
+  local staged="$skill/.cache/record/$1/$1.md" lost
   lost=$(lost_gotchas "$1")
-  [[ -z "$lost" ]] || printf '%s drops Gotchas lines of features/%s.md; keep them in its Gotchas or in features/README.md Gotchas:\n%s\n' "$1" "$1" "$lost"
+  [[ -n "$lost" ]] || return 0
+  LOST=$lost awk '
+    function carry() { if (!content) print ""; print ENVIRON["LOST"]; printf "%s", gap; gotchas = 0 }
+    /^## / && gotchas { carry() }
+    { line = $0; sub(/[[:space:]]+$/, "", line) }
+    line == "## Gotchas" { gotchas = found = 1; print; next }
+    gotchas && line == "" { gap = gap $0 "\n"; next }
+    gotchas { printf "%s", gap; gap = ""; content = 1 }
+    { print }
+    END { if (gotchas) carry(); else if (!found) printf "\n## Gotchas\n\n%s\n", ENVIRON["LOST"] }
+  ' "$staged" > "$staged.new" && mv "$staged.new" "$staged"
+  echo "rec.sh: carried $(wc -l <<< "$lost") gotcha lines into $1"
 }
 
 if [[ "${1:-}" == install ]]; then
@@ -102,7 +117,7 @@ if [[ "${1:-}" == install ]]; then
   moved=() status=0
   for feature in "${features[@]}"; do
     target="$skill/features/$feature.md"
-    if [[ ! -d "$target" ]] && mv "$skill/.cache/record/$feature/$feature.md" "$target"; then
+    if [[ ! -d "$target" ]] && carry_gotchas "$feature" && mv "$skill/.cache/record/$feature/$feature.md" "$target"; then
       moved+=("$feature")
     else
       echo "rec.sh: could not install $feature; its staged file is unchanged" >&2
@@ -149,7 +164,9 @@ if [[ "$action" == start ]]; then
     printf '# %s\n\n## Sub-features\n\n## How to get to it (user POV)\n\n## Driving it with %s\n\nPreconditions:\n\n- **Clean up.**\n\n## Gotchas\n' "$feature" "$driver" > "$staged"
     echo "rec.sh: write the new feature file over the skeleton at $(relative "$staged")"
   fi
-  set_facts attempts 0 passed_hash "$(head -n 1 "$rec/passed" 2>/dev/null)" names "$(staged_names "$staged")"
+  attempts=0
+  [[ ! -f "$target" ]] || attempts=$(fact attempts)
+  set_facts attempts "${attempts:-0}" passed_hash "$(head -n 1 "$rec/passed" 2>/dev/null)" names "$(staged_names "$staged")"
   exit 0
 fi
 

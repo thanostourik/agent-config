@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> [<feature file> <feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>...
+# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> [<feature file> <feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>...
 
 step_timeout=600
 
@@ -80,7 +80,7 @@ fixture_names() {
 
 check_contract() {
   awk -F '\t' -v feature="$3" -v arrow=" → " '
-    FILENAME == ARGV[1] { if ($1 == feature && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
+    FILENAME == ARGV[1] { if ($1 == feature && $3 != "mention" && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
     FILENAME == ARGV[2] { steps[$2]; next }
     /^## / { contract = $0 == "## Contract"; next }
     !contract || !/^- / { next }
@@ -148,4 +148,18 @@ calls_run_script() {
     }
     END { exit !found }
   ' "$1"
+}
+
+contract_map() {
+  awk -F '\t' '
+    FNR == NR { words[$1] = tolower($2); next }
+    function flush(end) { for (f in kind) print f "\t" file ":" (heading ~ /^#/ ? heading : start "-" end) "\t" kind[f]; delete kind }
+    FNR == 1 { flush(last); file = FILENAME; start = 1; heading = "" }
+    (file ~ /\.md$/ ? /^#{1,6} / : /^[[:space:]]*(describe|it|test)\(/) { flush(FNR - 1); start = FNR; heading = $0 }
+    {
+      last = FNR
+      for (f in words) if (tolower($0) ~ words[f] && kind[f] != "section") kind[f] = $0 == heading ? "section" : "mention"
+    }
+    END { flush(last) }
+  ' "$@"
 }
