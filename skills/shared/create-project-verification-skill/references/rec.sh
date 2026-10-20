@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
-# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with REC_PEEK set, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running exists until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt.
-# rec.sh <feature> peek [--after '<Label>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh install [<feature>...]: add each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds to the staged file's Gotchas, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
@@ -18,7 +18,7 @@ source "$skill/bin/steps.sh"
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
        rec.sh <feature> result
-       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']...
+       REC_PEEK='<snapshot command>' rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...
        rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
        rec.sh install [<feature>...]"
@@ -204,12 +204,14 @@ if [[ "$action" == result ]]; then
 fi
 [[ "$action" == run || "$action" == peek ]] || usage
 
-known="" afters=()
+known="" afters=() finds=()
 while (($#)); do
   if [[ "$action" == run && -z "$known" && "$1" == --known-failure && -n "${2:-}" ]]; then
     known=$2
   elif [[ "$action" == peek && "$1" == --after && -n "${2:-}" ]]; then
     afters+=("$2")
+  elif [[ "$action" == peek && "$1" == --find && -n "${2:-}" ]]; then
+    finds+=("$2")
   else
     usage
   fi
@@ -282,7 +284,7 @@ if ((${#problems[@]})); then
 fi
 
 if [[ "$action" == run ]]; then
-  rm -rf "$rec/passed"
+  rm -rf "$rec/passed" "$rec/failure.txt"
   if [[ -d "$logs" || -d "$evidence" ]]; then
     rm -rf "$rec/previous" && mkdir -p "$rec/previous"
     [[ ! -d "$logs" ]] || mv "$logs" "$rec/previous/steps"
@@ -346,17 +348,56 @@ clean_up() {
   fi
 }
 
+peek_into() {
+  rm -f "$2"
+  printf '%s%q\n' "$REC_PEEK" "$(relative "$2")" > "$work/$1.sh"
+  attempt "$1" Snapshot && [[ -s "$2" ]]
+}
+
 snapshot() {
   local peek="$rec/peek.txt"
   ((${#stops[@]} < 2)) || peek="$rec/peek-$1.txt"
-  printf '%s%q\n' "$REC_PEEK" "$(relative "$peek")" > "$work/peek-$1.sh"
-  if attempt "peek-$1" Snapshot && [[ -s "$peek" ]]; then
+  if peek_into "peek-$1" "$peek"; then
     echo "rec.sh: peek written to $(relative "$peek")${2:+ (the screen where \"$2\" failed)}"
   else
     echo "rec.sh: the peek command wrote no $(relative "$peek") ($(relative "$log"))"
     show_failure "peek-$1"
     status=1
   fi
+}
+
+find_locators() {
+  local n=0 locator
+  ((${#finds[@]})) || return 0
+  [[ "$(sed -n 's/^## Driving it with //p' "$staged" | head -n 1)" == *"Playwright CLI"* ]] || { echo "find needs a Playwright CLI driver"; return 0; }
+  for locator in "${finds[@]}"; do
+    n=$((n + 1))
+    printf 'pw.sh run-code %q\n' 'async page => { try { const l = page.'"${locator#page.}"'; const n = await l.count(); const out = [String(n)]; for (let i = 0; i < Math.min(n, 3); i++) { const m = l.nth(i); const a = (await m.ariaSnapshot({ timeout: 5000 })).split("\n")[0].match(/^- \x27?([\w-]+)(?: "((?:[^"\\]|\\.)*)")?/); const role = a ? a[1] : await m.evaluate(e => e.tagName.toLowerCase()); const text = (await m.innerText({ timeout: 5000 })).replace(/\s+/g, " ").trim().slice(0, 80); out.push(`${role} "${a && a[2] || ""}" | ${text}`); } return out.join("\n"); } catch (e) { return `error ${String(e.message).split("\n")[0]}`; } }' > "$work/find-$n.sh"
+    attempt "find-$n" Find
+    tail -n +$(( $(wc -l < "$work/find-$n.attempt.sh") + 2 )) "$log" | awk -v locator="$locator" '
+      function decode(s,   out, i, c) {
+        s = substr(s, 2, length(s) - 2)
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == "\\") { c = substr(s, ++i, 1); if (c == "n") c = "\n"; else if (c == "t") c = "\t" }
+          out = out c
+        }
+        return out
+      }
+      result { text = decode($0); found = 1; result = 0; next }
+      /^### Result$/ { result = 1; next }
+      error { message = $0; error = 0; next }
+      /^### Error$/ { error = 1; next }
+      first == "" && /[^[:space:]]/ && !/^\++\[rec\] / && !/^exit=/ { first = $0 }
+      END {
+        if (!found) { print "find " locator ": error " (message != "" ? message : first); exit }
+        n = split(text, lines, "\n")
+        if (lines[1] ~ /^error /) { print "find " locator ": " lines[1]; exit }
+        print "find " locator ": " (lines[1] == 1 ? "" : "!! ") lines[1] " match" (lines[1] == 1 ? "" : "es")
+        for (i = 2; i <= n; i++) print "  " lines[i]
+      }
+    '
+  done
 }
 
 if [[ "$action" == peek ]]; then
@@ -383,6 +424,7 @@ if [[ "$action" == peek ]]; then
     for n in "${!stops[@]}"; do ((stops[n] < i)) || { snapshot $((n + 1)) "$failed"; break; }; done
     echo "rec.sh: reached:${reached:- none}; not reached:$missed"
   fi
+  find_locators
   clean_up || status=1
   exit $status
 fi
@@ -403,6 +445,7 @@ for ((i = 0; i < count; i++)); do
   show_failure "${numbers[i]}"
   failed_log=$log snapshot=$(step_snapshot "${numbers[i]}")
   record_failure "$label" "${numbers[i]}"
+  [[ -z "${REC_PEEK:-}" ]] || ! peek_into failure "$rec/failure.txt" || snapshot=$rec/failure.txt
   set_facts last_result "failed: $label" last_log "$(relative "$failed_log")" last_snapshot "${snapshot:+$(relative "$snapshot")}"
   [[ "$label" == "Clean up" ]] || clean_up
   echo "failing step: $label"
