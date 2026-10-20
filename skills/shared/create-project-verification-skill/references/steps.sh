@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
+# steps.sh: sourced by drive.sh and rec.sh; slug <label>, snapshot_path [<log>], split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
 
 step_timeout=600
+
+slug() { tr 'A-Z' 'a-z' <<< "$1" | tr -cs 'a-z0-9' '-' | sed 's/-$//'; }
+
+snapshot_path() { grep -o '\[Snapshot\]([^)]*)' "$@" | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//'; }
 
 split_steps() {
   awk -v out="$2" '
@@ -210,7 +214,7 @@ contract_bundle() {
 
 fix_read() {
   local snapshot
-  snapshot=$(grep -o '\[Snapshot\]([^)]*)' "$1" | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//')
+  snapshot=$(snapshot_path "$1")
   {
     echo "== Snapshot of the failing step: ${snapshot:-none}"
     echo "== When a drive fails, from $4"

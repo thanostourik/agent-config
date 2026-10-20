@@ -51,14 +51,14 @@ fi
 
 drive_feature() {
   local feature=$1 dir="$work/$feature" evidence="$skill/.cache/evidence/$feature/steps"
-  local number label block log status failed="" stopped="" ran="" cleanup=""
+  local number label block log status failed="" failed_log="" stopped="" ran="" cleanup="" cleanup_log=""
   : > "$dir/state"
   rm -rf "$skill/.cache/evidence/$feature" && mkdir -p "$evidence"
   export VERIFY_SESSION=$feature
   while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"
-    log="$evidence/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
-    if [[ "$label" == "Clean up" ]]; then cleanup="$block	$log"; fi
+    log="$evidence/$number-$(slug "$label").log"
+    if [[ "$label" == "Clean up" ]]; then cleanup=$block cleanup_log=$log; fi
     [[ -e "$work/stop" ]] && stopped=1
     if [[ -n "$failed$stopped" ]]; then
       [[ "$label" == "Clean up" ]] || echo "$label" >> "$dir/not-run"
@@ -70,19 +70,19 @@ drive_feature() {
       echo "$feature / $label: pass"
     else
       echo "$feature / $label: fail ($log)"
-      failed="$label	$log"
+      failed=$label failed_log=$log
     fi
   done 3< "$dir/steps"
-  if [[ -n "$failed$stopped" && -n "$ran" && -n "$cleanup" && "${failed%%	*}" != "Clean up" ]]; then
-    if run_step "$dir/state" "${cleanup%%	*}" "${cleanup#*	}"; then
+  if [[ -n "$failed$stopped" && -n "$ran" && -n "$cleanup" && "$failed" != "Clean up" ]]; then
+    if run_step "$dir/state" "$cleanup" "$cleanup_log"; then
       echo "$feature / Clean up: pass"
     else
-      echo "$feature / Clean up: fail (${cleanup#*	})"
-      echo "${cleanup#*	}" > "$dir/cleanup-failed"
+      echo "$feature / Clean up: fail ($cleanup_log)"
+      echo "$cleanup_log" > "$dir/cleanup-failed"
     fi
   fi
   if [[ -n "$failed" ]]; then
-    echo "$failed" > "$dir/failed"
+    printf '%s\t%s\n' "$failed" "$failed_log" > "$dir/failed"
     if [[ ! -e "$work/stop" ]] && ! "$skill/bin/doctor.sh" > "$evidence/doctor.log" 2>&1 < /dev/null 3<&-; then
       echo "doctor failed after $feature ($evidence/doctor.log); stopping the run"
       : > "$work/stop"

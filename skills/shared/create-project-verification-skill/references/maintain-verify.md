@@ -40,28 +40,16 @@ In map-only mode, edit only the feature files and index. Report helper or lifecy
 
 Start with one command that prints `verify-<app>/SKILL.md`, `features/README.md` and the two Claude Code stubs' frontmatter, lists the feature files, and copies `features/README.md` to `.agents/skills/verify-<app>/.cache/starting-README.md`. That is your only read of those files in this pass. The copy is the starting record of the map and driving conventions, so selection sees every change of this pass, committed or not. When the global maintenance skill invokes you, it made that copy before conformance: leave the copy out of your command, and take its list of the features `bin/drive.sh --check` refused.
 
-1. **Index**, two commands. One grep over routes, navigation, commands and endpoints lists the candidate features: a list, not a read of every component. In changed-recipes mode with `features/last-reviewed`, run the command below first and the grep over `.cache/changed.txt` only, none when it is empty. From then on, every feature means the affected ones it prints, the grep's new ones and the listed refused ones; with none, go to Ship. Then one edit of `features/README.md` makes every change below. Fix missing and duplicate entries. Remove an entry whose feature the app no longer has, not one whose file a recorder has not written yet. Add an entry for each candidate feature the index lacks. Name a new feature after what the user does or sees, in kebab-case, with a one-line scope on its index line. Scopes never overlap: when two index lines name the same behavior, narrow one of them. Update `## Change triggers` from the source for new, removed and moved features. Check that the two Claude Code stubs still match the real skills' `name` and `description`.
-
-   ```
-   v=.agents/skills/verify-<app>; b=$(cat $v/features/last-reviewed)
-   if git cat-file -e "$b^{commit}" 2>/dev/null; then { git diff --name-only $b; git ls-files -o --exclude-standard; } | grep -v -e "^$v/features/last-reviewed$" -e "^$v/[.]cache/" | sort -u > $v/.cache/changed.txt
-   awk -v b=$b -v d=$v/features/ -v p=$v/.cache/triggered.tsv -v kept="$(ls $v/.cache/record/*/*.md 2>/dev/null)" 'BEGIN{printf "">p} FNR==1{n++} n==1&&/^## /{t=/^## Change triggers$/;x=/^## Features$/}
-   n==1&&t&&match($0,/: [a-z0-9][a-z0-9, -]*$/){f[++nt]=substr($0,RSTART+2);r[nt]="^$";h=substr($0,1,RSTART-1);while(match(h,/`[^`]+`/)){g=substr(h,RSTART+1,RLENGTH-2);h=substr(h,RSTART+RLENGTH);for(e="";g!="";g=substr(g,2)){c=substr(g,1,1);e=e (c=="*"?".*":c=="?"?".":c~/[\\^]/?"\\" c:"[" c "]")};r[nt]=r[nt]"|^"e"$"}}
-   n==1&&x&&(i=index($0,"](./")){s=substr($0,i+4);all[substr(s,1,index(s,".md)")-1)];total++}
-   n==2&&index($0,d)==1&&/[.]md$/&&!/README.md$/{hit[substr($0,length(d)+1,length($0)-length(d)-3)];next}
-   n==2&&!/^[.](agents|claude)\//{m=0;for(i=1;i<=nt;i++)if($0~r[i]){m=split(f[i],a,/, */);for(j in a){hit[a[j]];print a[j]"\t"$0>p}};if(!m)u=u"unmapped change: "$0"\n"}
-   END{split(kept,k,"\n");for(j in k)if((z=split(k[j],q,"/"))>1&&q[z]==q[z-1]".md")hit[q[z-1]];for(s in all)if(s in hit)o=o" "s;printf "affected:%s\nskipped: %d of %d features, unchanged since %s\n%s",o,total-split(o,a," "),total,b,u}' $v/features/README.md $v/.cache/changed.txt | tee $v/.cache/affected.txt
-   else echo "no commit $b: record every feature"; fi
-   ```
+1. **Index**, two commands. One grep over routes, navigation, commands and endpoints lists the candidate features: a list, not a read of every component. In changed-recipes mode with `features/last-reviewed`, run `bin/rec.sh affected` first and the grep over `.cache/changed.txt` only, none when it is empty. From then on, every feature means the affected ones it prints, the grep's new ones and the listed refused ones; with none, go to Ship. Then one edit of `features/README.md` makes every change below. Fix missing and duplicate entries. Remove an entry whose feature the app no longer has, not one whose file a recorder has not written yet. Add an entry for each candidate feature the index lacks. Name a new feature after what the user does or sees, in kebab-case, with a one-line scope on its index line. Scopes never overlap: when two index lines name the same behavior, narrow one of them. Update `## Change triggers` from the source for new, removed and moved features. Check that the two Claude Code stubs still match the real skills' `name` and `description`.
 
 2. **Map only: read.** Readers cover every feature in small batches of related features. Return shape: feature summary / source entry points / likely drift or none / proposed recipe. Without subagents, read the groups yourself. Spot-check cited drift and update the files and index. Require concrete source evidence for additions and removals. Preserve expected behavior supported by a request, documented contract or established test. Current code alone does not prove a conflicting expectation is obsolete. Report possible product defects and unresolved expectations instead of writing them into the map as normal behavior. Each recipe keeps its exact setup and fixture cleanup so it runs from the baseline.
-3. **Modes that drive: record.** Follow `verify-<app>`'s Isolation, Launch and Doctor sections; when `launch.sh` already runs doctor, do not run it again. Before any recorder starts, look at the app once as a recipe would: run the Baseline's sign-in or open command with `VERIFY_SESSION=main`, take one accessibility snapshot of the main screen, keep only its lines that carry a role and a name in `.agents/skills/verify-<app>/.cache/record/main-screen.txt` and close that session, in one command. For Playwright CLI that is `pw.sh snapshot --filename=<that path>.yml` and `grep -E '^ *- (button|link|menuitem|textbox|heading|tab) "'` of it; for an API, the paths in one `curl` of the OpenAPI document; for a CLI, its `--help`. The snapshot command minus path and filter is the peek command, for Playwright CLI `pw.sh snapshot --filename=`. Right after it, in one command, write `.agents/skills/verify-<app>/.cache/record/brief-common.md` out of the project's files in the shape under Common brief file, so you type none of it out and never read it, run the once-per-run command under Brief files, and run the recorder brief command for every feature. Then give every feature to a recorder, all on that one environment. Recorders at once: <n>, and fixers the same; `drive.sh`'s `--jobs` does not set it. Raise it for an app that takes more; lower it when browsers fail to start or memory runs out. Start that many in one turn, each with the one-line prompt under Brief files. Each time a recorder returns, start the next feature in the same turn with one Agent call and nothing else: no report read, index edit or brief command. Between returns, do nothing: no waiting turn, no `date`, no narration. Never paste brief text, report text or feature content into your messages or prompts. Post a progress line, if any, each time that many more recorders have returned. Features that change state other features read, such as global settings, record one at a time after the others have returned, and so does every feature when the Drive section uses `--jobs 1`. Each recorder writes its full report to `.agents/skills/verify-<app>/.cache/record/<feature>/report.md` and returns one line, naming the features it split off.
+3. **Modes that drive: record.** Follow `verify-<app>`'s Isolation, Launch and Doctor sections; when `launch.sh` already runs doctor, do not run it again. Before any recorder starts, look at the app once as a recipe would: run the Baseline's sign-in or open command with `VERIFY_SESSION=main`, take one accessibility snapshot of the main screen, keep only its lines that carry a role and a name in `.agents/skills/verify-<app>/.cache/record/main-screen.txt` and close that session, in one command. For Playwright CLI that is `pw.sh snapshot --filename=<that path>.yml` and `grep -E '^ *- (button|link|menuitem|textbox|heading|tab) "'` of it; for an API, the paths in one `curl` of the OpenAPI document; for a CLI, its `--help`. The snapshot command minus path and filter is the peek command, for Playwright CLI `pw.sh snapshot --filename=`. Right after it, in one command, run `bin/rec.sh common`, the once-per-run command under Brief files and `bin/rec.sh brief` for every feature; never read the files they write. Then give every feature to a recorder, all on that one environment. Recorders at once: <n>, and fixers the same; `drive.sh`'s `--jobs` does not set it. Raise it for an app that takes more; lower it when browsers fail to start or memory runs out. Start that many in one turn, each with the one-line prompt under Brief files. Each time a recorder returns, start the next feature in the same turn with one Agent call and nothing else: no report read, index edit or brief command. Between returns, do nothing: no waiting turn, no `date`, no narration. Never paste brief text, report text or feature content into your messages or prompts. Post a progress line, if any, each time that many more recorders have returned. Features that change state other features read, such as global settings, record one at a time after the others have returned, and so does every feature when the Drive section uses `--jobs 1`. Each recorder writes its full report to `.agents/skills/verify-<app>/.cache/record/<feature>/report.md` and returns one line, naming the features it split off.
 
    When every recorder has returned, read the report files of the features whose line shows a split, a difference or a blocker, in one `cat`; never read the others. Act on them:
-   - Send back each feature this prints, as no drift needs a passing run: `v=.agents/skills/verify-<app>; for d in $v/.cache/record/*/; do test -f $d/changes.diff && grep -qis '^- Files:.*no drift' $d/report.md && $v/bin/rec.sh $(basename $d) facts | grep -qx 'attempts.0' && basename $d; done`
+   - Send back each feature `bin/rec.sh sendback` prints, as no drift needs a passing run.
    - Fix the helper defects that reports name as blockers yourself, and the documented dependencies or setup steps they lack, inside the owned environment, then send each blocked feature back. A prerequisite the project does not document stays blocked: report it.
    - Correct the index entries and change triggers of the features that those reports name as changed, split or blocked: each split-off feature gets its own triggers, and the feature it came from keeps those of the sub-features its file still holds.
-   - Before a feature goes back, write the common brief file again, then render its brief and append why in the same call: `echo 'Sent back: <reason>' >> .agents/skills/verify-<app>/.cache/record/<feature>/brief.md`. A split-off feature first gets the `contract-map.tsv` and `contract-words.tsv` lines of the feature it came from, under its own name. Its staged file stays, so the new recorder starts from it.
+   - Before a feature goes back, run `bin/rec.sh common` and `bin/rec.sh brief <feature>`, and append why in the same call: `echo 'Sent back: <reason>' >> .agents/skills/verify-<app>/.cache/record/<feature>/brief.md`. A split-off feature first gets the `contract-map.tsv` and `contract-words.tsv` lines of the feature it came from, under its own name. Its staged file stays, so the new recorder starts from it.
    - Report each Difference as a possible product defect or unresolved expectation.
 
    Then, unless the Baseline gives each recipe its own account or data namespace, check for fixture clashes with one `grep -H '^names' .agents/skills/verify-<app>/.cache/record/*/facts.tsv`: when two features create the same account, fixture or resource name, send one back to rename it. When none goes back, run `bin/rec.sh install`, which moves the staged files that passed into `features/`. In changed-recipes mode, read the Files and Split lines first, in the same call, with `grep -h -e '^- Files' -e '^- Split' .agents/skills/verify-<app>/.cache/record/*/report.md | grep -v -E -e 'no drift' -e 'none[.]?$'`, because install removes the record folders of the features it moves.
@@ -80,7 +68,7 @@ Do not treat unselected features as verified.
 
 Follow `verify-<app>`'s Isolation, Launch, Doctor, Drive, When a drive fails, Evidence and Cleanup sections. They set the driver, the isolation level, the deadlines and the failure rules.
 
-Commit the map changes after `bin/rec.sh install` and before this fresh launch, because some Doctors compare the launched revision with `HEAD`; `verify-<app>`'s Doctor section says when this one does. Then run `bin/cleanup.sh`, `bin/launch.sh` and, unless launch runs it, `bin/doctor.sh`. Then drive all selected features in one `bin/drive.sh` call, started in the background with its output in `.agents/skills/verify-<app>/.cache/drive.txt`, and do nothing until it finishes: no tailing, no counting lines. Read its summary once, with `sed -n '/^Summary$/,$p'` of that file. Send each failing feature to a fresh fixer: in one call, the fixer brief command under Brief files writes every failing feature's `fix-brief.md` from that summary, and each prompt is the one line there. Read only the line each returns. A feature that fails only at a known product failure, a step that a recorder's Differences or a fixer's line names, needs no fixer. Run fixers the way Update the map step 3 runs recorders, never beside your own drive. When the fixers are done, run `bin/rec.sh install` for the features they repaired, then drive only those features once, the same way, with the output in `.agents/skills/verify-<app>/.cache/drive-2.txt`. That summary, the first one and the fixers' lines are the record of the pass. The report's evidence links come from the last summary of each feature and one `ls -R .agents/skills/verify-<app>/.cache/evidence/`.
+Commit the map changes after `bin/rec.sh install` and before this fresh launch, because some Doctors compare the launched revision with `HEAD`; `verify-<app>`'s Doctor section says when this one does. Then run `bin/cleanup.sh`, `bin/launch.sh` and, unless launch runs it, `bin/doctor.sh`. Then drive all selected features in one `bin/drive.sh` call, started in the background with its output in `.agents/skills/verify-<app>/.cache/drive.txt`, and do nothing until it finishes: no tailing, no counting lines. Read its summary once, with `sed -n '/^Summary$/,$p'` of that file. Send each failing feature to a fresh fixer: one `bin/rec.sh fix-brief <feature>...` writes every failing feature's `fix-brief.md` from that summary, and each prompt is the one line under Brief files. Read only the line each returns. A feature that fails only at a known product failure, a step that a recorder's Differences or a fixer's line names, needs no fixer. Run fixers the way Update the map step 3 runs recorders, never beside your own drive. When the fixers are done, run `bin/rec.sh install` for the features they repaired, then drive only those features once, the same way, with the output in `.agents/skills/verify-<app>/.cache/drive-2.txt`. That summary, the first one and the fixers' lines are the record of the pass. The report's evidence links come from the last summary of each feature and one `ls -R .agents/skills/verify-<app>/.cache/evidence/`.
 
 After an aborted run, clean up its recorded leftovers, create a new environment, drive the features without a result and keep the evidence.
 
@@ -94,37 +82,11 @@ Finish or abort through Cleanup, including when startup or a drive fails. Check 
 
 ## Helper briefs
 
-The Recorder and Fixer templates below hold `{{...}}` placeholders; the commands under Brief files copy them out of this skill and fill one brief file per feature. Paths are relative to the repository root.
+The Recorder and Fixer templates below hold `{{...}}` placeholders; `bin/rec.sh brief` and `fix-brief` copy them out of this skill and fill one brief file per feature. Paths are relative to the repository root.
 
 ### Common brief file
 
-The command in Update the map step 3 writes this file from the project's files. Each `[...]` is the content it names, copied as it is.
-
-```
-# Common brief for verify-<app> recorders and fixers
-
-## From .agents/skills/verify-<app>/features/README.md
-
-[its Baseline, Driving conventions and Feature file shape sections]
-
-## Helpers, from .agents/skills/verify-<app>/SKILL.md; call them by name, they are on PATH inside a run
-
-[the Helpers section of verify-<app>/SKILL.md, each helper with one call as it appears in a recipe]
-
-## Example recipe, from this project
-
-[Preconditions and the first two steps of the shortest feature file in .agents/skills/verify-<app>/features/ that has at least five steps and that bin/drive.sh --check accepts]
-
-## The app's main screen: the role-and-name lines of an accessibility snapshot taken after the baseline sign-in
-
-[.agents/skills/verify-<app>/.cache/record/main-screen.txt]
-
-## Gotchas, from .agents/skills/verify-<app>/features/README.md
-
-[its Gotchas section, when it has one]
-```
-
-When no such feature file exists yet, leave out the Example recipe section; the common file written before a recorder goes back takes the shortest staged file of at least five steps that passed `rec.sh run`. The file stays under 20,000 bytes, the inline tool-output limit. The command that writes it guards each glob, as `f=($r/*/*.md); test -e "$f" && awk … "${f[@]}"`, and ends with `wc -c` of it; past the limit, cut the main-screen lines to headings, links and tabs first, then the example to Preconditions and one step. Traps found in this run stay out of it: helpers read `traps.md` and `failures.txt` directly.
+`bin/rec.sh common` writes `.agents/skills/verify-<app>/.cache/record/brief-common.md` under 20,000 bytes, the inline tool-output limit: the Baseline, Driving conventions, Feature file shape and Gotchas of `features/README.md`, the Helpers section of `verify-<app>/SKILL.md`, Preconditions and two steps of the shortest accepted recipe of at least five steps as the example, and `main-screen.txt`.
 
 ### Recorder
 
@@ -184,47 +146,22 @@ Return one line: <feature>: <kind>: <what you changed, or what is wrong and wher
 
 ### Brief files
 
-Once per run, in the call that writes the common brief file, from the repository root. Replace only the `mode` value, the peek command, the contract sources after `contract_map`, the `printf` list and `refused`: `mode` is `full` in a full audit and `changed` otherwise; the list with pairs of a feature and its name and index words, as `<word>|<word>`; `refused` with the listed refused features, none in a full audit. A request text goes to `$r/request.md` in the same call, with `printf '%s\t%s\tsection\n' <feature> "$r/request.md:1-\$" >> $r/contract-map.tsv` for each feature it concerns.
+Once per run, in the call that writes the common brief file, from the repository root. Replace only the mode, the peek command, the contract sources, the first `printf` list and `refused`: the mode is `full` in a full audit and `changed` otherwise; the list with pairs of a feature and its name and index words, as `<word>|<word>`; `refused` with the listed refused features, none in a full audit. A request text goes to `$r/request.md` in the same call, with `printf '%s\t%s\tsection\n' <feature> "$r/request.md:1-\$" >> $r/contract-map.tsv` after `rec.sh brief` for each feature it concerns.
 
-A contract section says what one feature should do: `README.md:## Search` is that heading down to the next at its level or above; `test/search.test.ts:40-72` is a `describe`, `it` or `test` line down to the next. Contract sources are the README, docs, plans, tests and specs. `contract_map` maps each line holding a feature's word to the section above it: `section` when the word is in the heading line, else `mention`, whose matching lines alone reach `contract.md`. `contract_bundle` keeps `contract.md` under 20,000 bytes: sections whose heading holds a feature word, other sections, then mentions; a section over 6,000 bytes or the cap becomes an excerpt, and past the cap a `not read` line, still needing its Contract line. With no contract sources beyond a high-level README, replace `contract_map` with `section` rows mapping every feature to the README's overview, such as `README.md:1-40`; recorders then take their behavior list from the source and the screen, and Ship says so.
+A contract section says what one feature should do: `README.md:## Search` is that heading down to the next at its level or above; `test/search.test.ts:40-72` is a `describe`, `it` or `test` line down to the next. Contract sources are the README, docs, plans, tests and specs. `rec.sh brief` maps each line holding a feature's word to the section above it, once per run: `section` when the word is in the heading line, else `mention`, whose matching lines alone reach `contract.md`. `contract_bundle` keeps `contract.md` under 20,000 bytes: sections whose heading holds a feature word, other sections, then mentions; a section over 6,000 bytes or the cap becomes an excerpt, and past the cap a `not read` line, still needing its Contract line. With no contract sources beyond a high-level README, replace the sources line and `rec.sh brief` with `section` rows in `$r/contract-map.tsv` mapping every feature to the README's overview, such as `README.md:1-40`; recorders then take their behavior list from the source and the screen, and Ship says so.
 
 ```
-v=.agents/skills/verify-<app>; r=$v/.cache/record
-template() { awk -v h="### $1" '$0 == h {s = 1; next} s && /^```/ {if (f) exit; f = 1; next} f' .agents/skills/maintain-verify-<app>/SKILL.md; }
-mkdir -p $r && template Recorder > $r/brief-template.md && template Fixer > $r/fix-brief-template.md
+v=.agents/skills/verify-<app>; r=$v/.cache/record; mkdir -p $r
 printf '%s\t%s\n' <feature> '<word>|<word>' <feature> '<word>|<word>' > $r/contract-words.tsv
-. $v/bin/steps.sh && contract_map $r/contract-words.tsv README.md docs/*.md .plans/*.md test/*.test.ts > $r/contract-map.tsv
+printf '%s\n' README.md docs/*.md .plans/*.md test/*.test.ts > $r/contract-sources.txt
+rm -f $r/contract-map.tsv; $v/bin/rec.sh brief
 : > $r/traps.md; : > $r/failures.txt
 refused='<feature> <feature>'; : > $r/convert.txt
 [ -z "$refused" ] || $v/bin/drive.sh --check $refused 2>&1 | sed -n 's|^drive.sh: features/\(.*\)\.md: .*|\1|p' | sort -u > $r/convert.txt
-mode=<full or changed>; echo $mode > $r/mode.txt; echo '<peek command>' > $r/peek-command.txt
+echo <full or changed> > $r/mode.txt; echo '<peek command>' > $r/peek-command.txt
 ```
 
-Recorder briefs, from the repository root: in the step 3 call for every feature, and again for each feature that goes back. Only the feature names after `for feature in` change. It prints a line for each feature without an index line or contract sections, and writes each feature's `contract.md` and `changes.diff`.
-
-```
-v=.agents/skills/verify-<app>; r=$v/.cache/record; . $v/bin/steps.sh
-export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none GIT_LITERAL_PATHSPECS=1 b=$(cat $v/features/last-reviewed 2>/dev/null)
-section() { awk '/^## /{p = /^## Driving conventions$/} p' "$1"; }
-test -f $v/.cache/starting-README.md && test "$(cat $r/mode.txt)" = changed && conventions_changed=$(diff <(section $v/.cache/starting-README.md) <(section $v/features/README.md) | grep '^[<>]' || echo none)
-test $(printf '%s\n' "$conventions_changed" | wc -l) -gt 8 && conventions_changed='the Driving conventions were rewritten; follow the current ones in the common file'
-for feature in <feature> <feature>; do
-  index_line=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && index($0, "](./" f ".md)") {print; exit}' $v/features/README.md)
-  other_features=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && (i = index($0, "](./")) {n = substr($0, i + 4); n = substr(n, 1, index(n, ".md)") - 1); if (n != f) o = o (o == "" ? "" : ", ") n} END {print o}' $v/features/README.md)
-  new=$(test -f $v/features/$feature.md && echo no || echo yes)
-  convert=$(grep -qsx "$feature" $r/convert.txt && echo yes || echo no)
-  c=$r/$feature/contract.md d=$r/$feature/changes.diff h="   cat $r/brief-common.md $r/traps.md $r/failures.txt"
-  mkdir -p $r/$feature && contract_bundle $r/contract-words.tsv $r/contract-map.tsv $feature $v/features/$feature.md > $c
-  test -n "$index_line" && grep -q '^== ' $c || echo "$feature: no index line or no contract sections"
-  rm -f $d; if test "$(cat $r/mode.txt)$new" = changedno && git cat-file -e "$b^{commit}" 2>/dev/null; then
-    mapfile -t p < <(awk -F'\t' -v f=$feature '$1 == f {print $2}' $v/.cache/triggered.tsv; echo $v/features/$feature.md)
-    { git diff $b -- "${p[@]}"; git ls-files -o --exclude-standard -- "${p[@]}" | while read -r u; do git diff --no-index -- /dev/null "$u"; done; } > $d.full
-    head -c 19980 $d.full > $d; test $(wc -c < $d.full) -le 19980 || printf '\n(truncated)\n' >> $d; rm $d.full; test -s $d || rm $d
-  fi
-  read_commands=$(test $($h $c | wc -c) -le 20000 && echo "$h $c" || { echo "$h"; for o in $(seq 1 20000 $(wc -c < $c)); do echo "   tail -c +$o $c | head -c 20000"; done; }; test -f $d && echo "   cat $d")
-  awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/brief-template.md > $r/$feature/brief.md
-done
-```
+Recorder briefs: `bin/rec.sh brief <feature>...`, from the repository root, in the step 3 call for every feature and again for each feature that goes back. It prints a line for each feature without an index line or contract sections, and writes each feature's `contract.md`, `changes.diff` and `brief.md`.
 
 The whole prompt of each recorder:
 
@@ -232,17 +169,7 @@ The whole prompt of each recorder:
 You are a recorder for verify-<app>. Read <repository root>/.agents/skills/verify-<app>/.cache/record/<feature>/brief.md and do what it says.
 ```
 
-Fixer briefs, the same way, once for every failing feature. It takes each feature's failing step and log from the drive summary in `.cache/drive.txt` and prints a line for each feature the summary shows no failure for.
-
-```
-v=.agents/skills/verify-<app>; r=$v/.cache/record; . $v/bin/steps.sh
-export root=$PWD feature label log
-for feature in <feature> <feature>; do
-  IFS=$'\t' read -r label log < <(awk -v p="$feature: fail at \"" 'index($0, p) == 1 {s = substr($0, length(p) + 1); i = index(s, "\" ("); print substr(s, 1, i - 1) "\t" substr(s, i + 3, length(s) - i - 3)}' $v/.cache/drive.txt)
-  test -n "$log" || echo "$feature: no failure in the drive summary"
-  mkdir -p $r/$feature && fix_read "$log" $v/features/$feature.md $r/traps.md $v/SKILL.md > $r/$feature/fix-read.md && awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}' $r/fix-brief-template.md > $r/$feature/fix-brief.md
-done
-```
+Fixer briefs: `bin/rec.sh fix-brief <feature>...`, once for every failing feature. It takes each feature's failing step and log from the drive summary in `.cache/drive.txt` and prints a line for each feature the summary shows no failure for.
 
 The whole prompt of each fixer:
 
@@ -252,7 +179,7 @@ You are a fixer for verify-<app>. Read <repository root>/.agents/skills/verify-<
 
 ## Ship
 
-Follow the repository's branch, commit and PR conventions as you edit. Keep all corrections in one branch and PR. In the modes that drive, commit the rest, then commit `last-reviewed` alone when it changes, so the next diff skips this pass's edits: `l=.agents/skills/verify-<app>/features/last-reviewed; c=$(git log -1 --format=%H -- . ":(exclude)$l"); test "$c" = "$(cat $l)" || { echo $c > $l && git add $l && git commit -m '<message>' -- $l; }`. When `.agents/skills/verify-<app>/.cache/record/traps.md` has lines, read it once and fold the lines that still hold into the `## Gotchas` list of `features/README.md` in one edit, creating that section after Driving conventions when it is missing. Re-read the files you changed before shipping. Report the outcome separately from the step results:
+Follow the repository's branch, commit and PR conventions as you edit. Keep all corrections in one branch and PR. In the modes that drive, commit the rest, then `bin/rec.sh reviewed '<message>'` commits `last-reviewed` alone when it changes, so the next diff skips this pass's edits. When `.agents/skills/verify-<app>/.cache/record/traps.md` has lines, read it once and fold the lines that still hold into the `## Gotchas` list of `features/README.md` in one edit, creating that section after Driving conventions when it is missing. Re-read the files you changed before shipping. Report the outcome separately from the step results:
 
 - **clean:** every selected feature has a result and there were no corrections; the PR, if any, holds only `last-reviewed`. This does not mean every product check passed.
 - **changed:** every selected feature has a result and corrections shipped in one PR.

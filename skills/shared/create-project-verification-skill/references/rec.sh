@@ -2,9 +2,15 @@
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there. An installed feature keeps its attempts count.
 # rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file as drive.sh --check does, contract coverage included, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt; a run whose process died first prints killed before it finished.
-# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is $REC_PEEK, else .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. The snapshot command is .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file; without one, attempts 0 and the other keys empty.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
+# rec.sh affected: list in .cache/changed.txt the files changed since the commit in features/last-reviewed, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
+# rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
+# rec.sh brief [<feature>...]: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt when it is missing, then each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
+# rec.sh fix-brief <feature>...: write each feature's fix-read.md and fix-brief.md, the ### Fixer template filled from its failure in the summary of .cache/drive.txt.
+# rec.sh sendback: print each feature whose report says no drift while its facts show no run.
+# rec.sh reviewed '<message>': write the last commit outside features/last-reviewed to that file and commit it alone with that message, only when it changes.
 # rec.sh install [<feature>...]: give a staged file with no ## Gotchas section one, holding each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
 set -uo pipefail
 shopt -s nullglob
@@ -21,6 +27,12 @@ usage_all="usage: rec.sh <feature> start
        rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...
        rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
+       rec.sh affected
+       rec.sh common
+       rec.sh brief [<feature>...]
+       rec.sh fix-brief <feature>...
+       rec.sh sendback
+       rec.sh reviewed '<message>'
        rec.sh install [<feature>...]"
 fail() { echo "rec.sh: $*" >&2; exit 1; }
 usage() { echo "$usage_all" >&2; exit 2; }
@@ -44,9 +56,11 @@ recipe_hash() {
   rm -rf "$dir"
 }
 
+blank_facts() { printf '%s\t\n' attempts passed_hash last_result last_log last_snapshot names | sed '1s/$/0/'; }
+
 set_facts() {
   local file="$rec/facts.tsv"
-  [[ -f "$file" ]] || printf '%s\t\n' attempts passed_hash last_result last_log last_snapshot names > "$file"
+  [[ -f "$file" ]] || blank_facts > "$file"
   awk -F '\t' -v OFS='\t' 'BEGIN { for (i = 2; i < ARGC; i += 2) value[ARGV[i]] = ARGV[i + 1]; ARGC = 2 } $1 in value { $0 = $1 OFS value[$1] } { print }' "$file" "$@" > "$file.new"
   mv "$file.new" "$file"
 }
@@ -85,6 +99,183 @@ carry_gotchas() {
   printf '\n## Gotchas\n\n%s\n' "$lost" >> "$staged"
   echo "rec.sh: carried $(wc -l <<< "$lost") gotcha lines into $1"
 }
+
+section() { awk -v h="## $1" '/^## /{p = $0 == h; next} p' "$2"; }
+
+block() {
+  local text
+  text=$(sed '/[^[:space:]]/,$!d' <<< "$2")
+  [[ -z "$text" ]] || printf '\n## %s\n\n%s\n' "$1" "$text"
+}
+
+template() { awk -v h="### $1" '$0 == h {s = 1; next} s && /^```/ {if (f) exit; f = 1; next} f' "$skill/../maintain-$(basename "$skill")/SKILL.md"; }
+
+fill() { awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}'; }
+
+affected() {
+  local v b
+  set +u +o pipefail
+  v=$(relative "$skill") b=$(cat "$v/features/last-reviewed")
+  git cat-file -e "$b^{commit}" 2>/dev/null || { echo "no commit $b: record every feature"; return; }
+  { git diff --name-only "$b"; git ls-files -o --exclude-standard; } | grep -v -e "^$v/features/last-reviewed$" -e "^$v/[.]cache/" | sort -u > "$v/.cache/changed.txt"
+  awk -v b="$b" -v d="$v/features/" -v p="$v/.cache/triggered.tsv" -v kept="$(printf '%s\n' "$v"/.cache/record/*/*.md)" '
+    BEGIN { printf "" > p }
+    FNR == 1 { n++ }
+    n == 1 && /^## / { t = /^## Change triggers$/; x = /^## Features$/ }
+    n == 1 && t && match($0, /: [a-z0-9][a-z0-9, -]*$/) {
+      f[++nt] = substr($0, RSTART + 2); r[nt] = "^$"; h = substr($0, 1, RSTART - 1)
+      while (match(h, /`[^`]+`/)) {
+        g = substr(h, RSTART + 1, RLENGTH - 2); h = substr(h, RSTART + RLENGTH)
+        for (e = ""; g != ""; g = substr(g, 2)) { c = substr(g, 1, 1); e = e (c == "*" ? ".*" : c == "?" ? "." : c ~ /[\\^]/ ? "\\" c : "[" c "]") }
+        r[nt] = r[nt] "|^" e "$"
+      }
+    }
+    n == 1 && x && (i = index($0, "](./")) { s = substr($0, i + 4); all[substr(s, 1, index(s, ".md)") - 1)]; total++ }
+    n == 2 && index($0, d) == 1 && /[.]md$/ && !/README.md$/ { hit[substr($0, length(d) + 1, length($0) - length(d) - 3)]; next }
+    n == 2 && !/^[.](agents|claude)\// {
+      m = 0
+      for (i = 1; i <= nt; i++) if ($0 ~ r[i]) { m = split(f[i], a, /, */); for (j in a) { hit[a[j]]; print a[j] "\t" $0 > p } }
+      if (!m) u = u "unmapped change: " $0 "\n"
+    }
+    END {
+      split(kept, k, "\n")
+      for (j in k) if ((z = split(k[j], q, "/")) > 1 && q[z] == q[z - 1] ".md") hit[q[z - 1]]
+      for (s in all) if (s in hit) o = o " " s
+      printf "affected:%s\nskipped: %d of %d features, unchanged since %s\n%s", o, total - split(o, a, " "), total, b, u
+    }
+  ' "$v/features/README.md" "$v/.cache/changed.txt" | tee "$v/.cache/affected.txt"
+}
+
+example_file() {
+  local file feature dir best="" size least=""
+  dir=$(mktemp -d)
+  for file in "$skill"/features/*.md; do
+    feature=$(basename "$file" .md)
+    [[ "$feature" != README ]] || continue
+    rm -f "$dir"/* && : > "$dir/steps"
+    split_steps "$file" "$dir"
+    (( $(cut -f2 "$dir/steps" | grep -c -v -x Preconditions) >= 5 )) || continue
+    [[ -z "$(check_steps "$dir" "$file" "$feature" "$skill/.cache/record/contract-map.tsv")" ]] || continue
+    size=$(wc -c < "$file")
+    [[ -n "$least" ]] && ((size >= least)) || { best=$file least=$size; }
+  done
+  if [[ -z "$best" ]]; then
+    for file in "$skill"/.cache/record/*/*.md; do
+      feature=$(basename "$file" .md)
+      [[ "$feature" == "$(basename "$(dirname "$file")")" && -z "$(not_ready "$feature")" ]] || continue
+      rm -f "$dir"/* && : > "$dir/steps"
+      split_steps "$file" "$dir"
+      (( $(cut -f2 "$dir/steps" | grep -c -v -x Preconditions) >= 5 )) || continue
+      size=$(wc -c < "$file")
+      [[ -n "$least" ]] && ((size >= least)) || { best=$file least=$size; }
+    done
+  fi
+  rm -rf "$dir"
+  echo "$best"
+}
+
+recipe_start() { awk -v keep="$2" '/^## /{d = /^## Driving it with/; next} d && /^Preconditions:/ {p = 1} d && /^- \*\*/ && ++n > keep {exit} p' "$1"; }
+
+common_file() {
+  local v readme name
+  v=$(relative "$skill") readme="$skill/features/README.md"
+  echo "# Common brief for $(basename "$skill") recorders and fixers"
+  printf '\n## From %s\n' "$v/features/README.md"
+  for name in Baseline "Driving conventions" "Feature file shape"; do block "$name" "$(section "$name" "$readme")"; done
+  block "Helpers, from $v/SKILL.md; call them by name, they are on PATH inside a run" "$(section Helpers "$skill/SKILL.md")"
+  block "Example recipe, from this project" "$1"
+  block "The app's main screen: the role-and-name lines of an accessibility snapshot taken after the baseline sign-in" "$2"
+  block "Gotchas, from $v/features/README.md" "$(section Gotchas "$readme")"
+}
+
+common() {
+  local out="$skill/.cache/record/brief-common.md" file example screen
+  file=$(example_file)
+  [[ -z "$file" ]] || example=$(recipe_start "$file" 2)
+  screen=$(cat "$skill/.cache/record/main-screen.txt" 2>/dev/null)
+  mkdir -p "$skill/.cache/record"
+  common_file "${example:-}" "$screen" > "$out"
+  if (($(wc -c < "$out") >= 20000)); then
+    screen=$(grep -E '^[[:space:]]*- (heading|link|tab) ' <<< "$screen")
+    common_file "${example:-}" "$screen" > "$out"
+  fi
+  if (($(wc -c < "$out") >= 20000)) && [[ -n "$file" ]]; then
+    common_file "$(recipe_start "$file" 1)" "$screen" > "$out"
+  fi
+  wc -c "$(relative "$out")"
+  (($(wc -c < "$out") < 20000)) || fail "$(relative "$out") is still 20,000 bytes or more"
+}
+
+brief() {
+  local v r b c d h p sources
+  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
+  if [[ ! -f $r/contract-map.tsv ]]; then
+    [[ -f $r/contract-sources.txt ]] || fail "write $r/contract-sources.txt or $r/contract-map.tsv"
+    mapfile -t sources < <(grep . "$r/contract-sources.txt")
+    contract_map "$r/contract-words.tsv" "${sources[@]}" > "$r/contract-map.tsv"
+  fi
+  (($#)) || return 0
+  set +u +o pipefail
+  export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none GIT_LITERAL_PATHSPECS=1
+  b=$(cat "$v/features/last-reviewed" 2>/dev/null)
+  test -f "$v/.cache/starting-README.md" && test "$(cat "$r/mode.txt")" = changed && conventions_changed=$(diff <(section "Driving conventions" "$v/.cache/starting-README.md") <(section "Driving conventions" "$v/features/README.md") | grep '^[<>]' || echo none)
+  test "$(printf '%s\n' "$conventions_changed" | wc -l)" -gt 8 && conventions_changed='the Driving conventions were rewritten; follow the current ones in the common file'
+  for feature in "$@"; do
+    check_feature "$feature"
+    index_line=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && index($0, "](./" f ".md)") {print; exit}' "$v/features/README.md")
+    other_features=$(awk -v f="$feature" '/^## /{p = /^## Features$/} p && (i = index($0, "](./")) {n = substr($0, i + 4); n = substr(n, 1, index(n, ".md)") - 1); if (n != f) o = o (o == "" ? "" : ", ") n} END {print o}' "$v/features/README.md")
+    new=$(test -f "$v/features/$feature.md" && echo no || echo yes)
+    convert=$(grep -qsx "$feature" "$r/convert.txt" && echo yes || echo no)
+    c=$r/$feature/contract.md d=$r/$feature/changes.diff h="   cat $r/brief-common.md $r/traps.md $r/failures.txt"
+    mkdir -p "$r/$feature" && contract_bundle "$r/contract-words.tsv" "$r/contract-map.tsv" "$feature" "$v/features/$feature.md" > "$c"
+    test -n "$index_line" && grep -q '^== ' "$c" || echo "$feature: no index line or no contract sections"
+    rm -f "$d"
+    if test "$(cat "$r/mode.txt")$new" = changedno && git cat-file -e "$b^{commit}" 2>/dev/null; then
+      mapfile -t p < <(awk -F'\t' -v f="$feature" '$1 == f {print $2}' "$v/.cache/triggered.tsv"; echo "$v/features/$feature.md")
+      { git diff "$b" -- "${p[@]}"; git ls-files -o --exclude-standard -- "${p[@]}" | while read -r u; do git diff --no-index -- /dev/null "$u"; done; } > "$d.full"
+      head -c 19980 "$d.full" > "$d"; test "$(wc -c < "$d.full")" -le 19980 || printf '\n(truncated)\n' >> "$d"; rm "$d.full"; test -s "$d" || rm "$d"
+    fi
+    read_commands=$(test "$($h "$c" | wc -c)" -le 20000 && echo "$h $c" || { echo "$h"; for o in $(seq 1 20000 "$(wc -c < "$c")"); do echo "   tail -c +$o $c | head -c 20000"; done; }; test -f "$d" && echo "   cat $d")
+    template Recorder | fill > "$r/$feature/brief.md"
+  done
+}
+
+fix_brief() {
+  local v r
+  set +u +o pipefail
+  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
+  export root=$PWD feature label log
+  for feature in "$@"; do
+    check_feature "$feature"
+    IFS=$'\t' read -r label log < <(awk -v p="$feature: fail at \"" 'index($0, p) == 1 {s = substr($0, length(p) + 1); i = index(s, "\" ("); print substr(s, 1, i - 1) "\t" substr(s, i + 3, length(s) - i - 3)}' "$v/.cache/drive.txt")
+    test -n "$log" || echo "$feature: no failure in the drive summary"
+    mkdir -p "$r/$feature" && fix_read "$log" "$v/features/$feature.md" "$r/traps.md" "$v/SKILL.md" > "$r/$feature/fix-read.md" && template Fixer | fill > "$r/$feature/fix-brief.md"
+  done
+}
+
+sendback() {
+  local rec
+  for rec in "$skill"/.cache/record/*/; do
+    rec=${rec%/}
+    [[ -f "$rec/changes.diff" ]] && grep -qis '^- Files:.*no drift' "$rec/report.md" || continue
+    [[ -f "$rec/facts.tsv" && "$(fact attempts)" != 0 ]] || basename "$rec"
+  done
+}
+
+reviewed() {
+  local l c
+  l=$(relative "$skill")/features/last-reviewed
+  c=$(git log -1 --format=%H -- . ":(exclude)$l")
+  [[ "$c" != "$(cat "$l" 2>/dev/null)" ]] || return 0
+  echo "$c" > "$l" && git add "$l" && git commit -m "$1" -- "$l"
+}
+
+case "${1:-}" in
+  affected | common | sendback) (($# == 1)) || usage; "$1"; exit ;;
+  brief) shift; brief "$@"; exit 0 ;;
+  fix-brief) shift; (($#)) || usage; fix_brief "$@"; exit 0 ;;
+  reviewed) [[ $# == 2 && -n "$2" ]] || usage; reviewed "$2"; exit ;;
+esac
 
 if [[ "${1:-}" == install ]]; then
   shift
@@ -183,7 +374,7 @@ if [[ "$action" == index ]]; then
 fi
 if [[ "$action" == facts ]]; then
   (($# == 0)) || usage
-  [[ -f "$rec/facts.tsv" ]] || { printf 'attempts\t0\n'; printf '%s\t\n' passed_hash last_result last_log last_snapshot names; exit 0; }
+  [[ -f "$rec/facts.tsv" ]] || { blank_facts; exit 0; }
   cat "$rec/facts.tsv"
   exit 0
 fi
@@ -222,8 +413,8 @@ while (($#)); do
   fi
   shift 2
 done
-peek_command=${REC_PEEK:-$(cat "$skill/.cache/record/peek-command.txt" 2>/dev/null)}
-[[ "$action" == run || -n "$peek_command" ]] || fail "set REC_PEEK or write .cache/record/peek-command.txt"
+peek_command=$(cat "$skill/.cache/record/peek-command.txt" 2>/dev/null)
+[[ "$action" == run || -n "$peek_command" ]] || fail "write .cache/record/peek-command.txt"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
 finish() {
   exec >&- 2>&-
@@ -304,13 +495,15 @@ export PATH="$skill/bin:$PATH" VERIFY_SESSION=$feature
 attempt() {
   local number=$1 label=$2
   current=$label
-  log="$logs/$number-$(tr 'A-Z' 'a-z' <<< "$label" | tr -cs 'a-z0-9' '-' | sed 's/-$//').log"
+  log="$logs/$number-$(slug "$label").log"
   { echo "PS4='+[rec] '; set -x"; cat "$work/$number.sh"; } > "$work/$number.attempt.sh"
   run_step "$work/state" "$work/$number.attempt.sh" "$log"
 }
 
+step_output() { tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log"; }
+
 show_failure() {
-  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | awk -v keep="$fail_tail" '
+  step_output "$1" | awk -v keep="$fail_tail" '
     function scan(s,   i, c) {
       for (i = 1; i <= length(s); i++) {
         c = substr(s, i, 1)
@@ -329,13 +522,11 @@ show_failure() {
   '
 }
 
-step_snapshot() {
-  tail -n +$(( $(wc -l < "$work/$1.attempt.sh") + 2 )) "$log" | grep -o '\[Snapshot\]([^)]*)' | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//'
-}
+step_snapshot() { step_output "$1" | snapshot_path; }
 
 record_failure() {
   local fields
-  fields=$(tail -n +$(( $(wc -l < "$work/$2.attempt.sh") + 2 )) "$log" | sed '/^exit=/,$d' | awk '
+  fields=$(step_output "$2" | sed '/^exit=/,$d' | awk '
     /^\++\[rec\] / { command = $0; sub(/^\++\[rec\] /, "", command); next }
     /[^[:space:]]/ { output = $0 }
     END { gsub(/\t/, " ", command); gsub(/\t/, " ", output); print command "\t" output }
@@ -379,7 +570,7 @@ find_locators() {
     n=$((n + 1))
     printf 'pw.sh run-code %q\n' 'async page => { try { const l = page.'"${locator#page.}"'; const n = await l.count(); const out = [String(n)]; for (let i = 0; i < Math.min(n, 3); i++) { const m = l.nth(i); const a = (await m.ariaSnapshot({ timeout: 5000 })).split("\n")[0].match(/^- \x27?([\w-]+)(?: "((?:[^"\\]|\\.)*)")?/); const role = a ? a[1] : await m.evaluate(e => e.tagName.toLowerCase()); const text = (await m.innerText({ timeout: 5000 })).replace(/\s+/g, " ").trim().slice(0, 80); out.push(`${role} "${a && a[2] || ""}" | ${text}`); } return out.join("\n"); } catch (e) { return `error ${String(e.message).split("\n")[0]}`; } }' > "$work/find-$n.sh"
     attempt "find-$n" Find
-    tail -n +$(( $(wc -l < "$work/find-$n.attempt.sh") + 2 )) "$log" | awk -v locator="$locator" '
+    step_output "find-$n" | awk -v locator="$locator" '
       function decode(s,   out, i, c) {
         s = substr(s, 2, length(s) - 2)
         for (i = 1; i <= length(s); i++) {
