@@ -132,7 +132,7 @@ Put commands that belong together in one call. Do not explore the app: the run i
    If the sections look thin for this feature, grep the contract files once for its names, with grep -n -i -E '<names>' $(cut -f2 .agents/skills/verify-<app>/.cache/record/contract-map.tsv | cut -d: -f1 | sort -u); that is your only extra contract read. List every behavior they name: test cases, README sentences, plan acceptance lines, entry points. Each gets a step, and so does every sub-feature and entry point the file lists, or it goes under Blocked. When your only section is the README overview, the list comes from the sub-features and entry points that the source grep and your peek show.
 2. Source, one command: one grep for the routes and names the steps target, or for drift. Your only source read.
 3. Write. When the feature is not new, matches contract and source, covers the list, breaks no changed convention and needs no conversion, change nothing. Otherwise run rec.sh <feature> start and write the Preconditions and Clean up first, into the path it prints. Before the first run, look at every screen the recipe will touch: REC_PEEK='<peek command>' rec.sh <feature> peek runs Preconditions, saves one snapshot of the screen they leave to .agents/skills/verify-<app>/.cache/record/<feature>/peek.txt and runs Clean up; for a screen a later step opens, write the steps that reach it and add --after '<that step>'. Grep peek.txt for the element names you need in the same call; never print a whole snapshot. Then write the whole file in one write and go to step 4. Keep unchanged steps; converting gives each step a block without changing what it checks.
-4. Run, one call per attempt: rec.sh <feature> run. On a failure it prints the failing step's commands and the end of its output, runs Clean up and ends with three lines: failing step: the step to fix; snapshot: the screen at the failure, when the driver wrote one, which you grep for the real names instead of running again to look; full log: the whole output, when the end shown is not enough. Fix and rerun until it prints "passed"; a later edit to prose or Gotchas keeps it passed. When the app or a missing prerequisite blocks the recipe, stop: leave the staged file as it is, put the failing step, the exact command that failed and the log path under Blocked, and return the line with blocked.
+4. Run, one call per attempt: rec.sh <feature> run prints attempt <n> of <feature> first. On a failure it prints the failing step's commands and the end of its output, runs Clean up and ends with three lines: failing step: the step to fix; snapshot: the screen at the failure, when the driver wrote one, which you grep for the real names instead of running again to look; full log: the whole output, when the end shown is not enough. Fix and rerun until it prints "passed", and after a failed value check assert the value the output printed when the contract allows it, never a second guess; a later edit to prose or Gotchas keeps it passed. When the app or a missing prerequisite blocks the recipe, stop: leave the staged file as it is, put the failing step, the exact command that failed and the log path under Blocked, and return the line with blocked.
 5. Report, then return its line.
 
 Scope: a behavior one of the other features covers is at most setup here, with no checks of its own; one that fits no feature goes under Split or Blocked. Split: past about 15 steps, write the first coherent group of sub-features here and record each other group yourself as its own feature: rec.sh <split> start, write its file, rec.sh <split> run until it passes, then rec.sh <split> index '- [<Title>](./<split>.md) covers <scope>.' Known failure: a contract the app misses stays in the known-failure step the conventions describe, run with rec.sh <feature> run --known-failure '<Label>'.
@@ -143,14 +143,14 @@ If you cannot finish, remove what your commands created beyond Clean up, and rep
 
 Report with one Bash call, cat > .agents/skills/verify-<app>/.cache/record/{{feature}}/report.md <<'EOF' … EOF, never the file-writing tool, because some hosts refuse a subagent writing report files with it:
 - Files: what changed in the staged file and the last run result, or "no drift".
-- Run attempts: the number of rec.sh run calls.
+- Run attempts: the last attempt number of each feature you ran.
 - Differences: each expected result the app misses, with its contract source, what the app did and the step that carries it.
 - Names: every account, fixture and resource name your recipes create.
 - Split: [name: its sub-features], one line per feature you split off and recorded, or none.
 - Blocked: each part you could not drive, with the passing steps, the blocker and what you tried.
 
 Then return only this line:
-{{feature}}: no drift|passed|passed with known failure|blocked; <n> steps; <k> attempts; split: <names or none>; differences: <count>; blocked: <count>
+{{feature}}: no drift|passed|passed with known failure|blocked; <n> steps; <k> attempts (sum of the last attempt numbers, splits included); split: <names or none>; differences: <count>; blocked: <count>
 ```
 
 ### Fixer

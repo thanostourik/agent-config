@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there.
-# rec.sh <feature> run [--known-failure '<Label>']: check the staged file, empty .cache/evidence/<feature>/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt.
+# rec.sh <feature> run [--known-failure '<Label>']: print attempt <n> of <feature>, counting runs since start, check the staged file, empty .cache/evidence/<feature>/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt.
 # rec.sh <feature> peek [--after '<Label>']: run the staged file's Preconditions (and the steps through <Label>) as run does, save one snapshot of the screen they leave to .cache/record/<feature>/peek.txt, then run Clean up; the snapshot command is $REC_PEEK with that path appended as it is, so the path is its last argument.
-# rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or append it to that list.
+# rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh install [<feature>...]: move staged files that passed run into features/ and check them with drive.sh --check.
 set -uo pipefail
 shopt -s nullglob
@@ -104,6 +104,7 @@ target="$skill/features/$feature.md"
 if [[ "$action" == start ]]; then
   (($# == 0)) || usage
   mkdir -p "$rec"
+  rm -f "$rec/attempts"
   if [[ -f "$staged" ]]; then
     echo "rec.sh: kept the staged file $(relative "$staged")"
   elif [[ -f "$target" ]]; then
@@ -126,12 +127,12 @@ if [[ "$action" == index ]]; then
   [[ -f "$readme" ]] || fail "no $(relative "$readme")"
   {
     flock 9
-    read -r found last heading < <(awk -v link="](./$feature.md)" '/^## /{s = $0 == "## Features"; if (s) h = NR} s && !m && index($0, link) {m = NR} s && /^- / {l = NR} END {print m + 0, l + 0, h + 0}' "$readme")
+    read -r found anchor heading < <(awk -v f="$feature" '/^## /{s = $0 == "## Features"; if (s) h = NR} s && !m && index($0, "](./" f ".md)") {m = NR} s && /^- / {l = NR; if (i = index($0, "](./")) {n = substr($0, i + 4); n = substr(n, 1, index(n, ".md)") - 1); if (n != "" && index(f, n "-") == 1 && length(n) > b) {b = length(n); p = NR}}} END {print m + 0, (p ? p : l) + 0, h + 0}' "$readme")
     ((heading)) || fail "$(relative "$readme") has no ## Features section"
-    updated=$(LINE=$1 awk -v m="$found" -v l="$last" -v h="$heading" '
+    updated=$(LINE=$1 awk -v m="$found" -v a="$anchor" -v h="$heading" '
       NR == m { print ENVIRON["LINE"]; next }
       { print }
-      !m && NR == (l ? l : h) { if (!l) print ""; print ENVIRON["LINE"] }
+      !m && NR == (a ? a : h) { if (!a) print ""; print ENVIRON["LINE"] }
     ' "$readme")
     printf '%s\n' "$updated" > "$readme"
   } 9< "$readme"
@@ -152,6 +153,11 @@ else
 fi
 [[ "$action" == run || -n "${REC_PEEK:-}" ]] || fail "set REC_PEEK to the snapshot command the maintenance skill names; peek appends the output path to it"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
+if [[ "$action" == run ]]; then
+  attempts=$(( $(cat "$rec/attempts" 2>/dev/null) + 1 ))
+  echo "$attempts" > "$rec/attempts"
+  echo "attempt $attempts of $feature"
+fi
 
 work="$rec/run" logs="$rec/steps"
 rm -rf "$work"
