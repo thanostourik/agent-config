@@ -104,6 +104,7 @@ def up(args):
             values[key] = interpolate(template, values, key)
         values = {"LOCAL_STACK_PROJECT": project, "LOCAL_STACK_NAME": name, **values}
         claim["modes"] = modes
+        claim["stack_file"] = str(stack_file(name))
         stack_file(name).write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         write_claim(project, claim)
         active = active_services(project, values, modes)
@@ -293,6 +294,8 @@ def other_claims(project):
 def is_abandoned(project, claim):
     pid = claim.get("pid")
     if pid and process_is_alive(pid):
+        return False
+    if claim.get("stack_file") and Path(claim["stack_file"]).exists():
         return False
     label = f"label=com.docker.compose.project={project}"
     for kind in (["ps", "--all"], ["volume", "ls"], ["network", "ls"]):
