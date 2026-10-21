@@ -2,142 +2,82 @@
 
 A shared skill, `skills/shared/create-project-local-stack/`, with the same
 `harness` as `create-project-verification-skill`. It generates `local-stack/`
-in a project repo: an isolated local stack that a person runs with the app in
-their IDE, and that an agent runs whole to verify its work.
+in a project repo: an isolated local stack that developers run with the app in
+their IDE, and that agents run whole to verify their work. Any number of
+stacks run at once, on one machine, from one or several repos.
 
-The skill never reads or edits the project's existing local environment: dev
-scripts, local compose files, verify skills. The stack must come from the code
-and the user's answers, or the run proves nothing.
+## Two rules
 
-The skill never decides anything on its own. Every fact the stack depends on
-comes from the repo or from the user. When neither settles a fact, the skill
-asks.
+- **Ask, never guess.** Every fact the stack depends on has a source: a file
+  and line, or the user's answer. Anything else is a question, asked with the
+  harness's question tool at run time (`AskUserQuestion` in Claude Code). The
+  questions follow a fixed bank in `references/questions.md`. When the user
+  does not know, that part is blocked and reported, and the rest goes on.
+- **Never read the existing local environment:** compose files, dev scripts,
+  devcontainers, existing verify skills, and the docs that explain them. The
+  stack must come from the code and the user's answers, or it proves nothing.
 
-## What it writes
+## One mechanism, copied unchanged
 
-```
-local-stack/
-  stack.sh        the only command people and agents use
-  compose.yaml    the stack's services
-  stubs/<name>/   one fake per external service that has a stub mode
-  README.md       usage, contract, external services, Decisions
-```
+`references/stack` is a Python script with no extra packages. The skill copies
+it into every repo as `local-stack/stack`, the way the verification generator
+copies `drive.sh`, so every repo runs the version tested here. Each repo adds
+only `stack.json`, `compose.yaml`, its stubs and a README.
 
-The mechanism is Docker Compose. A project that already uses its own
-environment tool, such as DDEV, gets that tool wrapped behind the same
-`stack.sh` commands instead.
-
-## The fixed interface
-
-The skill carries it in `references/stack-spec.md`. It is the same for every
-project.
-
-- **Commands:** `stack.sh up | down | status | env`.
-- **Two run modes:**
-  - `up` starts everything except the app. The person runs the app in the IDE.
-  - `up --app` also runs the app in a container. Agents use this.
-  - Services that call the app, such as a gateway, point at the container in
-    the first case and at the host in the second.
-- **Name and ownership:** the stack name defaults to the branch, and callers
-  can pass `--name`. One stack is one Compose project. `down` removes only
-  resources with that project's label, plus the dependency stacks it started.
-- **Ports:** each stack claims a stack number in one registry per machine,
-  `~/.local/state/local-stacks/`, shared by the stacks of every repo. The
-  number keeps its ports until `down -v`. Stack 0 gets the app's usual ports;
-  stack N gets a block of its own, skipping ports already in use.
-- **Stack file:** `up` writes the stack's ports, URLs and tokens to
-  `local-stack/.stack.env`, or to `$LOCAL_STACK_FILE`. The app's local
-  configuration imports that file itself, so a run from the IDE needs no setup.
-  Agents and consumer stacks read the same file, and `env` prints it.
-- **External services:** each has the modes `real` and `stub`. A service that
-  is another repo of the project also has `stack`. Plain `up` uses the
-  defaults the user chose. `--mode <service>=<mode>` overrides one service.
-  `--stubs` stubs every shared service.
-- **Other repos are black boxes.** A consumer knows three things about a
-  dependency: the variable that holds its checkout path, its `stack.sh`, and
-  the variables listed under Provides in its README. The consumer's `up` calls
-  the dependency's `stack.sh up --app` under a related name and passes
-  `--stubs` through. Its `down` calls the dependency's `down`. There is no
-  Compose `include` between repos. If the dependency has no `local-stack/`,
-  the skill stops and tells the user to generate that one first.
-
-## No improvising
-
-- **Every fact has a source:** a file and line, or the user's answer.
-  Anything else becomes a question.
-- **Questions go through the harness's question tool** at run time:
-  `AskUserQuestion` in Claude Code, and its counterpart in the other tools.
-  Only a harness without such a tool gets the questions in the reply. Then the
-  skill waits.
-  - An unanswered question is asked again.
-  - When the user does not know, that part is reported as blocked, and the
-    rest goes on.
-- **Format:** each question asks for one decision. It shows the evidence
-  found, the options with a recommendation, and what each answer changes.
-  Questions are sent in rounds, as many at once as the tool allows.
-- **Question bank,** in `references/questions.md`:
-  - Asked for every external service: Is it shared with other people? Does
-    calling it have side effects that matter? Which mode does a plain `up` use?
-  - Asked for every service that may belong to the project: Is X another repo
-    of this project, and where is its checkout?
-  - Asked when a fact is unresolved: how the app runs, seed data, how to get
-    a test user, where a developer gets each required secret. Secrets are
-    never invented.
-  - Asked on conflict: two sources disagree. The question shows both, for
-    example "README says 8080, compose says 8200".
-- **What is kept:**
-  - Observed facts live in a working file during the run, and the skill
-    deletes it at the end. Code moves, so committed copies would go stale.
-  - Only the user's answers are committed, one line each, in the `Decisions`
-    section of the README. A later run reads them instead of asking again.
+- **Commands:** `up`, `down`, `destroy`, `status`, `env`, `compose`.
+- **Names:** the Compose project is `<app>-<name>`. The name defaults to the
+  branch, and agents pass `--name`. The repo is part of the name, so two repos
+  on the same branch never share a project. One name used from two checkouts
+  is refused.
+- **Ports:** one registry per machine, `$XDG_STATE_HOME/local-stacks/`, shared
+  by every repo. Each port gets its usual value when no other claim holds it
+  and it is free, otherwise the lowest free port from 10000. Claims survive
+  `down`, so stored URLs stay valid. A claim whose project left nothing in
+  Docker, and whose `up` is not running, is released when ports are needed.
+- **Stack file:** `local-stack/.stack.env`, or `.stack-<name>.env` for another
+  name. The app's local configuration reads it itself, so a run from the IDE
+  needs no setup.
+- **Switches:** each external service, and the app itself, is a switch with
+  modes. A mode sets variables and turns on the Compose profile
+  `<switch>-<mode>`. `--app` runs the app in a container, `--stubs` stubs every
+  shared service, and `--mode` sets one switch.
+- **Other repos are black boxes.** A `stack` mode starts the other repo's own
+  `local-stack/stack` under a related name, passes `--stubs` on, and reads
+  only the values that stack lists under `provides`. Containers reach it
+  through the host. There is no Compose `include` between repos.
 
 ## Steps the skill runs
 
-If `local-stack/` already exists, the skill stops and asks whether to replace
-it.
-
-1. **Discover,** read-only. Read the README, `PLATFORM.md` and the docs they
-   link. Read the config of every profile, the environment variables, the HTTP
-   clients, the gateway routes and the app's Dockerfile. Write the working
-   fact list.
-2. **Ask** every open question.
-3. **Show the design** on one screen: services, external services with their
-   modes and defaults, and dependency stacks. Wait for the user's go.
-4. **Build** `local-stack/`. Build each stub from the requests and responses
-   in the client code.
-5. **Prove it:**
-   - `up --app` from clean, and the app answers.
-   - `up`, then the skill starts the app on the host with no extra settings,
-     as an IDE would, and it answers.
-   - An offline run, with all outside traffic blocked. Each blocked
-     connection is a service the reading missed, and it becomes a new
-     question, not a silent stub.
-   - Two stacks in parallel, with no collision.
-   - `--stubs` reaches the dependency stacks.
-   - `down` leaves nothing, and resources that existed before are unchanged.
-6. **Hand over.** Write the README and a short `Local stack` pointer in
-   `AGENTS.md`. Then report what is proved, what is blocked, and what each stub
-   does not cover.
+1. Check Docker Compose v2 and Python. An existing `local-stack/` keeps its
+   decisions, and the user chooses to replace it or stop.
+2. Discover from the code: the app, its configuration, everything it talks to,
+   what talks to it, its data, and the project's other repos.
+3. Ask every open question.
+4. Show the design on one screen and wait for a go.
+5. Build `local-stack/`, the stubs, and the app's configuration change.
+6. Prove it: agent mode and IDE mode at once, real modes only with the user's
+   permission, an offline run that finds missed services, dependency stacks,
+   and a cleanup that leaves nothing behind.
+7. Write the README's decisions, the `AGENTS.md` section, commit and report.
 
 ## Changes in this repo
 
-- Add the skill: `SKILL.md`, `references/stack-spec.md`,
-  `references/questions.md`, and an entry in `config.defaults.json`.
-- In `create-project-verification-skill`, `references/lifecycle.md` gets a new
-  rule. A project without a full disposable stack goes through
-  `/create-project-local-stack` first. The stack is never built in the verify
-  skill's `bin/`. The verify skill launches it with
-  `stack.sh up --app --stubs --name <run name>`.
+- The skill: `SKILL.md`, `references/stack`, `references/stack-spec.md`,
+  `references/questions.md`, `references/agents-local-stack.md`, and its
+  `config.defaults.json` entry.
+- `create-project-verification-skill`'s `lifecycle.md`: a project with
+  `local-stack/stack` is launched through it. A project without a disposable
+  setup goes through `/create-project-local-stack` first, and a verify skill
+  never builds a stack in its `bin/`.
 
-## Testing that it is generic
+## Testing
 
-- Run the skill blind on copies of the four ContentCloud repos, with
+- `references/stack` against real Docker, on a fixture of two repos where one
+  needs the other.
+- Blind runs of the skill on copies of the four ContentCloud repos, with
   `.agents/` and `dev_setup/` deleted, in dependency order: insights, backend,
-  web, ccbot.
-- Compare the external services and questions it finds with the known ones:
+  web, ccbot. Compare the services and questions it finds with the known ones:
   chatbot, collector, mail, MinIO.
-- Run it on one project outside ContentCloud that has its own environment
-  tool, such as `chatbot-drupal` with DDEV.
 
 ## Afterwards, in the project repos
 
