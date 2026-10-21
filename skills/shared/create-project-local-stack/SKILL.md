@@ -26,11 +26,11 @@ This is the rule the whole skill rests on.
 
 ## 1. Start
 
-- Check that `docker compose version` reports v2 and that `python3` exists. Report anything missing, and stop.
+- Check that `docker compose version` reports v2 or later and that `python3` exists. Report anything missing, and stop.
 - If `local-stack/` exists, ask the user whether to replace it or to stop. Never overwrite it silently. Its README's `## Decisions` section holds the user's earlier answers.
 - Build the stack next to whatever the repo already has for running locally. Never edit or remove that.
 - If the project already runs locally through a tool that manages its whole environment, such as DDEV, ask the user whether to build a Compose stack anyway or to stop.
-- Keep observed facts in `local-stack/.facts.md`, one line each: the fact, then its source, such as `kong.yml:42` or `user, <date>`. It is a working file; step 6 deletes it.
+- Keep observed facts in `local-stack/.facts.md`, one line each: the fact, then its source, such as `kong.yml:42` or `user, <date>`. It is a working file; step 7 deletes it.
 
 ## 2. Discover
 
@@ -55,7 +55,7 @@ When the code does not settle the kind, ask.
 
 Ask every open question from step 2, following [`references/questions.md`](references/questions.md). New facts can open new questions; ask those too. Write each answer into the fact file.
 
-For another repo, ask where its checkout is. If that checkout has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one. Use only what that repo's `local-stack/README.md` lists under Provides, so its stack can change inside without breaking this one.
+For another repo, ask where its checkout is. If that checkout has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one. Use only what that repo's `local-stack/README.md` lists under Provides, so its stack can change inside without breaking this one. When this repo needs a value that stack does not provide, or that stack refuses this repo's app, such as on its port, ask the user. The change goes into that repo, on its own branch, never into a copy here.
 
 ## 4. Show the design and wait
 
@@ -78,10 +78,10 @@ Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Co
 Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use the default name: it belongs to the developer. Record `docker ps -a`, `docker volume ls` and `docker network ls` before you start.
 
 1. **Agent mode:** `local-stack/stack up --app --stubs --name lsproof-a` from clean. Send one request that crosses the app's main path, such as signing in and loading the main page or calling the main endpoint, and check the answer.
-2. **IDE mode, at the same time:** `local-stack/stack up --name lsproof-b`. If no developer runs the app on their machine, which the user's answer settles, skip the rest of this step and report it as not applicable. Otherwise, start the app on the host the way a developer runs it from the IDE: its usual run command, with `LOCAL_STACK_FILE` pointing at `lsproof-b`'s stack file and nothing else added. Send the same request, also through each service that calls the app. Stop the app.
+2. **IDE mode, at the same time:** `local-stack/stack up --stubs --name lsproof-b`, so the proof sends nothing to a shared service; step 4 proves the real ones. If no developer runs the app on their machine, which the user's answer settles, skip the rest of this step and report it as not applicable. Otherwise, start the app on the host the way a developer runs it from the IDE: its usual run command, with `LOCAL_STACK_FILE` pointing at `lsproof-b`'s stack file and nothing else added. Send the same request, also through each service that calls the app. Stop the app.
 3. **Parallel:** both stacks ran at once on different ports, and neither saw the other's data.
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
-5. **Offline:** `local-stack/stack down --name lsproof-a`, then `local-stack/stack compose --name lsproof-a -- -f <file> up --detach --wait`, where `<file>` is a temporary file outside the repo that makes the default network internal:
+5. **Offline:** read the image build logs of step 1, and list each outside address a build downloads from in the README as "the image build needs internet for: …". Then `local-stack/stack down --name lsproof-a`, then `local-stack/stack compose --name lsproof-a -- -f <file> up --detach`, where `<file>` is a temporary file outside the repo that makes the default network internal:
 
    ```yaml
    networks:
@@ -89,16 +89,16 @@ Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use
        internal: true
    ```
 
-   Ports are not published on an internal network, so send the request from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed. Go back to step 3 with it, never stub it silently. A switch in `stack` mode reaches the other repo through the host, so its failures here are expected; say so in the report.
-6. **Dependencies:** for each switch in `stack` mode, `local-stack/stack status --name lsproof-a` names the other repo's stack. That stack's own status shows its shared switches in `stub` mode.
-7. **Cleanup:** `local-stack/stack destroy` for both names. Check that no container, volume, network or built image carries either project's label, that both stack files and registry claims are gone, and that the names in the lists you recorded are unchanged.
+   Ports are not published on an internal network, so send the request from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed. Go back to step 3 with it, never stub it silently. A switch in `stack` mode reaches the other repo through the host, so its failures here are expected; say so in the report. When the app waits for a service that depends on another repo's stack, start the app alone with `-- up --detach --no-deps <app service>` and check its own requests.
+6. **Dependencies:** start one more stack, `local-stack/stack up --app --stubs --name lsproof-c`, with `--mode <switch>=stack` for every switch that has a `stack` mode, even when it is not the default. Send the step 1 request. For each of those switches, `local-stack/stack status --name lsproof-c` names the other repo's stack. That stack's own status shows its shared switches in `stub` mode.
+7. **Cleanup:** `local-stack/stack destroy` for every proof stack. Check that no container, volume, network or built image carries any of their projects' labels, that their stack files and registry claims are gone, and that the names in the lists you recorded are unchanged.
 
-When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
+Stop only the processes you started, by their process ID, never by name. When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
 
 ## 7. Hand over
 
 - Write the README's `## Decisions` section from the user's answers in the fact file, one line each with its date. Then delete `local-stack/.facts.md`.
-- Add the `## Local stack` section to the project's `AGENTS.md` from [`references/agents-local-stack.md`](references/agents-local-stack.md). Integrate an existing section on running the app locally instead of adding a second one, and keep what it says about the existing setup. If the project has a `CLAUDE.md` that does not import `AGENTS.md`, put the same section there.
+- Add the `## Local stack` section to the project's `AGENTS.md` from [`references/agents-local-stack.md`](references/agents-local-stack.md). Integrate an existing section on running the app locally instead of adding a second one, and keep what it says about the existing setup. Rewrite any other instruction in those files that tells agents to start the app or its dependencies another way, so agents never get two conflicting instructions. If the project has a `CLAUDE.md` that does not import `AGENTS.md`, put the same section there.
 - Commit following the repo's branch and commit conventions.
 - Report:
   - each proof step: passed, failed or not proved, with the reason;

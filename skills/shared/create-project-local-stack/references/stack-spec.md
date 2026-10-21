@@ -22,6 +22,8 @@ Besides `local-stack/`, the skill changes only the app's local configuration, so
 
 - **Name:** the stack name defaults to the current branch; `--name` picks another. The Compose project is `<app>-<name>`, such as `backend-main`. Every container, volume, network and built image carries that project's label, which is what `destroy` removes.
 - **Ports:** each port in `stack.json` is claimed in one registry per machine, `$XDG_STATE_HOME/local-stacks/`, shared by the stacks of every repo. A port gets its usual value when no other claim holds it and it is free, otherwise the lowest free port from 10000. A claim keeps its ports across `down` and `up` until `destroy`. A claim whose project has no containers, volumes or networks left, and whose `up` is not running, is released when another stack needs ports.
+- **Gateway address:** `up` sets `LOCAL_STACK_GATEWAY_IP` to the gateway of Docker's bridge network, usually `172.17.0.1`. Only this machine and its containers reach it.
+- **Readiness:** `up` returns when every service of the active modes is running and healthy, or has exited with code 0, as setup jobs do. A service that exits with another code or turns unhealthy stops `up` with its name. A stack with no service in the active modes, such as one whose app runs on the host and whose only dependency is another repo's stack, skips Compose.
 - **Stack file:** `up` writes every value of the stack to `local-stack/.stack.env`, or to `local-stack/.stack-<name>.env` for a name other than the default. Lines are plain `KEY=value`.
 - **Switches:** each switch has modes. `up` uses each switch's default, `--stubs` sets every shared switch to `stub`, `--app` sets `app` to `container`, and `--mode <switch>=<mode>` sets one switch. A mode activates the Compose profile `<switch>-<mode>` and sets its variables. `up` removes the services of modes that are no longer active.
 - **Dependency stacks:** a mode with `"stack": "<VARIABLE>"` starts the stack in the checkout that `<VARIABLE>` names, with `up --app --name <this project>`, passing `--stubs` on. It reads that stack's `env --provides` and adds each value as `<SWITCH>_<KEY>`, plus `<SWITCH>_<KEY>_FROM_CONTAINER` with `localhost` replaced by `host.docker.internal`. `down` and `destroy` reach the dependency stacks too.
@@ -54,25 +56,34 @@ This example is a fictional backend: take its shape, not its values.
 - `app`: a short lowercase name for this repo's stack.
 - `ports`: every host port the stack publishes or the app listens on, with its usual value: the one the app's configuration or docs use. Names end in `_PORT`.
 - `switches.app`: every stack has it, because `--app` sets it to `container`. It has a `host` mode only when developers run the app on their machine, from the IDE or a terminal; otherwise `container` is its only mode and its default. Its variables are what changes when the app moves, such as the address a gateway forwards to.
-- Other switches: one per external service or other repo. Modes are named `real`, `stub` and `stack`. `shared: true` marks a service other people use, which `--stubs` replaces. A shared switch has a `stub` mode. Every mode of a switch sets the same variables.
+- Other switches: one per external service or other repo. Name modes after what they do, such as `real`, `stub`, `stack` or `off`; a mode with `"stack"` starts another repo's stack. `shared: true` marks a service other people use, which `--stubs` replaces. A shared switch has a `stub` mode. Every mode of a switch sets the same variables.
 - `vars`: values that do not depend on a mode.
 - `provides`: the values other repos' stacks may read. This is the stack's contract: changing a name breaks its consumers.
 - Values use `${NAME}` for a port, an earlier value, a dependency value or a variable from the user's environment. A missing one stops `up` with its name. Secrets come from the user's environment this way; never write one into the repo. A credential that exists only inside the stack, such as the stack database's password, is a fixed value in `compose.yaml`, not a secret.
-- Name each address twice: `X_URL` as the host sees it, for the IDE and the stack file, and `X_URL_FROM_CONTAINER` as a container sees it.
+- Name an address `X_URL` as the host sees it, for the IDE, the browser and the stack file. Add `X_URL_FROM_CONTAINER`, as a container sees it, only when a container uses that address.
+- The app's own listening port in IDE mode is one of the `ports`, and the app's local configuration takes it from the stack file. Otherwise a developer's app holds a port that another stack has claimed.
+- A stack that other repos start accepts them on any `localhost` port: CORS origins, login redirect addresses and allowed web origins use `http://localhost:*` patterns, never one consumer's port.
 
 ## `compose.yaml`
 
-- Never set `container_name`, a volume or network `name:`, or a fixed host port. Each published port is `"${X_PORT}:<container port>"`, with `X_PORT` from `stack.json`.
+- Never set `container_name`, a volume or network `name:`, or a fixed host port. Publish each port twice, on this machine's loopback address and on the Docker gateway, so that other machines on the network never reach it:
+
+  ```yaml
+  ports:
+    - "127.0.0.1:${X_PORT}:<container port>"
+    - "${LOCAL_STACK_GATEWAY_IP}:${X_PORT}:<container port>"
+  ```
 - Services that belong to a mode carry `profiles: [<switch>-<mode>]`. The app's container is `profiles: [app-container]`. Services without a profile always run.
-- Build the app from the repo with `build: {context: .., dockerfile: <the app's Dockerfile>}`. If the app has no Dockerfile, write one under `local-stack/app/`. `up` always rebuilds, so the container runs the current working tree.
-- Give every long-running service a healthcheck that passes only when it is ready, so `up` returns a working stack. Setup that runs once, such as migrations or seeding, is a service that the others depend on with `condition: service_completed_successfully`.
+- Build the app from the repo with `build: {context: .., dockerfile: <the app's Dockerfile>}` when that Dockerfile builds a runnable image without values fixed for one environment. Otherwise write `local-stack/app/Dockerfile`, with `local-stack/app/Dockerfile.dockerignore` next to it. The image never takes a developer's untracked local files, such as `.env.local`. `up` always rebuilds, so the container runs the current working tree.
+- Mount every volume the image declares (`VOLUME`) on a named volume, so `destroy` removes it.
+- Give every long-running service a healthcheck that passes only when it is ready, so `up` returns a working stack. Setup that runs once, such as migrations or seeding, is a service that the others depend on with `condition: service_completed_successfully`. Setup that writes data the app later changes, such as seeded users or gateway consumers, runs only on a stack's first `up`, so a restart never undoes the app's changes.
 - Containers reach each other by service name. A container that calls the app in `host` mode or another repo's stack gets `extra_hosts: ["host.docker.internal:host-gateway"]`.
 - Use only the default network. The offline proof replaces it.
 - Read nothing from `.env` files. Every value comes from `stack.json`.
 
 ## The app's configuration
 
-- **IDE mode:** the app reads the stack file through its own configuration mechanism, from `${LOCAL_STACK_FILE}` when that variable is set, otherwise from `local-stack/.stack.env`. Examples: Spring Boot `spring.config.import: optional:file:${LOCAL_STACK_FILE:local-stack/.stack.env}[.properties]`, Node `--env-file-if-exists`, Python `python-dotenv`. Map the stack's names to the app's own settings in that local configuration. Make the smallest change that does this, only in the configuration a local run uses, and leave the app's other environments alone. When the app has no mechanism for this, ask the user how they run it from the IDE.
+- **IDE mode:** the app reads the stack file through its own configuration mechanism, from `${LOCAL_STACK_FILE}` when that variable is set, otherwise from `local-stack/.stack.env`. Examples: Spring Boot `spring.config.import: optional:file:${LOCAL_STACK_FILE:local-stack/.stack.env}[.properties]`, Node `--env-file-if-exists`, Python `python-dotenv`. Map the stack's names to the app's own settings in that local configuration. Make the smallest change that does this, only in the configuration a local run uses, and leave the app's other environments alone. When `LOCAL_STACK_FILE` is set and the file does not exist, the app stops with that path, instead of falling back to other local settings that may point at a real server. When the app has no mechanism for this, ask the user how they run it from the IDE.
 - **Container mode:** the app's service in `compose.yaml` sets the same settings from the `_FROM_CONTAINER` values.
 
 ## Stubs

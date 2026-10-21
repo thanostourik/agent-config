@@ -10,6 +10,7 @@ The stack depends on facts that the code cannot show. This file says which quest
 - Send the questions in rounds, as many at once as your question tool allows, the most important first. A later round may depend on an earlier answer.
 - Write each question so the user understands it on the first read, without knowing this skill's words. Never use "shared", "mode", "stub", "switch" or "real mode" without saying what they mean in that question. Name the service the way the code or docs name it, and give a concrete example of what the answer changes.
 - An answer that leaves the decision open is not an answer: ask again, narrower.
+- Before sending, reread each question as the user: if it uses a word from this skill without saying what it means, or needs a second read, rewrite it.
 
 ## Always asked
 
