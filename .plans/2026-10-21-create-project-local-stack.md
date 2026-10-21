@@ -3,8 +3,11 @@
 A shared skill, `skills/shared/create-project-local-stack/`, with the same
 `harness` as `create-project-verification-skill`. It generates `local-stack/`
 in a project repo: an isolated local stack that a person runs with the app in
-their IDE, and that an agent runs whole to verify its work. It never edits the
-project's existing dev setup.
+their IDE, and that an agent runs whole to verify its work.
+
+The skill never reads or edits the project's existing local environment: dev
+scripts, local compose files, verify skills. The stack must come from the code
+and the user's answers, or the run proves nothing.
 
 The skill never decides anything on its own. Every fact the stack depends on
 comes from the repo or from the user. When neither settles a fact, the skill
@@ -40,9 +43,8 @@ project.
   resources with that project's label, plus the dependency stacks it started.
 - **Env file:** `up` writes every URL, port and token of the stack into one
   file. An IDE run configuration loads it, and `env` prints it.
-- **Ports:** each stack gets its own, so two stacks run side by side. They stay
-  the same across `up` and `down` of one name, so an IDE run configuration
-  keeps working.
+- **Ports:** every `up` gets free ports, so any number of stacks run side by
+  side. The env file holds them, so the IDE and agents read them from there.
 - **External services:** each has the modes `real` and `stub`. A service that
   is another repo of the project also has `stack`. Plain `up` uses the
   defaults the user chose. `--mode <service>=<mode>` overrides one service.
@@ -92,8 +94,8 @@ it.
 
 1. **Discover,** read-only. Read the README, `PLATFORM.md` and the docs they
    link. Read the config of every profile, the environment variables, the HTTP
-   clients, the gateway routes, the Dockerfiles and the compose files. Write
-   the working fact list.
+   clients, the gateway routes and the app's Dockerfile. Write the working
+   fact list.
 2. **Ask** every open question.
 3. **Show the design** on one screen: services, external services with their
    modes and defaults, and dependency stacks. Wait for the user's go.
@@ -132,13 +134,6 @@ it.
   chatbot, collector, mail, MinIO.
 - Run it on one project outside ContentCloud that has its own environment
   tool, such as `chatbot-drupal` with DDEV.
-
-## Open question
-
-Should discovery read the project's existing dev setup, such as
-`dev_setup/compose.yaml`, as evidence? Reading it finds the dependencies fast.
-The risk is that the skill copies the setup's flaws. The external-service
-questions are asked either way.
 
 ## Afterwards, in the project repos
 
