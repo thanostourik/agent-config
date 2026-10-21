@@ -32,12 +32,15 @@ only `stack.json`, `compose.yaml`, its stubs and a README.
   is refused.
 - **Ports:** one registry per machine, `$XDG_STATE_HOME/local-stacks/`, shared
   by every repo. Each port gets its usual value when no other claim holds it
-  and it is free, otherwise the lowest free port from 10000. Claims survive
-  `down`, so stored URLs stay valid. A claim whose project left nothing in
-  Docker, and whose `up` is not running, is released when ports are needed.
+  and it is free, otherwise the lowest free port from 10000. Ports are
+  published only on `127.0.0.1` and the Docker gateway, so other machines on
+  the network never reach a stack. Claims survive `down`, so stored URLs stay
+  valid. A claim is released only when its `up` is not running, its stack file
+  is gone, and its project left nothing in Docker.
 - **Stack file:** `local-stack/.stack.env`, or `.stack-<name>.env` for another
   name. The app's local configuration reads it itself, so a run from the IDE
-  needs no setup.
+  needs no setup. It exists only while the stack is up: `down` removes it and
+  the next `up` writes it again with the same ports.
 - **Switches:** each external service, and the app itself, is a switch with
   modes. A mode sets variables and turns on the Compose profile
   `<switch>-<mode>`. `--app` runs the app in a container, `--stubs` stubs every
@@ -49,9 +52,11 @@ only `stack.json`, `compose.yaml`, its stubs and a README.
 
 ## Steps the skill runs
 
-1. Check Docker Compose v2 and Python. For an existing `local-stack/`, or a
-   tool that manages the whole environment such as DDEV, the user chooses to
-   go on or stop.
+1. Check Docker Compose v2 or later and Python. For an existing
+   `local-stack/`, the user chooses update, recreate or stop; update copies the
+   current script, fixes what breaks the current spec, keeps the services and
+   decisions, and reruns the affected proof steps. For a tool that manages the
+   whole environment, such as DDEV, the user chooses to go on or stop.
 2. Discover from the whole repo: the app, its configuration, everything it
    talks to, what talks to it, its data, and the project's other repos.
 3. Ask every open question.
@@ -75,10 +80,12 @@ to build a Compose stack or stop.
 - The skill: `SKILL.md`, `references/stack`, `references/stack-spec.md`,
   `references/questions.md`, `references/agents-local-stack.md`, and its
   `config.defaults.json` entry.
-- `create-project-verification-skill`'s `lifecycle.md`: a project with
-  `local-stack/stack` is launched through it. A project without a disposable
-  setup goes through `/create-project-local-stack` first, and a verify skill
-  never builds a stack in its `bin/`.
+- `create-project-verification-skill`'s `lifecycle.md`: the generator finds
+  every way the project runs an environment, prefers an isolated, disposable
+  one such as `local-stack/stack`, and always asks the user which to use. With
+  none, it asks how to proceed and suggests `/create-project-local-stack`. It
+  builds a setup only when asked, as part of the repo, never in the verify
+  skill's `bin/`. It works without this skill installed.
 
 ## Testing
 

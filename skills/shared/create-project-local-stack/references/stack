@@ -69,7 +69,7 @@ def parse_args():
     up_parser.add_argument("--app", action="store_true", help="also run the app in a container")
     up_parser.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
     up_parser.add_argument("--mode", action="append", default=[], metavar="SWITCH=MODE", help="pick one switch's mode")
-    command("down", down, "stop the stack; keep its data and ports")
+    command("down", down, "stop the stack; keep its data and ports; remove its stack file until the next up")
     command("destroy", destroy, "remove the stack: containers, volumes, built images, ports, dependency stacks")
     command("status", status, "show the stack's modes, ports and containers")
     env_parser = command("env", env, "print the stack file")
@@ -126,6 +126,7 @@ def down(args):
     run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
     for record in claim.get("needs", {}).values():
         run_dependency(record, "down")
+    stack_file(name).unlink(missing_ok=True)
 
 
 def destroy(args):

@@ -27,10 +27,21 @@ This is the rule the whole skill rests on.
 ## 1. Start
 
 - Check that `docker compose version` reports v2 or later and that `python3` exists. Report anything missing, and stop.
-- If `local-stack/` exists, ask the user whether to replace it or to stop. Never overwrite it silently. Its README's `## Decisions` section holds the user's earlier answers.
+- If `local-stack/` exists, ask the user which of three to do, and never change it silently:
+  - **Update:** bring the existing stack up to the current skill, as "Update an existing stack" below says.
+  - **Recreate:** build it again from step 2. Its README's `## Decisions` section holds the user's earlier answers; take them as answered questions.
+  - **Stop:** change nothing.
 - Build the stack next to whatever the repo already has for running locally. Never edit or remove that.
 - If the project already runs locally through a tool that manages its whole environment, such as DDEV, ask the user whether to build a Compose stack anyway or to stop.
 - Keep observed facts in `local-stack/.facts.md`, one line each: the fact, then its source, such as `kong.yml:42` or `user, <date>`. It is a working file; step 7 deletes it.
+
+## Update an existing stack
+
+1. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged.
+2. Read `local-stack/`, the app's local configuration change and the `AGENTS.md` section. List every place they break the current [`references/stack-spec.md`](references/stack-spec.md) and this skill.
+3. Fix each one and keep the services, switches and Decisions. A fix that changes what the stack runs, a default or a Decision is a question for the user first.
+4. Rerun the proof steps of step 6 that the changes affect, always including cleanup.
+5. Hand over as step 7 says, and report what changed and which proof steps ran.
 
 ## 2. Discover
 
@@ -81,7 +92,7 @@ Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use
 2. **IDE mode, at the same time:** `local-stack/stack up --stubs --name lsproof-b`, so the proof sends nothing to a shared service; step 4 proves the real ones. If no developer runs the app on their machine, which the user's answer settles, skip the rest of this step and report it as not applicable. Otherwise, start the app on the host the way a developer runs it from the IDE: its usual run command, with `LOCAL_STACK_FILE` pointing at `lsproof-b`'s stack file and nothing else added. Send the same request, also through each service that calls the app. Stop the app.
 3. **Parallel:** both stacks ran at once on different ports, and neither saw the other's data.
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
-5. **Offline:** read the image build logs of step 1, and list each outside address a build downloads from in the README as "the image build needs internet for: …". Then `local-stack/stack down --name lsproof-a`, then `local-stack/stack compose --name lsproof-a -- -f <file> up --detach`, where `<file>` is a temporary file outside the repo that makes the default network internal:
+5. **Offline:** read the image build logs of step 1, and list each outside address a build downloads from in the README as "the image build needs internet for: …". Then `local-stack/stack compose --name lsproof-a -- down`, which keeps the stack file the next command needs, then `local-stack/stack compose --name lsproof-a -- -f <file> up --detach`, where `<file>` is a temporary file outside the repo that makes the default network internal:
 
    ```yaml
    networks:
@@ -89,7 +100,7 @@ Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use
        internal: true
    ```
 
-   Ports are not published on an internal network, so send the request from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed. Go back to step 3 with it, never stub it silently. A switch in `stack` mode reaches the other repo through the host, so its failures here are expected; say so in the report. When the app waits for a service that depends on another repo's stack, start the app alone with `-- up --detach --no-deps <app service>` and check its own requests.
+   Ports are not published on an internal network, so send the request from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed. Go back to step 3 with it, never stub it silently. A switch in `stack` mode reaches the other repo through the host, so its failures here are expected; say so in the report. When the app waits for a service that depends on another repo's stack, start the app alone with `-- up --detach --no-deps <app service>` and check its own requests. Afterwards, run `local-stack/stack compose --name lsproof-a -- down` before the next `up`, because the containers still hold the replaced network.
 6. **Dependencies:** start one more stack, `local-stack/stack up --app --stubs --name lsproof-c`, with `--mode <switch>=stack` for every switch that has a `stack` mode, even when it is not the default. Send the step 1 request. For each of those switches, `local-stack/stack status --name lsproof-c` names the other repo's stack. That stack's own status shows its shared switches in `stub` mode.
 7. **Cleanup:** `local-stack/stack destroy` for every proof stack. Check that no container, volume, network or built image carries any of their projects' labels, that their stack files and registry claims are gone, and that the names in the lists you recorded are unchanged.
 
