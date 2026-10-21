@@ -62,6 +62,14 @@ only `stack.json`, `compose.yaml`, its stubs and a README.
    and a cleanup that leaves nothing behind.
 7. Write the README's decisions, the `AGENTS.md` section, commit and report.
 
+## Left out for now
+
+A wrapper for projects that run through a whole-environment tool such as DDEV.
+It needs its own version of names, ports, switches and dependency stacks, and
+it can only be tested on a real DDEV project. It gets built when the skill
+first runs on one, such as `chatbot-drupal`. Until then the skill asks whether
+to build a Compose stack or stop.
+
 ## Changes in this repo
 
 - The skill: `SKILL.md`, `references/stack`, `references/stack-spec.md`,
