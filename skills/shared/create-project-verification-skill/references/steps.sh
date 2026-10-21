@@ -79,15 +79,23 @@ fixture_names() {
 
 check_contract() {
   awk -F '\t' -v feature="$3" -v arrow=" → " '
-    FILENAME == ARGV[1] { if ($1 == feature && $3 != "mention" && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
+    FILENAME == ARGV[1] { if ($1 == feature) known[$2]; if ($1 == feature && $3 != "mention" && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
     FILENAME == ARGV[2] { steps[$2]; next }
     /^## / { contract = $0 == "## Contract"; next }
     !contract || !/^- / { next }
     {
-      line = substr($0, 3)
-      if (!(i = index(line, arrow))) { print "## Contract line \"" $0 "\" has no \"" arrow "\""; next }
-      section = substr(line, 1, i - 1); target = substr(line, i + length(arrow))
-      while (sub(/ \((excerpt|mentions|not read: [^)]*)\)$/, "", section)) {}
+      line = substr($0, 3); section = ""
+      for (s in known) {
+        if (index(line, s) != 1 || length(s) <= length(section)) continue
+        rest = substr(line, length(s) + 1)
+        while (sub(/^ \((excerpt|mentions|not read: [^)]*)\)/, "", rest)) {}
+        if (index(rest, arrow) == 1) { section = s; target = substr(rest, length(arrow) + 1) }
+      }
+      if (section == "") {
+        if (!(i = index(line, arrow))) { print "## Contract line \"" $0 "\" has no \"" arrow "\""; next }
+        section = substr(line, 1, i - 1); target = substr(line, i + length(arrow))
+        while (sub(/ \((excerpt|mentions|not read: [^)]*)\)$/, "", section)) {}
+      }
       covered[section]
       if (target ~ /^not driven/) {
         if (target !~ /^not driven:[[:space:]]*[^[:space:]]/) print "## Contract line for " section " says not driven without a reason"
