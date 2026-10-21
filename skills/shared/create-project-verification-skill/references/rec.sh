@@ -655,6 +655,9 @@ if [[ "$action" == peek ]]; then
   find_expressions
   clean_up || status=1
   reach "Clean up" "${numbers[-1]}"
+  previous=$(cat "$rec/last-peek.tsv" 2>/dev/null)
+  printf '%s\t%s\n' "${labels[last]}" "${#finds[@]}" > "$rec/last-peek.tsv"
+  ((${#finds[@]} >= 2)) || [[ "$previous" != "${labels[last]}"$'\t'[01] ]] || echo "hint: pass every expression of this screen as --find in one peek"
   exit $status
 fi
 
