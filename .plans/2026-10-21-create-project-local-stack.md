@@ -13,9 +13,10 @@ stacks run at once, on one machine, from one or several repos.
   harness's question tool at run time (`AskUserQuestion` in Claude Code). The
   questions follow a fixed bank in `references/questions.md`. When the user
   does not know, that part is blocked and reported, and the rest goes on.
-- **Never read the existing local environment:** compose files, dev scripts,
-  devcontainers, existing verify skills, and the docs that explain them. The
-  stack must come from the code and the user's answers, or it proves nothing.
+- **Every file is evidence, none is a template.** Discovery reads the whole
+  repo, including any scripts or container files it already has for running
+  locally. The stack follows the skill's spec, and it is built next to
+  existing tooling, which it never edits or removes.
 
 ## One mechanism, copied unchanged
 
@@ -48,10 +49,11 @@ only `stack.json`, `compose.yaml`, its stubs and a README.
 
 ## Steps the skill runs
 
-1. Check Docker Compose v2 and Python. An existing `local-stack/` keeps its
-   decisions, and the user chooses to replace it or stop.
-2. Discover from the code: the app, its configuration, everything it talks to,
-   what talks to it, its data, and the project's other repos.
+1. Check Docker Compose v2 and Python. For an existing `local-stack/`, or a
+   tool that manages the whole environment such as DDEV, the user chooses to
+   go on or stop.
+2. Discover from the whole repo: the app, its configuration, everything it
+   talks to, what talks to it, its data, and the project's other repos.
 3. Ask every open question.
 4. Show the design on one screen and wait for a go.
 5. Build `local-stack/`, the stubs, and the app's configuration change.

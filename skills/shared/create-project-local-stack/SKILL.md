@@ -24,22 +24,17 @@ This is the rule the whole skill rests on.
 - Follow [`references/questions.md`](references/questions.md) for which questions to ask and how to write them.
 - When the user does not know an answer, the part that depends on it is blocked. Leave it out of the stack, keep building the rest, and report it.
 
-## Never read the existing local environment
-
-The stack must come from the code and the user's answers, so that it proves something. Never open, search or ask about the project's existing ways to run a local environment: compose files, dev scripts, `.devcontainer/`, `.ddev/`, Vagrant or Lando files, existing verify skills, and the parts of the docs that explain how to start them. You may read the app's own build files, Dockerfile, configuration and code, including configuration that mentions such a setup. If such a setup is the only documented way to run the app, say so in the report.
-
-The one exception is `local-stack/` itself, which step 1 handles.
-
 ## 1. Start
 
 - Check that `docker compose version` reports v2 and that `python3` exists. Report anything missing, and stop.
-- If `local-stack/` exists, read only its README's `## Decisions` section. Ask the user whether to replace the stack, keeping those decisions, or to stop. Never overwrite it silently.
-- If the project's documented way to run is a dedicated environment tool, such as DDEV or Lando, ask the user whether to build a Compose stack anyway or to stop.
+- If `local-stack/` exists, ask the user whether to replace it or to stop. Never overwrite it silently. Its README's `## Decisions` section holds the user's earlier answers.
+- Build the stack next to whatever the repo already has for running locally. Never edit or remove that.
+- If the project already runs locally through a tool that manages its whole environment, such as DDEV, ask the user whether to build a Compose stack anyway or to stop.
 - Keep observed facts in `local-stack/.facts.md`, one line each: the fact, then its source, such as `kong.yml:42` or `user, <date>`. It is a working file; step 6 deletes it.
 
 ## 2. Discover
 
-Read the code, never run the existing setup. Find:
+Read the whole repo: code, configuration, build files, docs, CI pipelines, test setups, and any scripts or container files already there. Every file is evidence, and none is a template: the stack follows the spec. Discovery only reads; it runs nothing. Find:
 
 - **The app:** each process this repo runs: its build command, its entry point, its listening port and how it reads configuration. Read the build files (`pom.xml`, `build.gradle`, `package.json`, `pyproject.toml`, …), the Dockerfile if any, and the run scripts they define.
 - **Its configuration:** every profile and environment file, every environment variable the code reads, and which of them a local run uses.
@@ -60,7 +55,7 @@ When the code does not settle the kind, ask.
 
 Ask every open question from step 2, following [`references/questions.md`](references/questions.md). New facts can open new questions; ask those too. Write each answer into the fact file.
 
-For another repo, ask where its checkout is. If that checkout has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one. Read that repo's `local-stack/README.md` for what it provides; never read its stack's internals.
+For another repo, ask where its checkout is. If that checkout has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one. Use only what that repo's `local-stack/README.md` lists under Provides, so its stack can change inside without breaking this one.
 
 ## 4. Show the design and wait
 
