@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; slug <label>, snapshot_path [<log>], split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
+# steps.sh: sourced by drive.sh and rec.sh; slug <label>, snapshot_path [<log>], split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, removes_evidence <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
 
 step_timeout=600
 
@@ -35,6 +35,7 @@ check_steps() {
       syntax=$(head -n 1 <<< "$syntax")
       echo "step \"$label\" is not valid bash: ${syntax#"$1/$number.sh: "}"
     fi
+    ! removes_evidence "$1/$number.sh" || echo "step \"$label\" removes the evidence folder; delete files inside it instead"
     [[ -n "${3:-}" ]] || continue
     while IFS= read -r finding; do echo "step \"$label\" $finding"; done < <(lint_block "$1/$number.sh" "$3")
   done < "$1/steps"
@@ -79,15 +80,23 @@ fixture_names() {
 
 check_contract() {
   awk -F '\t' -v feature="$3" -v arrow=" → " '
-    FILENAME == ARGV[1] { if ($1 == feature && $3 != "mention" && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
+    FILENAME == ARGV[1] { if ($1 == feature) known[$2]; if ($1 == feature && $3 != "mention" && !($2 in mapped)) { mapped[$2]; order[++n] = $2 }; next }
     FILENAME == ARGV[2] { steps[$2]; next }
     /^## / { contract = $0 == "## Contract"; next }
     !contract || !/^- / { next }
     {
-      line = substr($0, 3)
-      if (!(i = index(line, arrow))) { print "## Contract line \"" $0 "\" has no \"" arrow "\""; next }
-      section = substr(line, 1, i - 1); target = substr(line, i + length(arrow))
-      while (sub(/ \((excerpt|mentions|not read: [^)]*)\)$/, "", section)) {}
+      line = substr($0, 3); section = ""
+      for (s in known) {
+        if (index(line, s) != 1 || length(s) <= length(section)) continue
+        rest = substr(line, length(s) + 1)
+        while (sub(/^ \((excerpt|mentions|not read: [^)]*)\)/, "", rest)) {}
+        if (index(rest, arrow) == 1) { section = s; target = substr(rest, length(arrow) + 1) }
+      }
+      if (section == "") {
+        if (!(i = index(line, arrow))) { print "## Contract line \"" $0 "\" has no \"" arrow "\""; next }
+        section = substr(line, 1, i - 1); target = substr(line, i + length(arrow))
+        while (sub(/ \((excerpt|mentions|not read: [^)]*)\)$/, "", section)) {}
+      }
       covered[section]
       if (target ~ /^not driven/) {
         if (target !~ /^not driven:[[:space:]]*[^[:space:]]/) print "## Contract line for " section " says not driven without a reason"
@@ -144,6 +153,28 @@ calls_run_script() {
         sub(/["\047[:space:])].*/, "", command)
         sub(/.*\//, "", command)
         if (command ~ /^(launch|cleanup|doctor)\.sh$/) { print command; found = 1; exit }
+      }
+    }
+    END { exit !found }
+  ' "$1"
+}
+
+removes_evidence() {
+  awk '
+    {
+      n = split($0, commands, /[;&|(`]/)
+      for (i = 1; i <= n; i++) {
+        k = split(commands[i], words, /[[:space:]]+/)
+        for (j = 1; j <= k && words[j] !~ /^(rm|.*\/rm)$/; j++) {}
+        recursive = target = 0
+        for (j++; j <= k; j++) {
+          word = words[j]
+          if (word ~ /^-[A-Za-z]*[rR]/ || word == "--recursive") recursive = 1
+          gsub(/["\047]/, "", word)
+          sub(/\/+$/, "", word)
+          if (word ~ /^(\$evidence|\$\{evidence[^}]*\}|(.*\/)?\.cache(\/evidence)?)$/) target = 1
+        }
+        if (recursive && target) { found = 1; exit }
       }
     }
     END { exit !found }

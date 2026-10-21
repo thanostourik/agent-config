@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # rec.sh <feature> start: stage features/<feature>.md, or a skeleton for a new feature, as .cache/record/<feature>/<feature>.md and print that path; write the whole feature file there; it resets .cache/record/<feature>/reached.tsv. An installed feature keeps its attempts count.
-# rec.sh <feature> run [--known-failure '<Label>']: check the staged file as drive.sh --check does, contract coverage included, refuse it while a step's current block has no line in reached.tsv, print attempt <n> of <feature>, counting runs since start that passed those checks, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with a snapshot command, that snapshot is a fresh one of the failing screen, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
+# rec.sh <feature> run [--known-failure '<Label>']: check the staged file as drive.sh --check does, contract coverage included, refuse it while a step's current block has no line in reached.tsv, print attempt <n> of <feature>, counting runs since start that passed those checks, move the last run's step logs and .cache/evidence/<feature>/ to .cache/record/<feature>/previous/, then run its Driving section the way drive.sh runs an installed one; the flag lets the last step before Clean up fail. A failure ends with the failing step, its snapshot and its log, and adds a line to .cache/record/failures.txt; with bin/observe.sh, that snapshot is a fresh one of the state the failing step left, taken before Clean up as .cache/record/<feature>/failure.txt. Everything it prints also lands in .cache/record/<feature>/result.txt when it ends; .cache/record/<feature>/running holds its pid until then.
 # rec.sh <feature> result: wait while a run of <feature> is going, then print its result.txt; a run whose process died first prints killed before it finished.
-# rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each Playwright locator on the last screen reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its screen goes to the next snapshot file. Each step it ran, failed ones and Clean up included, gets a line of its label and block hash in .cache/record/<feature>/reached.tsv. The snapshot command is .cache/record/peek-command.txt, with the path appended as it is, so the path is its last argument.
+# rec.sh <feature> peek [--after '<Label>']... [--find '<expression>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot with bin/observe.sh after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each expression with bin/find.sh on the last state reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its state goes to the next snapshot file. Each step it ran, failed ones and Clean up included, gets a line of its label and block hash in .cache/record/<feature>/reached.tsv.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file; without one, attempts 0 and the other keys empty.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh affected: list in .cache/changed.txt the files changed since the commit in features/last-reviewed, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
 # rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
-# rec.sh brief [<feature>...]: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt when it is missing, then each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
+# rec.sh map: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt.
+# rec.sh brief <feature>...: build the contract map as map does when it is missing, then write each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
+# rec.sh next [<running feature>...]: print the features of .cache/record/queue.txt to start now, one per line, and append them to .cache/record/started.txt: up to Recorders at once of maintain-verify-<app>/SKILL.md minus the running ones that are not alone, else, with none left and none running, the next one alone. A feature is alone when its installed or staged file contains Runs alone., every feature when the Drive section of SKILL.md uses --jobs 1.
 # rec.sh fix-brief <feature>...: write each feature's fix-read.md and fix-brief.md, the ### Fixer template filled from its failure in the summary of .cache/drive.txt.
 # rec.sh sendback: print each feature whose report says no drift while its facts show no run.
 # rec.sh reviewed '<message>': write the last commit outside features/last-reviewed to that file and commit it alone with that message, only when it changes.
@@ -24,12 +26,14 @@ source "$skill/bin/steps.sh"
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
        rec.sh <feature> result
-       rec.sh <feature> peek [--after '<Label>']... [--find '<locator>']...
+       rec.sh <feature> peek [--after '<Label>']... [--find '<expression>']...
        rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
        rec.sh affected
        rec.sh common
-       rec.sh brief [<feature>...]
+       rec.sh map
+       rec.sh brief <feature>...
+       rec.sh next [<running feature>...]
        rec.sh fix-brief <feature>...
        rec.sh sendback
        rec.sh reviewed '<message>'
@@ -206,15 +210,43 @@ common() {
   (($(wc -c < "$out") < 20000)) || fail "$(relative "$out") is still 20,000 bytes or more"
 }
 
-brief() {
-  local v r b c d h p sources
-  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
-  if [[ ! -f $r/contract-map.tsv ]]; then
-    [[ -f $r/contract-sources.txt ]] || fail "write $r/contract-sources.txt or $r/contract-map.tsv"
-    mapfile -t sources < <(grep . "$r/contract-sources.txt")
-    contract_map "$r/contract-words.tsv" "${sources[@]}" > "$r/contract-map.tsv"
+map() {
+  local r sources
+  r=$(relative "$skill")/.cache/record
+  [[ -f $r/contract-sources.txt ]] || fail "write $r/contract-sources.txt or $r/contract-map.tsv"
+  mapfile -t sources < <(grep . "$r/contract-sources.txt")
+  contract_map "$r/contract-words.tsv" "${sources[@]}" > "$r/contract-map.tsv"
+}
+
+next() {
+  local r="$skill/.cache/record" maintain n room feature all_alone="" together=() alone=()
+  maintain="$skill/../maintain-$(basename "$skill")/SKILL.md"
+  [[ -f "$r/queue.txt" ]] || fail "write the features to record to $(relative "$r/queue.txt")"
+  n=$(sed -n 's/.*Recorders at once: *\([0-9][0-9]*\).*/\1/p' "$maintain" 2>/dev/null | head -n 1)
+  [[ -n "$n" ]] || fail "no \"Recorders at once: <n>\" in $(relative "$maintain")"
+  for feature in "$@"; do check_feature "$feature"; done
+  section Drive "$skill/SKILL.md" | grep -qE -- '--jobs 1([^0-9]|$)' && all_alone=1
+  touch "$r/started.txt"
+  while IFS= read -r feature; do
+    if [[ -n "$all_alone" ]] || grep -qsF 'Runs alone.' "$skill/features/$feature.md" "$r/$feature/$feature.md"; then
+      alone+=("$feature")
+    else
+      together+=("$feature")
+    fi
+  done < <(grep -vxF -f "$r/started.txt" "$r/queue.txt" | grep .)
+  if ((${#together[@]})); then
+    room=$((n - $#))
+    ((room > 0)) || return 0
+    printf '%s\n' "${together[@]:0:room}" | tee -a "$r/started.txt"
+  elif ((${#alone[@]} && $# == 0)); then
+    echo "${alone[0]}" | tee -a "$r/started.txt"
   fi
-  (($#)) || return 0
+}
+
+brief() {
+  local v r b c d h p
+  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
+  [[ -f $r/contract-map.tsv ]] || map
   set +u +o pipefail
   export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none GIT_LITERAL_PATHSPECS=1
   b=$(cat "$v/features/last-reviewed" 2>/dev/null)
@@ -272,7 +304,9 @@ reviewed() {
 
 case "${1:-}" in
   affected | common | sendback) (($# == 1)) || usage; "$1"; exit ;;
-  brief) shift; brief "$@"; exit 0 ;;
+  map) (($# == 1)) || usage; map; exit ;;
+  next) shift; next "$@"; exit 0 ;;
+  brief) shift; (($#)) || { echo "usage: rec.sh brief <feature>..." >&2; exit 2; }; brief "$@"; exit 0 ;;
   fix-brief) shift; (($#)) || usage; fix_brief "$@"; exit 0 ;;
   reviewed) [[ $# == 2 && -n "$2" ]] || usage; reviewed "$2"; exit ;;
 esac
@@ -414,8 +448,8 @@ while (($#)); do
   fi
   shift 2
 done
-peek_command=$(cat "$skill/.cache/record/peek-command.txt" 2>/dev/null)
-[[ "$action" == run || -n "$peek_command" ]] || fail "write .cache/record/peek-command.txt"
+[[ "$action" == run || -f "$skill/bin/observe.sh" ]] || fail "write bin/observe.sh; see verify-skill-spec.md Helpers"
+((${#finds[@]} == 0)) || [[ -f "$skill/bin/find.sh" ]] || fail "write bin/find.sh; see verify-skill-spec.md Helpers"
 [[ -f "$staged" ]] || fail "$feature has no staged file; run rec.sh $feature start"
 finish() {
   exec >&- 2>&-
@@ -561,7 +595,7 @@ clean_up() {
 
 peek_into() {
   rm -f "$2"
-  printf '%s%q\n' "$peek_command" "$(relative "$2")" > "$work/$1.sh"
+  printf 'observe.sh %q\n' "$(relative "$2")" > "$work/$1.sh"
   attempt "$1" Snapshot && [[ -s "$2" ]]
 }
 
@@ -569,44 +603,25 @@ snapshot() {
   local peek="$rec/peek.txt"
   ((${#stops[@]} < 2)) || peek="$rec/peek-$1.txt"
   if peek_into "peek-$1" "$peek"; then
-    echo "rec.sh: peek written to $(relative "$peek")${2:+ (the screen where \"$2\" failed)}"
+    echo "rec.sh: peek written to $(relative "$peek")${2:+ (the state where \"$2\" failed)}"
   else
-    echo "rec.sh: the peek command wrote no $(relative "$peek") ($(relative "$log"))"
+    echo "rec.sh: observe.sh wrote no $(relative "$peek") ($(relative "$log"))"
     show_failure "peek-$1"
     status=1
   fi
 }
 
-find_locators() {
-  local n=0 locator
-  ((${#finds[@]})) || return 0
-  [[ "$(sed -n 's/^## Driving it with //p' "$staged" | head -n 1)" == *"Playwright CLI"* ]] || { echo "find needs a Playwright CLI driver"; return 0; }
-  for locator in "${finds[@]}"; do
+find_expressions() {
+  local n=0 expression
+  for expression in "${finds[@]}"; do
     n=$((n + 1))
-    printf 'pw.sh run-code %q\n' 'async page => { try { const l = page.'"${locator#page.}"'; const n = await l.count(); const out = [String(n)]; for (let i = 0; i < Math.min(n, 3); i++) { const m = l.nth(i); const a = (await m.ariaSnapshot({ timeout: 5000 })).split("\n")[0].match(/^- \x27?([\w-]+)(?: "((?:[^"\\]|\\.)*)")?/); const role = a ? a[1] : await m.evaluate(e => e.tagName.toLowerCase()); const text = (await m.innerText({ timeout: 5000 })).replace(/\s+/g, " ").trim().slice(0, 80); out.push(`${role} "${a && a[2] || ""}" | ${text}`); } return out.join("\n"); } catch (e) { return `error ${String(e.message).split("\n")[0]}`; } }' > "$work/find-$n.sh"
+    printf 'find.sh %q\n' "$expression" > "$work/find-$n.sh"
     attempt "find-$n" Find
-    step_output "find-$n" | awk -v locator="$locator" '
-      function decode(s,   out, i, c) {
-        s = substr(s, 2, length(s) - 2)
-        for (i = 1; i <= length(s); i++) {
-          c = substr(s, i, 1)
-          if (c == "\\") { c = substr(s, ++i, 1); if (c == "n") c = "\n"; else if (c == "t") c = "\t" }
-          out = out c
-        }
-        return out
-      }
-      result { text = decode($0); found = 1; result = 0; next }
-      /^### Result$/ { result = 1; next }
-      error { message = $0; error = 0; next }
-      /^### Error$/ { error = 1; next }
-      first == "" && /[^[:space:]]/ && !/^\++\[rec\] / && !/^exit=/ { first = $0 }
-      END {
-        if (!found) { print "find " locator ": error " (message != "" ? message : first); exit }
-        n = split(text, lines, "\n")
-        if (lines[1] ~ /^error /) { print "find " locator ": " lines[1]; exit }
-        print "find " locator ": " (lines[1] == 1 ? "" : "!! ") lines[1] " match" (lines[1] == 1 ? "" : "es")
-        for (i = 2; i <= n; i++) print "  " lines[i]
-      }
+    step_output "find-$n" | sed '/^exit=/,$d' | grep -v '^+*\[rec\] ' | awk -v expression="$expression" '
+      NR == 1 && /^[0-9]+ match/ { print "find " expression ": " ($1 == 1 ? "" : "!! ") $0; next }
+      NR == 1 { print "find " expression ": " (/^error / ? "" : "error ") $0; exit }
+      { print "  " $0 }
+      END { if (!NR) print "find " expression ": error find.sh printed nothing" }
     '
   done
 }
@@ -637,9 +652,12 @@ if [[ "$action" == peek ]]; then
     for n in "${!stops[@]}"; do ((stops[n] < i)) || { snapshot $((n + 1)) "$failed"; break; }; done
     echo "rec.sh: reached:${reached:- none}; not reached:$missed"
   fi
-  find_locators
+  find_expressions
   clean_up || status=1
   reach "Clean up" "${numbers[-1]}"
+  previous=$(cat "$rec/last-peek.tsv" 2>/dev/null)
+  printf '%s\t%s\n' "${labels[last]}" "${#finds[@]}" > "$rec/last-peek.tsv"
+  ((${#finds[@]} >= 2)) || [[ "$previous" != "${labels[last]}"$'\t'[01] ]] || echo "hint: pass every expression of this screen as --find in one peek"
   exit $status
 fi
 
@@ -659,7 +677,7 @@ for ((i = 0; i < count; i++)); do
   show_failure "${numbers[i]}"
   failed_log=$log snapshot=$(step_snapshot "${numbers[i]}")
   record_failure "$label" "${numbers[i]}"
-  [[ -z "$peek_command" ]] || ! peek_into failure "$rec/failure.txt" || snapshot=$rec/failure.txt
+  [[ ! -f "$skill/bin/observe.sh" ]] || ! peek_into failure "$rec/failure.txt" || snapshot=$rec/failure.txt
   set_facts last_result "failed: $label" last_log "$(relative "$failed_log")" last_snapshot "${snapshot:+$(relative "$snapshot")}"
   [[ "$label" == "Clean up" ]] || clean_up
   echo "failing step: $label"
