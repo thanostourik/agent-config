@@ -32,7 +32,7 @@ source "$skill/bin/steps.sh"
 
 refusals=()
 for feature in "${features[@]}"; do
-  dir="$work/$feature"
+  dir="$work/$feature/run"
   mkdir -p "$dir" && : > "$dir/steps"
   split_steps "$skill/features/$feature.md" "$dir"
   checks=("$dir" "$skill/features/$feature.md")
@@ -50,14 +50,14 @@ if [[ -n "$check" ]]; then
 fi
 
 drive_feature() {
-  local feature=$1 dir="$work/$feature" evidence="$skill/.cache/evidence/$feature/steps"
+  local feature=$1 dir="$work/$feature/run" logs="$work/$feature/steps" evidence="$skill/.cache/evidence/$feature"
   local number label block log status failed="" failed_log="" stopped="" ran="" cleanup="" cleanup_log=""
   : > "$dir/state"
-  rm -rf "$skill/.cache/evidence/$feature" && mkdir -p "$evidence"
+  rm -rf "$evidence" && mkdir -p "$evidence" "$logs"
   export VERIFY_SESSION=$feature
   while IFS=$'\t' read -r -u 3 number label; do
     block="$dir/$number.sh"
-    log="$evidence/$number-$(slug "$label").log"
+    log="$logs/$number-$(slug "$label").log"
     if [[ "$label" == "Clean up" ]]; then cleanup=$block cleanup_log=$log; fi
     [[ -e "$work/stop" ]] && stopped=1
     if [[ -n "$failed$stopped" ]]; then
@@ -83,9 +83,12 @@ drive_feature() {
   fi
   if [[ -n "$failed" ]]; then
     printf '%s\t%s\n' "$failed" "$failed_log" > "$dir/failed"
-    if [[ ! -e "$work/stop" ]] && ! "$skill/bin/doctor.sh" > "$evidence/doctor.log" 2>&1 < /dev/null 3<&-; then
-      echo "doctor failed after $feature ($evidence/doctor.log); stopping the run"
-      : > "$work/stop"
+    if [[ ! -e "$work/stop" ]]; then
+      "$skill/bin/doctor.sh" 2>&1 < /dev/null 3<&- | tee "$logs/doctor.log" > /dev/null
+      if ((PIPESTATUS[0])); then
+        echo "doctor failed after $feature ($logs/doctor.log); stopping the run"
+        echo "$feature" > "$work/stop"
+      fi
     fi
   fi
   : > "$dir/done"
@@ -115,12 +118,16 @@ echo
 echo "Summary"
 result=0
 for feature in "${features[@]}"; do
-  dir="$work/$feature"
+  dir="$work/$feature/run"
   if [[ -e "$dir/failed" ]]; then
     IFS=$'\t' read -r label log < "$dir/failed"
     echo "$feature: fail at \"$label\" ($log)"
   elif [[ ! -e "$dir/done" ]]; then
-    echo "$feature: not run"
+    if [[ -s "$work/stop" ]]; then
+      echo "$feature: not run (doctor failed after $(head -n 1 "$work/stop"))"
+    else
+      echo "$feature: not run (run stopped)"
+    fi
   elif [[ -e "$dir/not-run" ]]; then
     echo "$feature: stopped"
   else
@@ -131,5 +138,5 @@ for feature in "${features[@]}"; do
   [[ -e "$dir/not-run" ]] && echo "  not run: $(paste -sd ',' "$dir/not-run" | sed 's/,/, /g')"
   [[ -e "$dir/cleanup-failed" ]] && echo "  clean up: fail ($(cat "$dir/cleanup-failed"))"
 done
-rm -rf "$work"
+rm -rf "$work"/*/run "$work/stop"
 exit $result

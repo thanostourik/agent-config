@@ -7,7 +7,9 @@
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh affected: list in .cache/changed.txt the files changed since the commit in features/last-reviewed, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
 # rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
-# rec.sh brief [<feature>...]: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt when it is missing, then each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
+# rec.sh map: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt.
+# rec.sh brief <feature>...: build the contract map as map does when it is missing, then write each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
+# rec.sh next [<running feature>...]: print the features of .cache/record/queue.txt to start now, one per line, and append them to .cache/record/started.txt: up to Recorders at once of maintain-verify-<app>/SKILL.md minus the running ones that are not alone, else, with none left and none running, the next one alone. A feature is alone when its installed or staged file contains Runs alone., every feature when the Drive section of SKILL.md uses --jobs 1.
 # rec.sh fix-brief <feature>...: write each feature's fix-read.md and fix-brief.md, the ### Fixer template filled from its failure in the summary of .cache/drive.txt.
 # rec.sh sendback: print each feature whose report says no drift while its facts show no run.
 # rec.sh reviewed '<message>': write the last commit outside features/last-reviewed to that file and commit it alone with that message, only when it changes.
@@ -29,7 +31,9 @@ usage_all="usage: rec.sh <feature> start
        rec.sh <feature> index '<index line>'
        rec.sh affected
        rec.sh common
-       rec.sh brief [<feature>...]
+       rec.sh map
+       rec.sh brief <feature>...
+       rec.sh next [<running feature>...]
        rec.sh fix-brief <feature>...
        rec.sh sendback
        rec.sh reviewed '<message>'
@@ -206,15 +210,43 @@ common() {
   (($(wc -c < "$out") < 20000)) || fail "$(relative "$out") is still 20,000 bytes or more"
 }
 
-brief() {
-  local v r b c d h p sources
-  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
-  if [[ ! -f $r/contract-map.tsv ]]; then
-    [[ -f $r/contract-sources.txt ]] || fail "write $r/contract-sources.txt or $r/contract-map.tsv"
-    mapfile -t sources < <(grep . "$r/contract-sources.txt")
-    contract_map "$r/contract-words.tsv" "${sources[@]}" > "$r/contract-map.tsv"
+map() {
+  local r sources
+  r=$(relative "$skill")/.cache/record
+  [[ -f $r/contract-sources.txt ]] || fail "write $r/contract-sources.txt or $r/contract-map.tsv"
+  mapfile -t sources < <(grep . "$r/contract-sources.txt")
+  contract_map "$r/contract-words.tsv" "${sources[@]}" > "$r/contract-map.tsv"
+}
+
+next() {
+  local r="$skill/.cache/record" maintain n room feature all_alone="" together=() alone=()
+  maintain="$skill/../maintain-$(basename "$skill")/SKILL.md"
+  [[ -f "$r/queue.txt" ]] || fail "write the features to record to $(relative "$r/queue.txt")"
+  n=$(sed -n 's/.*Recorders at once: *\([0-9][0-9]*\).*/\1/p' "$maintain" 2>/dev/null | head -n 1)
+  [[ -n "$n" ]] || fail "no \"Recorders at once: <n>\" in $(relative "$maintain")"
+  for feature in "$@"; do check_feature "$feature"; done
+  section Drive "$skill/SKILL.md" | grep -qE -- '--jobs 1([^0-9]|$)' && all_alone=1
+  touch "$r/started.txt"
+  while IFS= read -r feature; do
+    if [[ -n "$all_alone" ]] || grep -qsF 'Runs alone.' "$skill/features/$feature.md" "$r/$feature/$feature.md"; then
+      alone+=("$feature")
+    else
+      together+=("$feature")
+    fi
+  done < <(grep -vxF -f "$r/started.txt" "$r/queue.txt" | grep .)
+  if ((${#together[@]})); then
+    room=$((n - $#))
+    ((room > 0)) || return 0
+    printf '%s\n' "${together[@]:0:room}" | tee -a "$r/started.txt"
+  elif ((${#alone[@]} && $# == 0)); then
+    echo "${alone[0]}" | tee -a "$r/started.txt"
   fi
-  (($#)) || return 0
+}
+
+brief() {
+  local v r b c d h p
+  v=$(relative "$skill") r=$(relative "$skill")/.cache/record
+  [[ -f $r/contract-map.tsv ]] || map
   set +u +o pipefail
   export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none GIT_LITERAL_PATHSPECS=1
   b=$(cat "$v/features/last-reviewed" 2>/dev/null)
@@ -272,7 +304,9 @@ reviewed() {
 
 case "${1:-}" in
   affected | common | sendback) (($# == 1)) || usage; "$1"; exit ;;
-  brief) shift; brief "$@"; exit 0 ;;
+  map) (($# == 1)) || usage; map; exit ;;
+  next) shift; next "$@"; exit 0 ;;
+  brief) shift; (($#)) || { echo "usage: rec.sh brief <feature>..." >&2; exit 2; }; brief "$@"; exit 0 ;;
   fix-brief) shift; (($#)) || usage; fix_brief "$@"; exit 0 ;;
   reviewed) [[ $# == 2 && -n "$2" ]] || usage; reviewed "$2"; exit ;;
 esac
