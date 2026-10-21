@@ -41,10 +41,14 @@ project.
 - **Name and ownership:** the stack name defaults to the branch, and callers
   can pass `--name`. One stack is one Compose project. `down` removes only
   resources with that project's label, plus the dependency stacks it started.
-- **Env file:** `up` writes every URL, port and token of the stack into one
-  file. An IDE run configuration loads it, and `env` prints it.
-- **Ports:** every `up` gets free ports, so any number of stacks run side by
-  side. The env file holds them, so the IDE and agents read them from there.
+- **Ports:** each stack claims a stack number in one registry per machine,
+  `~/.local/state/local-stacks/`, shared by the stacks of every repo. The
+  number keeps its ports until `down -v`. Stack 0 gets the app's usual ports;
+  stack N gets a block of its own, skipping ports already in use.
+- **Stack file:** `up` writes the stack's ports, URLs and tokens to
+  `local-stack/.stack.env`, or to `$LOCAL_STACK_FILE`. The app's local
+  configuration imports that file itself, so a run from the IDE needs no setup.
+  Agents and consumer stacks read the same file, and `env` prints it.
 - **External services:** each has the modes `real` and `stub`. A service that
   is another repo of the project also has `stack`. Plain `up` uses the
   defaults the user chose. `--mode <service>=<mode>` overrides one service.
@@ -103,8 +107,8 @@ it.
    in the client code.
 5. **Prove it:**
    - `up --app` from clean, and the app answers.
-   - `up`, then the skill starts the app on the host from the env file, as an
-     IDE would, and it answers.
+   - `up`, then the skill starts the app on the host with no extra settings,
+     as an IDE would, and it answers.
    - An offline run, with all outside traffic blocked. Each blocked
      connection is a service the reading missed, and it becomes a new
      question, not a silent stub.
