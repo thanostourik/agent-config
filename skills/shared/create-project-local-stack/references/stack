@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""Isolated local stack for this repository. Run `local-stack/stack --help`."""
+
+import argparse
+import contextlib
+import fcntl
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CHECKOUT = HERE.parent
+CONFIG = json.loads((HERE / "stack.json").read_text())
+APP = CONFIG["app"]
+PORTS = CONFIG.get("ports", {})
+SWITCHES = CONFIG.get("switches", {})
+VARS = CONFIG.get("vars", {})
+PROVIDES = CONFIG.get("provides", [])
+REGISTRY = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "local-stacks"
+SPARE_PORTS = range(10000, 32768)
+VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+class StackError(Exception):
+    pass
+
+
+def main():
+    args = parse_args()
+    try:
+        check_config()
+        args.run(args)
+    except StackError as error:
+        sys.exit(f"stack: {error}")
+
+
+def check_config():
+    for key in [*PORTS, *VARS, *PROVIDES]:
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            raise StackError(f"stack.json: {key!r} must be an upper-case variable name")
+    for switch, spec in SWITCHES.items():
+        modes = spec["modes"]
+        if spec["default"] not in modes:
+            raise StackError(f"stack.json: switch {switch!r} defaults to a mode it does not have")
+        if spec.get("shared") and "stub" not in modes:
+            raise StackError(f"stack.json: shared switch {switch!r} needs a stub mode")
+        keys = {mode: set(spec_mode.get("vars", {})) for mode, spec_mode in modes.items()}
+        if len({frozenset(names) for names in keys.values()}) > 1:
+            raise StackError(f"stack.json: every mode of switch {switch!r} must set the same variables")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(prog="local-stack/stack", description=f"Isolated local stack of {APP}.")
+    commands = parser.add_subparsers(required=True, metavar="command")
+
+    def command(name, run, help_text):
+        sub = commands.add_parser(name, help=help_text, description=help_text)
+        sub.add_argument("--name", help="stack name; default: the current branch")
+        sub.set_defaults(run=run)
+        return sub
+
+    up_parser = command("up", up, "start the stack, or update a running one")
+    up_parser.add_argument("--app", action="store_true", help="also run the app in a container")
+    up_parser.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
+    up_parser.add_argument("--mode", action="append", default=[], metavar="SWITCH=MODE", help="pick one switch's mode")
+    command("down", down, "stop the stack; keep its data and ports")
+    command("destroy", destroy, "remove the stack: containers, volumes, built images, ports, dependency stacks")
+    command("status", status, "show the stack's modes, ports and containers")
+    env_parser = command("env", env, "print the stack file")
+    env_parser.add_argument("--provides", action="store_true", help="print only the variables this stack provides to others")
+    compose_parser = command("compose", compose, "run docker compose on this stack, e.g. `compose logs -f`")
+    compose_parser.add_argument("compose_args", nargs=argparse.REMAINDER)
+    return parser.parse_args()
+
+
+def up(args):
+    name = stack_name(args.name)
+    project = f"{APP}-{name}"
+    modes = chosen_modes(args)
+    with registry_lock():
+        claim = claim_ports(project)
+        claim["pid"] = os.getpid()
+        write_claim(project, claim)
+    try:
+        values = dict(claim["ports"])
+        claim["needs"] = {}
+        for switch, mode in modes.items():
+            checkout_variable = SWITCHES[switch]["modes"][mode].get("stack")
+            if checkout_variable:
+                dependency = start_dependency(switch, checkout_variable, project, args.stubs)
+                claim["needs"][switch] = dependency["record"]
+                values.update(dependency["values"])
+        for switch, mode in modes.items():
+            for key, template in SWITCHES[switch]["modes"][mode].get("vars", {}).items():
+                values[key] = interpolate(template, values, f"{switch}={mode} {key}")
+        for key, template in VARS.items():
+            values[key] = interpolate(template, values, key)
+        values = {"LOCAL_STACK_PROJECT": project, "LOCAL_STACK_NAME": name, **values}
+        claim["modes"] = modes
+        stack_file(name).write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+        write_claim(project, claim)
+        run_compose(project, values, profiles(modes), ["up", "--detach", "--build", "--wait", "--remove-orphans"])
+        stop_inactive_services(project, values, modes)
+    finally:
+        claim["pid"] = None
+        write_claim(project, claim)
+    print(f"Stack {project} is up. Modes: {describe(modes)}.", file=sys.stderr)
+    print(f"Stack file: {stack_file(name)}", file=sys.stderr)
+
+
+def down(args):
+    name = stack_name(args.name)
+    project = f"{APP}-{name}"
+    claim = read_claim(project) or {}
+    run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
+    for record in claim.get("needs", {}).values():
+        run_dependency(record, "down")
+
+
+def destroy(args):
+    name = stack_name(args.name)
+    project = f"{APP}-{name}"
+    claim = read_claim(project) or {}
+    run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
+    for record in claim.get("needs", {}).values():
+        run_dependency(record, "destroy")
+    stack_file(name).unlink(missing_ok=True)
+    with registry_lock():
+        (REGISTRY / f"{project}.json").unlink(missing_ok=True)
+
+
+def status(args):
+    name = stack_name(args.name)
+    project = f"{APP}-{name}"
+    claim = read_claim(project)
+    if not claim:
+        print(f"No stack {project}.")
+        return
+    print(f"Stack {project}. Modes: {describe(claim.get('modes', {}))}.")
+    print(f"Stack file: {stack_file(name)}")
+    for key, port in claim["ports"].items():
+        print(f"  {key}={port}")
+    for switch, record in claim.get("needs", {}).items():
+        print(f"Dependency {switch}: {record['checkout']}, stack name {record['name']}")
+    run_compose(project, saved_values(name, claim), ["*"], ["ps"])
+
+
+def env(args):
+    name = stack_name(args.name)
+    path = stack_file(name)
+    if not path.exists():
+        raise StackError(f"no stack file {path}; run `local-stack/stack up` first")
+    for key, value in parse_env(path.read_text()).items():
+        if not args.provides or key in PROVIDES:
+            print(f"{key}={value}")
+
+
+def compose(args):
+    name = stack_name(args.name)
+    project = f"{APP}-{name}"
+    claim = read_claim(project)
+    if not claim:
+        raise StackError(f"no stack {project}; run `local-stack/stack up` first")
+    compose_args = args.compose_args[1:] if args.compose_args[:1] == ["--"] else args.compose_args
+    run_compose(project, saved_values(name, claim), profiles(claim.get("modes", {})), compose_args)
+
+
+def stack_name(given):
+    name = given or default_name()
+    name = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if not name:
+        raise StackError("the stack name is empty after keeping only letters, digits and dashes")
+    return name
+
+
+def default_name():
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if branch and branch != "HEAD":
+        return branch
+    commit = git("rev-parse", "--short", "HEAD")
+    return f"detached-{commit}" if commit else CHECKOUT.name
+
+
+def git(*args):
+    result = subprocess.run(["git", "-C", str(CHECKOUT), *args], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def stack_file(name):
+    suffix = "" if name == stack_name(default_name()) else f"-{name}"
+    return HERE / f".stack{suffix}.env"
+
+
+def chosen_modes(args):
+    modes = {switch: spec["default"] for switch, spec in SWITCHES.items()}
+    if args.stubs:
+        modes.update({switch: "stub" for switch, spec in SWITCHES.items() if spec.get("shared")})
+    if args.app:
+        args.mode.insert(0, "app=container")
+    for choice in args.mode:
+        switch, _, mode = choice.partition("=")
+        if switch not in SWITCHES:
+            raise StackError(f"unknown switch {switch!r}; switches: {', '.join(SWITCHES) or 'none'}")
+        if mode not in SWITCHES[switch]["modes"]:
+            raise StackError(f"switch {switch!r} has no mode {mode!r}; modes: {', '.join(SWITCHES[switch]['modes'])}")
+        modes[switch] = mode
+    return modes
+
+
+def profiles(modes):
+    return [f"{switch}-{mode}" for switch, mode in modes.items()]
+
+
+def describe(modes):
+    return ", ".join(f"{switch}={mode}" for switch, mode in modes.items()) or "none"
+
+
+def interpolate(template, values, where):
+    def replace(match):
+        key = match.group(1)
+        if key in values:
+            return str(values[key])
+        if key in os.environ:
+            return os.environ[key]
+        raise StackError(f"{where} needs ${{{key}}}, which is neither a stack value nor set in your environment")
+
+    return VARIABLE.sub(replace, template)
+
+
+@contextlib.contextmanager
+def registry_lock():
+    REGISTRY.mkdir(parents=True, exist_ok=True)
+    with open(REGISTRY / ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def read_claim(project):
+    path = REGISTRY / f"{project}.json"
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def write_claim(project, claim):
+    REGISTRY.mkdir(parents=True, exist_ok=True)
+    path = REGISTRY / f"{project}.json"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(claim, indent=2) + "\n")
+    temporary.replace(path)
+
+
+def claim_ports(project):
+    claim = read_claim(project)
+    if claim and claim["checkout"] != str(CHECKOUT):
+        raise StackError(f"stack {project} belongs to {claim['checkout']}; pick another name with --name")
+    claim = claim or {"checkout": str(CHECKOUT), "ports": {}}
+    claim["ports"] = {key: port for key, port in claim["ports"].items() if key in PORTS}
+    missing = [key for key in PORTS if key not in claim["ports"]]
+    if not missing:
+        return claim
+    taken = set(claim["ports"].values())
+    for other, other_claim in other_claims(project):
+        if is_abandoned(other, other_claim):
+            (REGISTRY / f"{other}.json").unlink()
+        else:
+            taken.update(other_claim["ports"].values())
+    for key in missing:
+        usual = PORTS[key]
+        candidates = [usual, *SPARE_PORTS] if usual not in taken else SPARE_PORTS
+        port = next((port for port in candidates if port not in taken and port_is_free(port)), None)
+        if port is None:
+            raise StackError("no free port left; remove stacks you no longer need with `local-stack/stack destroy`")
+        claim["ports"][key] = port
+        taken.add(port)
+    return claim
+
+
+def other_claims(project):
+    for path in sorted(REGISTRY.glob("*.json")):
+        if path.stem != project:
+            yield path.stem, json.loads(path.read_text())
+
+
+def is_abandoned(project, claim):
+    pid = claim.get("pid")
+    if pid and process_is_alive(pid):
+        return False
+    label = f"label=com.docker.compose.project={project}"
+    for kind in (["ps", "--all"], ["volume", "ls"], ["network", "ls"]):
+        result = subprocess.run(["docker", *kind, "--quiet", "--filter", label], capture_output=True, text=True)
+        if result.returncode != 0 or result.stdout.strip():
+            return False
+    return True
+
+
+def process_is_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def port_is_free(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("0.0.0.0", port))
+        except OSError:
+            return False
+    return True
+
+
+def start_dependency(switch, checkout_variable, project, stubs):
+    checkout = os.environ.get(checkout_variable)
+    if not checkout:
+        raise StackError(f"set {checkout_variable} to the checkout of {switch}, or pick another mode with --mode {switch}=<mode>")
+    command = Path(checkout).expanduser().resolve() / "local-stack" / "stack"
+    if not os.access(command, os.X_OK):
+        raise StackError(f"{command} does not exist; {switch} needs its own local stack first")
+    record = {"checkout": str(command.parent.parent), "name": project}
+    run_dependency(record, "up", "--app", *(["--stubs"] if stubs else []))
+    output = subprocess.run([str(command), "env", "--provides", "--name", project], capture_output=True, text=True, check=True).stdout
+    prefix = re.sub(r"[^A-Z0-9]+", "_", switch.upper())
+    values = {}
+    for key, value in parse_env(output).items():
+        values[f"{prefix}_{key}"] = value
+        values[f"{prefix}_{key}_FROM_CONTAINER"] = re.sub(r"//(localhost|127\.0\.0\.1)\b", "//host.docker.internal", value)
+    return {"record": record, "values": values}
+
+
+def run_dependency(record, *command):
+    stack = Path(record["checkout"]) / "local-stack" / "stack"
+    if not stack.exists():
+        print(f"stack: skipping dependency {stack}, which no longer exists", file=sys.stderr)
+        return
+    result = subprocess.run([str(stack), *command, "--name", record["name"]])
+    if result.returncode != 0:
+        raise StackError(f"dependency stack {stack} {command[0]} failed")
+
+
+def saved_values(name, claim):
+    path = stack_file(name)
+    if path.exists():
+        return parse_env(path.read_text())
+    values = {key: "" for spec in SWITCHES.values() for mode in spec["modes"].values() for key in mode.get("vars", {})}
+    values.update({key: "" for key in VARS})
+    values.update({key: "0" for key in PORTS})
+    values.update(claim.get("ports", {}))
+    return values
+
+
+def stop_inactive_services(project, values, modes):
+    active = set(run_compose(project, values, profiles(modes), ["config", "--services"], capture=True).split())
+    running = run_compose(project, values, ["*"], ["ps", "--all", "--services"], capture=True).split()
+    inactive = [service for service in running if service not in active]
+    if inactive:
+        run_compose(project, values, ["*"], ["rm", "--stop", "--force", *inactive])
+
+
+def run_compose(project, values, active_profiles, compose_args, capture=False):
+    environment = {**os.environ, **{key: str(value) for key, value in values.items()}}
+    environment.pop("COMPOSE_PROFILES", None)
+    command = ["docker", "compose", "--project-name", project, "--project-directory", str(HERE), "--file", str(HERE / "compose.yaml")]
+    for profile in active_profiles:
+        command += ["--profile", profile]
+    result = subprocess.run(command + compose_args, env=environment, stdout=subprocess.PIPE if capture else None, text=True)
+    if result.returncode != 0:
+        raise StackError(f"docker compose {' '.join(compose_args[:1])} failed for {project}")
+    return result.stdout
+
+
+def parse_env(text):
+    return dict(line.split("=", 1) for line in text.splitlines() if "=" in line and not line.startswith("#"))
+
+
+if __name__ == "__main__":
+    main()

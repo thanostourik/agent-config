@@ -10,6 +10,7 @@
       "defaults": { "model": "gpt-6.1-sol", "effort": "high" }
     },
     "create-jira-issue": { "enabled": true },
+    "create-project-local-stack": { "enabled": true },
     "create-project-verification-skill": { "enabled": true },
     "cursor-grok-review": {
       "enabled": true,

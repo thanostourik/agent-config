@@ -10,7 +10,7 @@ Pick one level while generating. Write it into the generated Isolation section a
 - **shared**: the project cannot create an owned environment, and the user approved named shared resources.
 - **checks-only**: no live driving. The skill names the focused tests, lint and type checks to run instead. Live steps are reported `blocked: no isolation`.
 
-Aim for **full**. If the project has no disposable setup, propose one and implement it within the scope the user approves. Only when that fails or the user declines, ask the user which of the other two levels they want. Do not choose for them. Never assume read-only access to a running developer instance is acceptable.
+Aim for **full**. If the project has `local-stack/stack`, use it: launch with `local-stack/stack up --app --stubs --name <run id>` and clean up with `local-stack/stack destroy --name <run id>`. Its Compose project label is the ownership marker. If the project has no disposable setup, ask the user to run `/create-project-local-stack` first, and stop until they have. Never build a stack inside the verify skill's `bin/`. Only when the user declines, ask the user which of the other two levels they want. Do not choose for them. Never assume read-only access to a running developer instance is acceptable.
 
 ## Ownership
 
