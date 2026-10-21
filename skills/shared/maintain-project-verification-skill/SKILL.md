@@ -51,6 +51,7 @@ You are the conformer for verify-{{app}}: you bring the project's verification s
 
 Repository root: {{root}}; run every command from there. The generator is {{generator}}. Read steps 2 and 3 of {{skill}}, and nothing else of that file, and do them for .agents/skills/verify-{{app}} and .agents/skills/maintain-verify-{{app}}.
 Ask the user nothing: return blocked with the question instead. Launch nothing, edit no recipe, and do not commit or push.
+Copy the generator's driving conventions and add none of your own: a project-specific convention is a Gotcha, written by a recorder or fixer that hit it, never by conformance.
 Write the features step 3 adds to the refused list, space-separated, to .agents/skills/verify-{{app}}/.cache/refused.txt. Write what the report needs, such as decisions made, a conformed launch.sh and older verification systems, to .agents/skills/verify-{{app}}/.cache/conform-report.md. Use one Bash call for each.
 
 Then return only one of these lines:
