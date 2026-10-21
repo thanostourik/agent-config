@@ -78,7 +78,7 @@ Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Co
 Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use the default name: it belongs to the developer. Record `docker ps -a`, `docker volume ls` and `docker network ls` before you start.
 
 1. **Agent mode:** `local-stack/stack up --app --stubs --name lsproof-a` from clean. Send one request that crosses the app's main path, such as signing in and loading the main page or calling the main endpoint, and check the answer.
-2. **IDE mode, at the same time:** `local-stack/stack up --name lsproof-b`. Start the app on the host the way a developer runs it from the IDE: its usual run command, with `LOCAL_STACK_FILE` pointing at `lsproof-b`'s stack file and nothing else added. Send the same request, also through each service that calls the app. Stop the app.
+2. **IDE mode, at the same time:** `local-stack/stack up --name lsproof-b`. If no developer runs the app on their machine, which the user's answer settles, skip the rest of this step and report it as not applicable. Otherwise, start the app on the host the way a developer runs it from the IDE: its usual run command, with `LOCAL_STACK_FILE` pointing at `lsproof-b`'s stack file and nothing else added. Send the same request, also through each service that calls the app. Stop the app.
 3. **Parallel:** both stacks ran at once on different ports, and neither saw the other's data.
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
 5. **Offline:** `local-stack/stack down --name lsproof-a`, then `local-stack/stack compose --name lsproof-a -- -f <file> up --detach --wait`, where `<file>` is a temporary file outside the repo that makes the default network internal:
@@ -91,7 +91,7 @@ Use stack names no one else uses, such as `lsproof-a` and `lsproof-b`. Never use
 
    Ports are not published on an internal network, so send the request from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed. Go back to step 3 with it, never stub it silently. A switch in `stack` mode reaches the other repo through the host, so its failures here are expected; say so in the report.
 6. **Dependencies:** for each switch in `stack` mode, `local-stack/stack status --name lsproof-a` names the other repo's stack. That stack's own status shows its shared switches in `stub` mode.
-7. **Cleanup:** `local-stack/stack destroy` for both names. Check that no container, volume, network or built image carries either project's label, that both stack files and registry claims are gone, and that the lists you recorded are unchanged.
+7. **Cleanup:** `local-stack/stack destroy` for both names. Check that no container, volume, network or built image carries either project's label, that both stack files and registry claims are gone, and that the names in the lists you recorded are unchanged.
 
 When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
 

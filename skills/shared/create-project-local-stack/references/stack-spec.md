@@ -14,6 +14,8 @@ local-stack/
   .gitignore       .stack*.env and .facts.md
 ```
 
+A stack may add folders its own services need, such as a certificate generator or a setup script.
+
 Besides `local-stack/`, the skill changes only the app's local configuration, so that it reads the stack file, and the project's `AGENTS.md`.
 
 ## What `stack` does
@@ -51,11 +53,11 @@ This example is a fictional backend: take its shape, not its values.
 
 - `app`: a short lowercase name for this repo's stack.
 - `ports`: every host port the stack publishes or the app listens on, with its usual value: the one the app's configuration or docs use. Names end in `_PORT`.
-- `switches.app`: modes `host` and `container`, for repos whose app runs in the IDE. Its variables are what changes when the app moves, such as the address a gateway forwards to.
+- `switches.app`: every stack has it, because `--app` sets it to `container`. It has a `host` mode only when developers run the app on their machine, from the IDE or a terminal; otherwise `container` is its only mode and its default. Its variables are what changes when the app moves, such as the address a gateway forwards to.
 - Other switches: one per external service or other repo. Modes are named `real`, `stub` and `stack`. `shared: true` marks a service other people use, which `--stubs` replaces. A shared switch has a `stub` mode. Every mode of a switch sets the same variables.
 - `vars`: values that do not depend on a mode.
 - `provides`: the values other repos' stacks may read. This is the stack's contract: changing a name breaks its consumers.
-- Values use `${NAME}` for a port, an earlier value, a dependency value or a variable from the user's environment. A missing one stops `up` with its name. Secrets come from the user's environment this way; never write one into the repo.
+- Values use `${NAME}` for a port, an earlier value, a dependency value or a variable from the user's environment. A missing one stops `up` with its name. Secrets come from the user's environment this way; never write one into the repo. A credential that exists only inside the stack, such as the stack database's password, is a fixed value in `compose.yaml`, not a secret.
 - Name each address twice: `X_URL` as the host sees it, for the IDE and the stack file, and `X_URL_FROM_CONTAINER` as a container sees it.
 
 ## `compose.yaml`
@@ -78,6 +80,7 @@ This example is a fictional backend: take its shape, not its values.
 - One folder per switch under `stubs/`, run by a stock image or a small Dockerfile, with a healthcheck.
 - Answer the endpoints the app's client calls, with the request and response shapes the client code uses, including streaming, pagination and the errors the client handles.
 - Return fixed answers, so a run can be repeated.
+- When the app's code fixes the address, such as a hard-coded hostname or an `https`-only client, the stub answers under the real hostname: give it that name as a network alias on the stack's network. For `https`, serve a certificate from a certificate authority that the stack generates and that only the stack's containers trust.
 - The README says what each stub does not cover.
 
 ## `README.md`
