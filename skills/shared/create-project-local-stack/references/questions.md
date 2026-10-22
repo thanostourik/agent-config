@@ -4,6 +4,7 @@ The stack depends on facts that the code cannot show. This file says which quest
 
 ## How to ask
 
+- Ask only when there is a real choice between reasonable options. When only one option makes sense, do it and say so in the design or the report.
 - One decision per question. The same decision for several services may be one multi-select question.
 - Show the evidence: what you found and where, such as "`application-dev.yml:17` sends chat requests to `https://chatbot.example.com`".
 - Give the options, put your recommendation first and say why. Say what each answer changes in the stack.
