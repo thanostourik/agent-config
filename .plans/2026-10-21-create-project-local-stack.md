@@ -9,7 +9,8 @@ stacks run at once, on one machine, from one or several repos.
 ## Two rules
 
 - **Ask, never guess.** Every fact the stack depends on has a source: a file
-  and line, or the user's answer. Anything else is a question, asked with the
+  and line, or the user's answer. A choice is asked only when more than one
+  option would work. Anything else is a question, asked with the
   harness's question tool at run time (`AskUserQuestion` in Claude Code). The
   questions follow a fixed bank in `references/questions.md`. When the user
   does not know, that part is blocked and reported, and the rest goes on.
@@ -41,10 +42,11 @@ only `stack.json`, `compose.yaml`, its stubs and a README.
   name. The app's local configuration reads it itself, so a run from the IDE
   needs no setup. It exists only while the stack is up: `down` removes it and
   the next `up` writes it again with the same ports.
-- **Switches:** each external service, and the app itself, is a switch with
-  modes. A mode sets variables and turns on the Compose profile
-  `<switch>-<mode>`. `--app` runs the app in a container, `--stubs` stubs every
-  shared service, and `--mode` sets one switch.
+- **Switches:** each outside service, and each process the repo runs, is a
+  switch with modes. A mode sets variables and turns on the Compose profile
+  `<switch>-<mode>`. `--app` sets every switch with a `container` mode to it,
+  `--stubs` stubs every shared service, and `--mode` sets one switch. A library
+  that runs no process has no app switch.
 - **Other repos are black boxes.** A `stack` mode starts the other repo's own
   `local-stack/stack` under a related name, passes `--stubs` on, and reads
   only the values that stack lists under `provides`. Containers reach it

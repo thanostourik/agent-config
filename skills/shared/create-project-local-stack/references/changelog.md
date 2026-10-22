@@ -2,6 +2,15 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 5
+
+- **Script:** copy `local-stack/stack` again. `--app` now sets every switch that has a `container` mode, so a repo with several processes or with none works. A dependency value without `//`, such as `localhost:9092`, now also gets its `_FROM_CONTAINER` copy with `host.docker.internal`. **Check:** 1, and 6 when a dependency stack provides a host-and-port value.
+- **Processes:** a repo that runs several processes gives each its own switch, `app-<process>`; a repo that runs none needs no `app` switch. **Check:** none when the repo runs one process; otherwise 1.
+- **Proof action:** the questions now ask which action proves the app works. If the README's Decisions don't name it, ask and record it. **Check:** 1 with that action.
+- **Local override files:** found from `.gitignore` and the framework, such as a plain `.env`, not only from a fixed list; the design lists them. **Check:** 1 with a planted file of each kind found.
+- **App on the host:** a set but missing `LOCAL_STACK_FILE` stops the process, and the default path is resolved from the repo root. **Check:** 2, plus one start with a missing file. Skip when no switch has a `host` mode.
+- **README:** section 3 is `## Run the app on your machine`. **Check:** none.
+
 ## Version 4
 
 - **Image contents:** version 2's rule against untracked files is replaced by a specific one: the image and the containers never take a developer's local override files, such as `.env.local`, `.env.*.local` and `application-local.yml`. Untracked code may go in. Remove any Decision recorded as an exception to the old rule. **Check:** none when the stack already keeps those files out; otherwise 1 with a planted `.env.local`.

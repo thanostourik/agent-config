@@ -66,7 +66,7 @@ def parse_args():
         return sub
 
     up_parser = command("up", up, "start the stack, or update a running one")
-    up_parser.add_argument("--app", action="store_true", help="also run the app in a container")
+    up_parser.add_argument("--app", action="store_true", help="also run the app in a container: every switch with a container mode")
     up_parser.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
     up_parser.add_argument("--mode", action="append", default=[], metavar="SWITCH=MODE", help="pick one switch's mode")
     command("down", down, "stop the stack; keep its data and ports; remove its stack file until the next up")
@@ -238,7 +238,7 @@ def chosen_modes(args):
     if args.stubs:
         modes.update({switch: "stub" for switch, spec in SWITCHES.items() if spec.get("shared")})
     if args.app:
-        args.mode.insert(0, "app=container")
+        modes.update({switch: "container" for switch, spec in SWITCHES.items() if "container" in spec["modes"]})
     for choice in args.mode:
         switch, _, mode = choice.partition("=")
         if switch not in SWITCHES:
@@ -382,7 +382,7 @@ def start_dependency(switch, record, stubs):
     values = {}
     for key, value in parse_env(output).items():
         values[f"{prefix}_{key}"] = value
-        values[f"{prefix}_{key}_FROM_CONTAINER"] = re.sub(r"//(localhost|127\.0\.0\.1)\b", "//host.docker.internal", value)
+        values[f"{prefix}_{key}_FROM_CONTAINER"] = re.sub(r"(?<![\w.-])(localhost|127\.0\.0\.1)(?![\w.-])", "host.docker.internal", value)
     return values
 
 
