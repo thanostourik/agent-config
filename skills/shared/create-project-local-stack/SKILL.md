@@ -115,4 +115,4 @@ Stop only the processes you started, by their process ID, never by name. When a 
   - each proof step: passed, failed or not proved, with the reason;
   - what each stub does not cover, as risks a stub-mode run cannot catch;
   - the blocked items and the question each one waits on;
-  - the change to the app's configuration.
+  - every change outside `local-stack/`, such as the app's configuration.

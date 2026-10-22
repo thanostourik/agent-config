@@ -16,7 +16,7 @@ local-stack/
 
 A stack may add folders its own services need, such as a certificate generator or a setup script.
 
-Besides `local-stack/`, the skill changes only the app's local configuration, so that it reads the stack file, and the project's `AGENTS.md`.
+Outside `local-stack/`, change what the stack needs, such as the app's local configuration, the project's `AGENTS.md` or a missing line in an ignore file, and list each such change in the report. Never change the repo's existing local environment, such as a `dev_setup/` folder.
 
 ## What `stack` does
 
