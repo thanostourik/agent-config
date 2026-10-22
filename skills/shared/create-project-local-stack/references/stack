@@ -89,14 +89,18 @@ def up(args):
         write_claim(project, claim)
     try:
         values = {"LOCAL_STACK_GATEWAY_IP": gateway_ip(), **claim["ports"]}
-        claim["needs"] = {}
+        records = dependency_records(claim)
+        started = []
         for switch, mode in modes.items():
             checkout_variable = SWITCHES[switch]["modes"][mode].get("stack")
             if checkout_variable:
                 record = dependency_record(switch, checkout_variable, project)
-                claim["needs"][switch] = record
+                if record not in records:
+                    records.append(record)
+                claim["needs"] = records
                 write_claim(project, claim)
                 values.update(start_dependency(switch, record, args.stubs))
+                started.append(record)
         for switch, mode in modes.items():
             for key, template in SWITCHES[switch]["modes"][mode].get("vars", {}).items():
                 values[key] = interpolate(template, values, f"{switch}={mode} {key}")
@@ -104,14 +108,22 @@ def up(args):
             values[key] = interpolate(template, values, key)
         values = {"LOCAL_STACK_PROJECT": project, "LOCAL_STACK_NAME": name, **values}
         claim["modes"] = modes
+        claim["needs"] = records
+        claim["values"] = values
+        previous_file = claim.get("stack_file")
+        if previous_file and Path(previous_file) != stack_file(name):
+            Path(previous_file).unlink(missing_ok=True)
         claim["stack_file"] = str(stack_file(name))
         stack_file(name).write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         write_claim(project, claim)
         active = active_services(project, values, modes)
+        stop_inactive_services(project, values, active)
         if active:
             run_compose(project, values, profiles(modes), ["up", "--detach", "--build", "--remove-orphans"])
             wait_until_ready(project, values, modes, active)
-        stop_inactive_services(project, values, modes, active)
+        for record in records:
+            if record not in started:
+                run_dependency(record, "down")
     finally:
         claim["pid"] = None
         write_claim(project, claim)
@@ -122,21 +134,21 @@ def up(args):
 def down(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = read_claim(project) or {}
+    claim = own_claim(project) or {}
     run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
-    for record in claim.get("needs", {}).values():
+    for record in dependency_records(claim):
         run_dependency(record, "down")
-    stack_file(name).unlink(missing_ok=True)
+    claimed_stack_file(name, claim).unlink(missing_ok=True)
 
 
 def destroy(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = read_claim(project) or {}
+    claim = own_claim(project) or {}
     run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
-    for record in claim.get("needs", {}).values():
+    for record in dependency_records(claim):
         run_dependency(record, "destroy")
-    stack_file(name).unlink(missing_ok=True)
+    claimed_stack_file(name, claim).unlink(missing_ok=True)
     with registry_lock():
         (REGISTRY / f"{project}.json").unlink(missing_ok=True)
 
@@ -148,18 +160,18 @@ def status(args):
     if not claim:
         print(f"No stack {project}.")
         return
-    print(f"Stack {project}. Modes: {describe(claim.get('modes', {}))}.")
-    print(f"Stack file: {stack_file(name)}")
+    print(f"Stack {project} of {claim['checkout']}. Modes: {describe(claim.get('modes', {}))}.")
+    print(f"Stack file: {claimed_stack_file(name, claim)}")
     for key, port in claim["ports"].items():
         print(f"  {key}={port}")
-    for switch, record in claim.get("needs", {}).items():
-        print(f"Dependency {switch}: {record['checkout']}, stack name {record['name']}")
+    for record in dependency_records(claim):
+        print(f"Dependency {record['switch']}: {record['checkout']}, stack name {record['name']}")
     run_compose(project, saved_values(name, claim), ["*"], ["ps"])
 
 
 def env(args):
     name = stack_name(args.name)
-    path = stack_file(name)
+    path = claimed_stack_file(name, own_claim(f"{APP}-{name}"))
     if not path.exists():
         raise StackError(f"no stack file {path}; run `local-stack/stack up` first")
     for key, value in parse_env(path.read_text()).items():
@@ -170,7 +182,7 @@ def env(args):
 def compose(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = read_claim(project)
+    claim = own_claim(project)
     if not claim:
         raise StackError(f"no stack {project}; run `local-stack/stack up` first")
     compose_args = args.compose_args[1:] if args.compose_args[:1] == ["--"] else args.compose_args
@@ -196,6 +208,24 @@ def default_name():
 def git(*args):
     result = subprocess.run(["git", "-C", str(CHECKOUT), *args], capture_output=True, text=True)
     return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def own_claim(project):
+    claim = read_claim(project)
+    if claim and claim["checkout"] != str(CHECKOUT):
+        raise StackError(f"stack {project} belongs to {claim['checkout']}; run this there, or pick another name with --name")
+    return claim
+
+
+def claimed_stack_file(name, claim):
+    return Path(claim["stack_file"]) if claim and claim.get("stack_file") else stack_file(name)
+
+
+def dependency_records(claim):
+    needs = claim.get("needs") or []
+    if isinstance(needs, dict):
+        return [{"switch": switch, **record} for switch, record in needs.items()]
+    return list(needs)
 
 
 def stack_file(name):
@@ -298,7 +328,7 @@ def is_abandoned(project, claim):
         return False
     if claim.get("stack_file") and Path(claim["stack_file"]).exists():
         return False
-    if any(dependency_is_claimed(record) for record in claim.get("needs", {}).values()):
+    if any(dependency_is_claimed(record) for record in dependency_records(claim)):
         return False
     label = f"label=com.docker.compose.project={project}"
     for kind in (["ps", "--all"], ["volume", "ls"], ["network", "ls"]):
@@ -341,7 +371,7 @@ def dependency_record(switch, checkout_variable, project):
     command = Path(checkout).expanduser().resolve() / "local-stack" / "stack"
     if not os.access(command, os.X_OK):
         raise StackError(f"{command} does not exist; {switch} needs its own local stack first")
-    return {"checkout": str(command.parent.parent), "name": project}
+    return {"switch": switch, "checkout": str(command.parent.parent), "name": project}
 
 
 def start_dependency(switch, record, stubs):
@@ -367,7 +397,9 @@ def run_dependency(record, *command):
 
 
 def saved_values(name, claim):
-    path = stack_file(name)
+    if claim.get("values"):
+        return claim["values"]
+    path = claimed_stack_file(name, claim)
     if path.exists():
         return parse_env(path.read_text())
     values = {key: "" for spec in SWITCHES.values() for mode in spec["modes"].values() for key in mode.get("vars", {})}
@@ -419,7 +451,7 @@ def parse_json_lines(output):
     return [json.loads(line) for line in output.splitlines() if line.strip()]
 
 
-def stop_inactive_services(project, values, modes, active):
+def stop_inactive_services(project, values, active):
     running = run_compose(project, values, ["*"], ["ps", "--all", "--services"], capture=True).split()
     inactive = [service for service in running if service not in active]
     if inactive:

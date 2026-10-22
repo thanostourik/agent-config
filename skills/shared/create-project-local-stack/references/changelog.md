@@ -2,6 +2,15 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 3
+
+- **Script:** copy `local-stack/stack` again. **Check:** each item below.
+- **Other checkouts:** `down`, `destroy`, `env` and `compose` refuse a stack that another checkout owns, as `up` already did. **Check:** copy the checkout, `up` a proof stack in the copy under the name a stack of the original uses, then `destroy` it in the copy; both are refused and the original's stack still runs.
+- **Unused dependency stacks:** switching a `stack` mode to another mode stops that dependency stack and keeps its record, so `destroy` still removes it. **Check:** `up` with `--mode <switch>=stack`, `up` with another mode, confirm the dependency stack is stopped, then `destroy` and confirm it is gone. Skip when no switch has both kinds of modes.
+- **Mode switch order:** `up` removes the services of inactive modes before starting the new ones, so two modes may publish the same port. **Check:** switch a mode on a running stack.
+- **Stack file after a branch switch:** commands use the stack file path the claim recorded. **Check:** `up` on one branch, switch branches, `down --name <first branch>`, and confirm the file is gone.
+- **Cleanup after `down`:** the claim keeps the stack's values, so `destroy` after `down` works when `compose.yaml` takes non-port values. **Check:** `down`, then `destroy`, then 7.
+
 ## Version 2
 
 - **Script:** copy `local-stack/stack` again. It records a dependency stack before starting it, waits for readiness itself (setup jobs that exit 0 are fine, so `ready`-style services are no longer needed), and skips Compose when no service is active. **Check:** 1, 2 and 7.
