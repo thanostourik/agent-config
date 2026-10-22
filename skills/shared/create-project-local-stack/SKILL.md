@@ -91,7 +91,7 @@ Show the user the design on one screen:
 - the services, each with what it runs and why;
 - the switches, each with its modes, its default, whether it is shared, and what its stub covers and does not;
 - the other repos it starts, and the variable that holds each checkout;
-- the proof action from the questions, and the result that shows it worked;
+- the proof action and the result that shows it worked;
 - the change to the app's local configuration, the `## Local stack` section for `AGENTS.md`, and each existing line in `AGENTS.md` or `CLAUDE.md` you will rewrite;
 - the local override files the stack keeps out of images and containers;
 - the open items that stay blocked.
@@ -104,7 +104,7 @@ Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Co
 
 ## 6. Prove it
 
-Never use the default stack. Record `docker ps -a`, `docker volume ls` and `docker network ls` before you start. "The proof action" below is the action from the questions that shows the app works, such as an HTTP call and its response, a command and its output, or a message and the row it writes.
+Never use the default stack. Record `docker ps -a`, `docker volume ls` and `docker network ls` before you start. "The proof action" below is one action you pick from the code that shows the app works end to end, fitting the kind of project: an HTTP call and its response, a command and its output, or a message and the row it writes. It is not recorded anywhere; a later run picks it again.
 
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
 2. **App on the host, at the same time:** skip this step and report it as not applicable when no switch has a `host` mode. Otherwise run `local-stack/stack up --stubs --name lsproof-b`, so the proof sends nothing to a shared service; step 4 proves the real ones. Start the app on the host the way a developer does, with its usual run command and `LOCAL_STACK_FILE` set to `lsproof-b`'s stack file, nothing else added. Run the proof action against it directly, and once through each service that calls it. Stop the app.

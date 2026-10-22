@@ -16,21 +16,20 @@ Which questions to ask and how. Ask about every fact the code cannot show, and a
 
 About the app:
 
-1. What one action proves the app works end to end, and what result shows it worked? Propose one from the code, such as an HTTP call and its response, a command and its output, or a message and the row it writes. The proof in step 6 runs this action.
-2. Does anyone run the app on their own machine, from an IDE or a terminal? If no, the stack only ever runs it in a container.
+1. Does anyone run the app on their own machine, from an IDE or a terminal? If no, the stack only ever runs it in a container.
 
 For each outside service:
 
-3. Do other people use this same service, such as colleagues on a shared test server, or customers? If yes, an agent's test requests would reach them, so agents get a fake by default.
+2. Do other people use this same service, such as colleagues on a shared test server, or customers? If yes, an agent's test requests would reach them, so agents get a fake by default.
    Example: "The app sends order emails through `smtp.example.com` (`config/mail.php:12`). Do your colleagues use that same server? If yes, agents' test emails would reach real inboxes."
-4. Does calling it cost money, send mail or messages, change data that others see, or count against a limit? If yes, agents get a fake by default.
-5. When you start the stack yourself to try something by hand, should the app talk to the real service or to a fake one that the stack runs on your machine?
-6. To prove the real connection works, may I send it one test request now? Say what that request would be.
+3. Does calling it cost money, send mail or messages, change data that others see, or count against a limit? If yes, agents get a fake by default.
+4. When you start the stack yourself to try something by hand, should the app talk to the real service or to a fake one that the stack runs on your machine?
+5. To prove the real connection works, may I send it one test request now? Say what that request would be.
 
 For each address that may belong to another repo of this project:
 
-7. Is it another repo of this project? If so, where is its checkout on this machine? Propose the name of the environment variable that will hold that path.
-8. When this stack starts, should it also start that repo's own local stack, so the app talks to the real thing, or run a small fake of it instead, or offer both? Which one by default?
+6. Is it another repo of this project? If so, where is its checkout on this machine? Propose the name of the environment variable that will hold that path.
+7. When this stack starts, should it also start that repo's own local stack, so the app talks to the real thing, or run a small fake of it instead, or offer both? Which one by default?
 
 ## Asked when the code does not settle it
 

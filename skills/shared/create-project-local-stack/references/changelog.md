@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 6
+
+- **Proof action:** it is no longer asked or recorded; each run picks it from the code. Remove the Decisions line that names it. **Check:** none.
+
 ## Version 5
 
 - **Script:** copy `local-stack/stack` again. `--app` now sets every switch that has a `container` mode, so a repo with several processes or with none works. A dependency value without `//`, such as `localhost:9092`, now also gets its `_FROM_CONTAINER` copy with `host.docker.internal`. **Check:** 1, and 6 when a dependency stack provides a host-and-port value.
