@@ -10,13 +10,13 @@ Pick one level while generating. Write it into the generated Isolation section a
 - **shared**: the project cannot create an owned environment, and the user approved named shared resources.
 - **checks-only**: no live driving. The skill names the focused tests, lint and type checks to run instead. Live steps are reported `blocked: no isolation`.
 
-Aim for **full**. If the project has no disposable setup, propose one and implement it within the scope the user approves. Only when that fails or the user declines, ask the user which of the other two levels they want. Do not choose for them. Never assume read-only access to a running developer instance is acceptable.
+Aim for **full**. Find every way the project runs an environment, such as `local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV, and note for each whether it is isolated and disposable or shared. Prefer an isolated, disposable one; `local-stack/stack` is the known-good shape (`up --app --stubs --name <run id>`, then `destroy --name <run id>`, with its Compose project label as the ownership marker). Always ask the user which one to use, showing what you found and what each one lacks, such as "`dev.sh` gives each branch its own stack but still sends real emails". When you find none, ask the user how to proceed: suggest `/create-project-local-stack` if it is installed, a setup the user provides, or one of the other two levels. Build a setup yourself only when the user asks, as part of the repo, never inside the verify skill's `bin/`. Do not choose for the user. Never assume read-only access to a running developer instance is acceptable.
 
 ## Ownership
 
 An environment is **owned** when the ownership record in `.cache/` lists it and each of its resources carries a marker the project can check: a compose project name, a container label, a data directory path, a port the run picked, an environment variable with the run id on each process (check it in `/proc/<pid>/environ`) plus recorded process-group ids. A local URL, a branch name or a separate container project name is not a marker.
 
-- Use the project's own disposable-environment setup when it creates owned resources (a dev script, a compose profile, a devcontainer). Do not invent a second mechanism next to it.
+- Use the environment the user chose. Do not invent a second mechanism next to it.
 - Each run starts from a known baseline. The default is to create a fresh environment. An owned environment left by an earlier run may be reused if every marker still checks out. Reseed it to the baseline first.
 - Anything not owned is off limits: never attach to it, change it, reset it or stop it. If a required port or resource is occupied, report a blocker.
 - If ownership is uncertain, report a blocker. Never wipe an environment to hide missing cleanup.
