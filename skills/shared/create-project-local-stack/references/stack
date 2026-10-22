@@ -298,12 +298,21 @@ def is_abandoned(project, claim):
         return False
     if claim.get("stack_file") and Path(claim["stack_file"]).exists():
         return False
+    if any(dependency_is_claimed(record) for record in claim.get("needs", {}).values()):
+        return False
     label = f"label=com.docker.compose.project={project}"
     for kind in (["ps", "--all"], ["volume", "ls"], ["network", "ls"]):
         result = subprocess.run(["docker", *kind, "--quiet", "--filter", label], capture_output=True, text=True)
         if result.returncode != 0 or result.stdout.strip():
             return False
     return True
+
+
+def dependency_is_claimed(record):
+    config = Path(record["checkout"]) / "local-stack" / "stack.json"
+    if not config.exists():
+        return False
+    return (REGISTRY / f"{json.loads(config.read_text())['app']}-{record['name']}.json").exists()
 
 
 def process_is_alive(pid):

@@ -38,10 +38,10 @@ This is the rule the whole skill rests on.
 ## Update an existing stack
 
 1. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged.
-2. Read `local-stack/`, the app's local configuration change and the `AGENTS.md` section. List every place they break the current [`references/stack-spec.md`](references/stack-spec.md) and this skill.
+2. Read the skill version the README names, and the entries after it in [`references/changelog.md`](references/changelog.md); a README without a version was built with version 1. Read `local-stack/`, the app's local configuration change and the `AGENTS.md` section. List every place they break those entries, the current [`references/stack-spec.md`](references/stack-spec.md) and this skill, and every README statement the changes make untrue.
 3. Fix each one and keep the services, switches and Decisions. A fix that changes what the stack runs, a default or a Decision is a question for the user first.
-4. Rerun the proof steps of step 6 that the changes affect, always including cleanup.
-5. Hand over as step 7 says, and report what changed and which proof steps ran.
+4. Rerun the proof steps of step 6 that the changes affect, always including cleanup. A change in another repo's stack that this one starts affects the steps that start it.
+5. Set the README's skill version to the newest changelog entry, add new answers to Decisions, commit, and report what changed and which proof steps ran.
 
 ## 2. Discover
 
@@ -108,7 +108,7 @@ Stop only the processes you started, by their process ID, never by name. When a 
 
 ## 7. Hand over
 
-- Write the README's `## Decisions` section from the user's answers in the fact file, one line each with its date. Then delete `local-stack/.facts.md`.
+- Write the README's `## Decisions` section from the user's answers in the fact file, one line each with its date. Name the skill version, the newest entry in [`references/changelog.md`](references/changelog.md), in the README's first section. Then delete `local-stack/.facts.md`.
 - Add the `## Local stack` section to the project's `AGENTS.md` from [`references/agents-local-stack.md`](references/agents-local-stack.md). Integrate an existing section on running the app locally instead of adding a second one, and keep what it says about the existing setup. Rewrite any other instruction in those files that tells agents to start the app or its dependencies another way, so agents never get two conflicting instructions. If the project has a `CLAUDE.md` that does not import `AGENTS.md`, put the same section there.
 - Commit following the repo's branch and commit conventions.
 - Report:

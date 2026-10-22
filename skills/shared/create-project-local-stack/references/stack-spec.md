@@ -21,7 +21,7 @@ Besides `local-stack/`, the skill changes only the app's local configuration, so
 ## What `stack` does
 
 - **Name:** the stack name defaults to the current branch; `--name` picks another. The Compose project is `<app>-<name>`, such as `backend-main`. Every container, volume, network and built image carries that project's label, which is what `destroy` removes.
-- **Ports:** each port in `stack.json` is claimed in one registry per machine, `$XDG_STATE_HOME/local-stacks/`, shared by the stacks of every repo. A port gets its usual value when no other claim holds it and it is free, otherwise the lowest free port from 10000. A claim keeps its ports across `down` and `up` until `destroy`. A claim is released when another stack needs ports and the claim is abandoned: its `up` is not running, its stack file is gone, and its project has no containers, volumes or networks left. So a stopped stack with data keeps its ports; a stopped stack without data may get other ports on its next `up`, which loses nothing.
+- **Ports:** each port in `stack.json` is claimed in one registry per machine, `$XDG_STATE_HOME/local-stacks/`, shared by the stacks of every repo. A port gets its usual value when no other claim holds it and it is free, otherwise the lowest free port from 10000. A claim keeps its ports across `down` and `up` until `destroy`. A claim is released when another stack needs ports and the claim is abandoned: its `up` is not running, its stack file is gone, no dependency stack it started still holds a claim, and its project has no containers, volumes or networks left. So a stopped stack with data keeps its ports; a stopped stack without data may get other ports on its next `up`, which loses nothing.
 - **Gateway address:** `up` sets `LOCAL_STACK_GATEWAY_IP` to the gateway of Docker's bridge network, usually `172.17.0.1`. Only this machine and its containers reach it.
 - **Readiness:** `up` returns when every service of the active modes is running and healthy, or has exited with code 0, as setup jobs do. A service that exits with another code or turns unhealthy stops `up` with its name. A stack with no service in the active modes, such as one whose app runs on the host and whose only dependency is another repo's stack, skips Compose.
 - **Stack file:** it exists only while the stack is up, so an app that reads it never finds a stopped stack's ports. `up` writes every value of the stack to `local-stack/.stack.env`, or to `local-stack/.stack-<name>.env` for a name other than the default. Lines are plain `KEY=value`.
@@ -98,7 +98,7 @@ This example is a fictional backend: take its shape, not its values.
 
 Written for developers and agents. Sections, in this order:
 
-1. What the stack is, in two sentences.
+1. What the stack is, in two sentences, and the line `Built with create-project-local-stack version <n>.`
 2. `## Commands`: `up`, `up --app`, `--stubs`, `--mode`, `--name`, `down`, `destroy`, `status`, `env`, `compose`, each with one line.
 3. `## Run the app from your IDE`: the exact steps for this app, and `LOCAL_STACK_FILE` for a named stack.
 4. `## Services`: each service, with what it runs.
