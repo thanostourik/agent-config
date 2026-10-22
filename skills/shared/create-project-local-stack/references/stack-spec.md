@@ -74,12 +74,12 @@ This example is a fictional backend: take its shape, not its values.
     - "${LOCAL_STACK_GATEWAY_IP}:${X_PORT}:<container port>"
   ```
 - Services that belong to a mode carry `profiles: [<switch>-<mode>]`. The app's container is `profiles: [app-container]`. Services without a profile always run.
-- Build the app from the repo with `build: {context: .., dockerfile: <the app's Dockerfile>}` when that Dockerfile builds a runnable image without values fixed for one environment. Otherwise write `local-stack/app/Dockerfile`, with `local-stack/app/Dockerfile.dockerignore` next to it. The image never takes a developer's untracked local files, such as `.env.local`. `up` always rebuilds, so the container runs the current working tree.
+- Build the app from the repo with `build: {context: .., dockerfile: <the app's Dockerfile>}` when that Dockerfile builds a runnable image without values fixed for one environment. Otherwise write `local-stack/app/Dockerfile`, with `local-stack/app/Dockerfile.dockerignore` next to it. `up` always rebuilds, so the container runs the current working tree.
 - Mount every volume the image declares (`VOLUME`) on a named volume, so `destroy` removes it.
 - Give every long-running service a healthcheck that passes only when it is ready, so `up` returns a working stack. Setup that runs once, such as migrations or seeding, is a service that the others depend on with `condition: service_completed_successfully`. Setup that writes data the app later changes, such as seeded users or gateway consumers, runs only on a stack's first `up`, so a restart never undoes the app's changes.
 - Containers reach each other by service name. A container that calls the app in `host` mode or another repo's stack gets `extra_hosts: ["host.docker.internal:host-gateway"]`.
 - Use only the default network. The offline proof replaces it.
-- Read nothing from `.env` files. Every value comes from `stack.json`.
+- Keep a developer's local override files, such as `.env.local`, `.env.*.local` and `application-local.yml`, out of the image and the containers. They override the stack's values, so a run meant to use fakes could reach a real server, and they can carry secrets into the image. Secrets a real mode needs come from the user's environment through `stack.json`.
 
 ## The app's configuration
 

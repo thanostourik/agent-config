@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 4
+
+- **Image contents:** version 2's rule against untracked files is replaced by a specific one: the image and the containers never take a developer's local override files, such as `.env.local`, `.env.*.local` and `application-local.yml`. Untracked code may go in. Remove any Decision recorded as an exception to the old rule. **Check:** none when the stack already keeps those files out; otherwise 1 with a planted `.env.local`.
+
 ## Version 3
 
 - **Script:** copy `local-stack/stack` again. **Check:** each item below.

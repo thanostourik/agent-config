@@ -9,7 +9,8 @@ The stack depends on facts that the code cannot show. This file says which quest
 - Give the options, put your recommendation first and say why. Say what each answer changes in the stack.
 - Send the questions in rounds, as many at once as your question tool allows, the most important first. A later round may depend on an earlier answer.
 - Write each question so the user understands it on the first read, without knowing this skill's words. Never use "shared", "mode", "stub", "switch" or "real mode" without saying what they mean in that question. Name the service the way the code or docs name it, and give a concrete example of what the answer changes.
-- An answer that leaves the decision open is not an answer: ask again, narrower.
+- When the user answers with a question, or says they don't understand, answer that first. Explain in plain words what the question is about, why it matters, and what each option would do, with an example. Then ask the same decision again. Never replace it with a different question, never move on, and never act as if it were answered.
+- If a question you asked turns out to be unnecessary, tell the user why before going on.
 - Before sending, reread each question as the user: if it uses a word from this skill without saying what it means, or needs a second read, rewrite it.
 
 ## Always asked
