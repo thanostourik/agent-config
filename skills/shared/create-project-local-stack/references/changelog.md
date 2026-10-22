@@ -1,18 +1,20 @@
 # Changelog
 
-Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with.
+Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
 ## Version 2
 
-- `local-stack/stack`: copy it again. It records a dependency stack before starting it, waits for readiness itself (setup jobs that exit 0 are fine, so `ready`-style services are no longer needed), skips Compose when no service is active, sets `LOCAL_STACK_GATEWAY_IP`, keeps a claim while its stack file exists or a dependency stack it started is claimed, and removes the stack file on `down`.
-- Ports: publish each one on `127.0.0.1` and on `${LOCAL_STACK_GATEWAY_IP}` only.
-- A stack other repos start accepts them on any `localhost` port.
-- The app's own port in IDE mode comes from the stack file. When `LOCAL_STACK_FILE` is set and the file is missing, the app stops with that path.
-- Seed data the app later changes applies only on a stack's first `up`.
-- The app image never takes untracked local files; every `VOLUME` an image declares is mounted on a named volume.
-- Mode names are free; `X_URL_FROM_CONTAINER` exists only when a container uses the address.
-- Proof: IDE mode runs with `--stubs`; every `stack` mode is proved with `lsproof-c`; the offline step uses `compose -- down` and the README lists what image builds download.
-- README: the first section names the skill version.
+- **Script:** copy `local-stack/stack` again. It records a dependency stack before starting it, waits for readiness itself (setup jobs that exit 0 are fine, so `ready`-style services are no longer needed), and skips Compose when no service is active. **Check:** 1, 2 and 7.
+- **Port claims:** the new script keeps a claim while its stack file exists or while a dependency stack it started is claimed. **Check:** `down` one proof stack, `up` another, and confirm the first keeps its ports; then `destroy` the first and confirm its dependency stacks are gone.
+- **Stack file on `down`:** the new script removes it; the next `up` writes it again with the same ports. Fix README lines that say otherwise. **Check:** `down`, then confirm the file is gone, then `up` and compare the ports.
+- **Ports:** publish each one on `127.0.0.1` and on `${LOCAL_STACK_GATEWAY_IP}` only. **Check:** 1, plus a request to the machine's network address that gets no answer.
+- **Consumers on any port:** a stack other repos start accepts them on any `localhost` port. **Check:** 6, from a consumer on a port other than its usual one.
+- **IDE port and missing stack file:** the app's own port in IDE mode comes from the stack file; when `LOCAL_STACK_FILE` is set and the file is missing, the app stops with that path. **Check:** 2, plus one start with a missing file.
+- **Seed data:** seed data the app later changes applies only on a stack's first `up`. **Check:** change seeded data as the app would, run `up` again, and confirm the change survives.
+- **Image contents:** the app image never takes untracked local files, and every `VOLUME` an image declares is mounted on a named volume. **Check:** 1 with a planted untracked file, and 7.
+- **Names:** mode names are free; `X_URL_FROM_CONTAINER` exists only when a container uses the address. **Check:** none; read `stack.json`.
+- **Proof procedure:** IDE mode runs with `--stubs`, every `stack` mode is proved with `lsproof-c`, the offline step uses `compose -- down`, and the README lists what image builds download. **Check:** 2, 5 and 6.
+- **README:** the first section names the skill version. **Check:** none.
 
 ## Version 1
 

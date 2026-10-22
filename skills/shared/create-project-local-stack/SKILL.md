@@ -39,9 +39,9 @@ This is the rule the whole skill rests on.
 
 1. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged.
 2. Read the skill version the README names, and the entries after it in [`references/changelog.md`](references/changelog.md); a README without a version was built with version 1. Read `local-stack/`, the app's local configuration change and the `AGENTS.md` section. List every place they break those entries, the current [`references/stack-spec.md`](references/stack-spec.md) and this skill, and every README statement the changes make untrue.
-3. Fix each one and keep the services, switches and Decisions. A fix that changes what the stack runs, a default or a Decision is a question for the user first.
-4. Rerun the proof steps of step 6 that the changes affect, always including cleanup. A change in another repo's stack that this one starts affects the steps that start it.
-5. Set the README's skill version to the newest changelog entry, add new answers to Decisions, commit, and report what changed and which proof steps ran.
+3. Fix each one and keep the services, switches and Decisions. A fix that changes what the stack runs, a default or a Decision is a question for the user first. When a rule conflicts with a recorded Decision, ask whether to follow the rule or keep the Decision. A kept Decision names the rule it departs from, such as "keeps untracked source files in the image, against version 2's image rule", and no longer counts as a break.
+4. Rerun the whole proof of step 6 when the update changes which services run, how the app is configured, or a stack this one starts. Otherwise rerun the checks the changelog items name. Always end with cleanup.
+5. Set the README's skill version to the newest changelog entry, add the answers the user gave during this update to Decisions, commit, and report what changed and which proof steps ran.
 
 ## 2. Discover
 
