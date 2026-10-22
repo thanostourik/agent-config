@@ -16,7 +16,7 @@ local-stack/
 
 A stack may add folders its own services need, such as a certificate generator or a setup script.
 
-Outside `local-stack/`, change what the stack needs, such as the app's local configuration, the project's `AGENTS.md` or a missing line in an ignore file, and list each such change in the report. Never change the repo's existing local environment, such as a `dev_setup/` folder.
+Outside `local-stack/`, the design the user approves covers the app's local configuration change and the project's `AGENTS.md` section. Any other file outside `local-stack/` needs the user's permission first, asked in one short question that names the file, shows the exact change, says in one sentence why the stack needs it, and says what happens without it. Example: "May I add `src/*.egg-info/` to `collector/.dockerignore`? Docker otherwise copies that git-ignored folder into the image. Without it, nothing breaks." Never change the repo's existing local environment, such as a `dev_setup/` folder.
 
 ## What `stack` does
 
