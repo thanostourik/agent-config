@@ -39,10 +39,14 @@ and instruct it to review without edits or tests.
 
 ## Run and monitor
 
+Run `grok --version` first. If it is 1.0.66 or older, stop and ask the user
+to update Grok; do not update it yourself. Those versions can keep running
+after the review has finished.
+
 Start the command below using the calling tool's background or resumable
 execution mode, and retain its task or session ID so you can check its status
 and exit code. Do not set a review runtime limit or a tool timeout that kills
-the process. A short wait that returns control while leaving it running is fine.
+the process.
 
 Set `REVIEW_REPO`, `REVIEW_MODEL`, `REVIEW_EFFORT`, and `REVIEW_DIR` to the
 absolute repository path, selected model, selected effort, and artifact
@@ -65,20 +69,12 @@ responsible for tests.
 Wait until the review finishes, then report. If the calling tool notifies you
 when a background command exits, end your turn and wait for that notice. Never
 start a polling loop or a monitor to watch the review. Without such a notice,
-check its status with short waits.
+check its status with short waits that return control and leave it running.
 
-Grok sometimes keeps running after it has finished. It has finished when
-`report.md` ends with its final answer and has not changed for a minute. For
-`/review`, the final answer is the closing summary that ends with the paths of
-the full notes and the summary file; an earlier line naming the notes file comes
-from the sub-reviewer, not the end. If the process is still running then, stop
-it and assess the report: that review is complete, not failed.
-
-In every other case, a running process alone does not prove progress, and
-silence or elapsed time alone does not prove a hang and must not trigger
-cancellation. If the review appears stuck, inspect its process state and logs.
-Report what you can establish and keep waiting when the evidence is
-inconclusive.
+A running process alone does not prove progress, and silence or elapsed time
+alone does not prove a hang and must not trigger cancellation. If the review
+appears stuck, inspect its process state and logs. Report what you can
+establish and keep waiting when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.

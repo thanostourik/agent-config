@@ -62,7 +62,7 @@ also writes session files into this directory, so use a new one for every run.
 Start the command below using the calling tool's background or resumable
 execution mode, and retain its task or session ID so you can check its status
 and exit code. Do not set a review runtime limit or a tool timeout that kills
-the process. A short wait that returns control while leaving it running is fine.
+the process.
 
 Set `REVIEW_REPO`, `REVIEW_MODEL`, `REVIEW_EFFORT`, and `REVIEW_DIR` to the
 absolute repository path, selected model, selected effort, and artifact
@@ -80,7 +80,7 @@ This is a static review: the caller remains responsible for tests.
 Wait until the review finishes, then report. If the calling tool notifies you
 when a background command exits, end your turn and wait for that notice. Never
 start a polling loop or a monitor to watch the review. Without such a notice,
-check its status with short waits.
+check its status with short waits that return control and leave it running.
 
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not
