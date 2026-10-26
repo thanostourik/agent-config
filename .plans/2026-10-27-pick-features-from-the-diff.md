@@ -38,10 +38,14 @@ One rule, in both places that select:
   documentation, build files that leave the app as it was.
 
 The agent starts from the list of changed files. It reads the diff only of the
-files whose feature it cannot tell from the file name and the index lines. It
-reads them in one command, in pieces of 20,000 bytes, the same size other reads
-in this skill use. At most five pieces: past 100,000 bytes, it selects the
+files whose feature it cannot tell from the file name and the index lines.
+`rec.sh diff <file>...` writes those diffs to `.cache/selection.diff` and prints
+the commands that read it in pieces of 20,000 bytes, the size other reads in
+this skill use, one call each and at most five. Past 100,000 bytes, it selects the
 remaining files by name and index line, and the report says which ones.
+
+Index scopes carry the selection, so each scope names the behavior and the data
+its feature covers.
 
 ### `verify-<app>` Pick features
 
@@ -52,16 +56,16 @@ and its reason in one line. The glob sentence goes.
 ### Maintenance, changed-recipes mode
 
 - `rec.sh affected` keeps writing `.cache/changed.txt` from the files changed
-  since `features/last-reviewed`. It stops reading `## Change triggers`. It
-  prints the changed files with their added and removed line counts
-  (`git diff --numstat`, untracked files included) and the features with a kept
-  staged copy, as today. With no commit, it still says to record every feature.
+  since `features/last-reviewed`, those of a companion repo's app checkouts as
+  `<app>/<path>`. It stops reading `## Change triggers`. It prints the changed
+  files with their added and removed line counts, untracked files included, and
+  the recipes changed or staged, as today. With no commit, it still says to record every feature.
   With no changed file, it prints nothing to select, and the run goes to Ship as
   today.
 - The main agent selects by the rule above. It writes `.cache/triggered.tsv`
-  itself, one `<feature>\t<file>` line per reason, in the step 3 command that
-  runs `rec.sh brief`, so the selection costs no extra call when no diff has to
-  be read. `rec.sh brief` builds each `changes.diff` from that file as it does
+  itself, one `<feature>\t<file>` line per reason, in the Brief files command of
+  step 3 that runs `rec.sh brief`, so the selection costs no extra call when no
+  diff has to be read. `rec.sh affected` empties that file first. `rec.sh brief` builds each `changes.diff` from that file as it does
   today; that code does not change.
 - Ship's report lists each changed file that selected nothing, with why, in
   place of the `skipped` and `unmapped change` lines.
@@ -72,17 +76,21 @@ and its reason in one line. The glob sentence goes.
   bullet now only feeds the skill's `description`, saying when an agent should
   use the skill. It gets "migrations" back as an example, because a migration
   change does need verification. Step 4 drops the change triggers from
-  `features/README.md` and the sentence on their glob shape. "each with its own
+  `features/README.md` and the sentence on their glob shape, and the index
+  scopes name their data. "each with its own
   file, index line and change triggers" loses the triggers. "only the change
   triggers name source" goes.
-- `references/verify-skill-spec.md`: the intro sentence that moves the trigger mapping into `features/README.md`
-  and the Pick features item.
+- `references/verify-skill-spec.md`: the intro sentence that moves the trigger
+  mapping into `features/README.md`, and the Pick features item.
 - `references/maintain-verify.md`: step 1 Index (affected, the grep over
   `.cache/changed.txt`, the selection and `triggered.tsv`, no more "Update
   `## Change triggers`"), step 3's "index entries and change triggers", Ship's
   changed-recipes report.
-- `references/rec.sh`: `affected` and its header comment. The other commands do
-  not change.
+- `references/rec.sh`: `affected`, the new `diff`, which reads app checkouts
+  through the existing `changes` helper, and their header comments. The other
+  commands do not change.
+- `create-project-verification-skill/SKILL.md`, companion part: the sentence
+  that app globs start with the app's name goes.
 - `references/feature-map-example/README.md`: the `## Change triggers` section
   goes.
 - `maintain-project-verification-skill/SKILL.md`: the conformer deletes
@@ -100,8 +108,8 @@ Measured numbers come from the PR #79 daily cases on wovies and from CHA-973.
 | --- | --- | --- |
 | Nothing changed | 34 s, 3 main-agent calls, no recorder | Same: the empty list ends the run before any read |
 | One file whose name tells its feature (wovies daily: a Settings subtitle) | 1 feature selected, 10 skipped | Same selection from the name, no diff read, no extra call |
-| CHA-973 (16 files, 23.7 KB of code diff) | 15 of 19 features recorded and driven | The new selected-projects feature, plus any existing feature its diff touches; at most one extra call and about 6,000 tokens to read the unclear diffs |
-| Large refactor | Every glob match | At most five 20,000-byte pieces, about 25,000 tokens and one call |
+| CHA-973 (16 files, 23.7 KB of code diff) | 15 of 19 features recorded and driven | The new selected-projects feature, plus any existing feature its diff touches; at most two extra calls and about 6,000 tokens to read the unclear diffs |
+| Large refactor | Every glob match | At most five 20,000-byte pieces, about 25,000 tokens and six calls |
 
 Every run also stops reading the `## Change triggers` section: 8.1 KB, about
 2,000 tokens, in backend-spring. One feature recorded for nothing costs

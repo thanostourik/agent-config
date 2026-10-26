@@ -5,7 +5,8 @@
 # rec.sh <feature> peek [--after '<Label>']... [--find '<expression>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot with bin/observe.sh after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each expression with bin/find.sh on the last state reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its state goes to the next snapshot file. Each step it ran, failed ones and Clean up included, gets a line of its label and block hash in .cache/record/<feature>/reached.tsv.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file; without one, attempts 0 and the other keys empty.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
-# rec.sh affected: list in .cache/changed.txt the files changed since the commit on the first line of features/last-reviewed, and those of each app checkout in the apps file since its <app> <commit> line there, as <app>/<path>, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
+# rec.sh affected: list in .cache/changed.txt the files changed since the commit on the first line of features/last-reviewed, and those of each app checkout in the apps file since its <app> <commit> line there, as <app>/<path>, empty .cache/triggered.tsv for the selection, and print and save to .cache/affected.txt the indexed features whose feature file changed or has a kept staged copy, then each changed file outside .agents/ and .claude/ with its added and removed line counts; with no such commit, say to record every feature.
+# rec.sh diff <file>...: write to .cache/selection.diff the changes of those files of .cache/changed.txt since features/last-reviewed, and print its size and the commands that read it in 20,000-byte pieces, five at most.
 # rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
 # rec.sh map: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt.
 # rec.sh brief <feature>...: build the contract map as map does when it is missing, then write each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
@@ -31,6 +32,7 @@ usage_all="usage: rec.sh <feature> start
        rec.sh <feature> facts
        rec.sh <feature> index '<index line>'
        rec.sh affected
+       rec.sh diff <file>...
        rec.sh common
        rec.sh map
        rec.sh brief <feature>...
@@ -146,7 +148,7 @@ changes() {
 fill() { awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}'; }
 
 affected() {
-  local v b name dir
+  local v b name dir f
   set +u +o pipefail
   v=$(relative "$skill") b=$(head -n 1 "$v/features/last-reviewed")
   git cat-file -e "$b^{commit}" 2>/dev/null || { echo "no commit $b: record every feature"; return; }
@@ -160,32 +162,33 @@ affected() {
       { git -C "$dir" diff --name-only "$(app_commit "$name")"; git -C "$dir" ls-files -o --exclude-standard; } | sed "s|^|$name/|"
     done
   } | grep -v -e "^$v/features/last-reviewed$" -e "^$v/[.]cache/" | sort -u > "$v/.cache/changed.txt"
-  awk -v b="$b" -v d="$v/features/" -v p="$v/.cache/triggered.tsv" -v kept="$(printf '%s\n' "$v"/.cache/record/*/*.md)" '
-    BEGIN { printf "" > p }
-    FNR == 1 { n++ }
-    n == 1 && /^## / { t = /^## Change triggers$/; x = /^## Features$/ }
-    n == 1 && t && match($0, /: [a-z0-9][a-z0-9, -]*$/) {
-      f[++nt] = substr($0, RSTART + 2); r[nt] = "^$"; h = substr($0, 1, RSTART - 1)
-      while (match(h, /`[^`]+`/)) {
-        g = substr(h, RSTART + 1, RLENGTH - 2); h = substr(h, RSTART + RLENGTH)
-        for (e = ""; g != ""; g = substr(g, 2)) { c = substr(g, 1, 1); e = e (c == "*" ? ".*" : c == "?" ? "." : c ~ /[\\^]/ ? "\\" c : "[" c "]") }
-        r[nt] = r[nt] "|^" e "$"
+  : > "$v/.cache/triggered.tsv"
+  mapfile -t f < <(grep -v '^[.]\(agents\|claude\)/' "$v/.cache/changed.txt")
+  {
+    awk -v d="$v/features/" -v kept="$(printf '%s\n' "$v"/.cache/record/*/*.md)" '
+      FNR == 1 { n++ }
+      n == 1 && /^## / { x = /^## Features$/ }
+      n == 1 && x && (i = index($0, "](./")) { s = substr($0, i + 4); all[substr(s, 1, index(s, ".md)") - 1)] }
+      n == 2 && index($0, d) == 1 && /[.]md$/ && !/README.md$/ { hit[substr($0, length(d) + 1, length($0) - length(d) - 3)] }
+      END {
+        split(kept, k, "\n")
+        for (j in k) if ((z = split(k[j], q, "/")) > 1 && q[z] == q[z - 1] ".md") hit[q[z - 1]]
+        for (s in all) if (s in hit) o = o " " s
+        printf "recipes changed or staged:%s\n", o
       }
-    }
-    n == 1 && x && (i = index($0, "](./")) { s = substr($0, i + 4); all[substr(s, 1, index(s, ".md)") - 1)]; total++ }
-    n == 2 && index($0, d) == 1 && /[.]md$/ && !/README.md$/ { hit[substr($0, length(d) + 1, length($0) - length(d) - 3)]; next }
-    n == 2 && !/^[.](agents|claude)\// {
-      m = 0
-      for (i = 1; i <= nt; i++) if ($0 ~ r[i]) { m = split(f[i], a, /, */); for (j in a) { hit[a[j]]; print a[j] "\t" $0 > p } }
-      if (!m) u = u "unmapped change: " $0 "\n"
-    }
-    END {
-      split(kept, k, "\n")
-      for (j in k) if ((z = split(k[j], q, "/")) > 1 && q[z] == q[z - 1] ".md") hit[q[z - 1]]
-      for (s in all) if (s in hit) o = o " " s
-      printf "affected:%s\nskipped: %d of %d features, unchanged since %s\n%s", o, total - split(o, a, " "), total, b, u
-    }
-  ' "$v/features/README.md" "$v/.cache/changed.txt" | tee "$v/.cache/affected.txt"
+    ' "$v/features/README.md" "$v/.cache/changed.txt"
+    echo "files changed since the last review: ${#f[@]} (lines added, removed, path)"
+    ((${#f[@]})) && GIT_LITERAL_PATHSPECS=1 changes "$b" "${f[@]}" | git apply --numstat
+  } | tee "$v/.cache/affected.txt"
+}
+
+selection_diff() {
+  local v d o
+  set +u +o pipefail
+  v=$(relative "$skill") d=$(relative "$skill")/.cache/selection.diff
+  GIT_LITERAL_PATHSPECS=1 changes "$(head -n 1 "$v/features/last-reviewed")" "$@" > "$d"
+  echo "$d: $(wc -c < "$d") bytes; read it with:"
+  for o in $(seq 1 20000 "$(wc -c < "$d")" | head -n 5); do echo "   tail -c +$o $d | head -c 20000"; done
 }
 
 example_file() {
@@ -343,6 +346,7 @@ reviewed() {
 case "${1:-}" in
   affected | common | sendback) (($# == 1)) || usage; "$1"; exit ;;
   map) (($# == 1)) || usage; map; exit ;;
+  diff) shift; (($#)) || usage; selection_diff "$@"; exit 0 ;;
   next) shift; next "$@"; exit 0 ;;
   brief) shift; (($#)) || { echo "usage: rec.sh brief <feature>..." >&2; exit 2; }; brief "$@"; exit 0 ;;
   fix-brief) shift; (($#)) || usage; fix_brief "$@"; exit 0 ;;

@@ -28,12 +28,6 @@ This directory is the maintained source for verifying the browser and CLI behavi
 
 - `notes` exits 0 when a note it was asked for is missing; check its JSON output, not its exit code.
 
-## Change triggers
-
-- `web/src/editor/*`, `web/src/routes/new.tsx`, `server/api/notes.ts`, `cli/commands/create.ts`: create-note
-- `server/search/*`, `web/src/toolbar/*`, `web/src/shortcuts.ts`, `cli/commands/search.ts`: search
-- `server/storage/*`, `server/main.ts`, `cli/args.ts`: create-note, search
-
 ## Feature file shape
 
 Each feature file starts with an H1 and one paragraph describing the observable behavior, then exactly five H2s in this order:
