@@ -94,14 +94,13 @@ open.
 
 ## Report
 
-When you may update the PR, put this line in its description:
-`Reviewed with review-loop: <N> rounds with <reviewers>`. Otherwise put it in
-the report.
+This skill never writes to the PR. The caller decides what goes there.
 
 The report lists:
 
 - The rounds: head commit and result of each, and why the loop stopped.
-- The reviewers.
+- The reviewers, each with the model and harness that ran it, for example
+  `GPT-6.1 Sol through Codex`.
 - The fixed findings.
 - The declined findings, each with its reason.
 - The out-of-scope findings, as follow-ups for the user.
