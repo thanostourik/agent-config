@@ -504,6 +504,24 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
+    def test_skill_defaults_render_strings_and_lists_and_overrides_replace_lists(self):
+        skill = self.repo / "skills/shared/example"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "Model {{defaults.model}}; reviewers {{defaults.reviewers}}.")
+        (self.repo / "config.defaults.json").write_text(json.dumps({"skills": {"example": {
+            "defaults": {"model": "m1", "reviewers": ["a-review", "b-review"]}}}}))
+        installed = self.home / ".claude/skills/example/SKILL.md"
+        self.run_sync("--apply")
+        self.assertEqual(installed.read_text(), "Model m1; reviewers a-review, b-review.")
+        self.write_config({"skills": {"example": {"defaults": {"reviewers": ["c-review"]}}}})
+        self.run_sync("--apply")
+        self.assertEqual(installed.read_text(), "Model m1; reviewers c-review.")
+        for reviewers in ([], ["a-review", ""], ["a\nb"], [["a"]], ["{{x}}"]):
+            self.write_config({"skills": {"example": {"defaults": {"reviewers": reviewers}}}})
+            self.run_sync("--apply", expected=2)
+        self.assertEqual(installed.read_text(), "Model m1; reviewers c-review.")
+
     def test_default_config_lists_installable_skills_and_hooks(self):
         source = Path(__file__).resolve().parents[1]
         defaults = json.loads((source / "config.defaults.json").read_text())
