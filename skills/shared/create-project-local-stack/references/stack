@@ -83,11 +83,10 @@ def up(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
     modes = chosen_modes(args)
-    with registry_lock():
-        claim = claim_ports(project)
-        claim["pid"] = os.getpid()
-        write_claim(project, claim)
-    try:
+    with stack_lock(project):
+        with registry_lock():
+            claim = claim_ports(project)
+            write_claim(project, claim)
         values = {"LOCAL_STACK_GATEWAY_IP": gateway_ip(), **claim["ports"]}
         records = dependency_records(claim)
         started = []
@@ -110,11 +109,13 @@ def up(args):
         claim["modes"] = modes
         claim["needs"] = records
         claim["values"] = values
+        path = stack_file(name)
+        take_stack_file(project, path)
         previous_file = claim.get("stack_file")
-        if previous_file and Path(previous_file) != stack_file(name):
+        if previous_file and Path(previous_file) != path:
             Path(previous_file).unlink(missing_ok=True)
-        claim["stack_file"] = str(stack_file(name))
-        stack_file(name).write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+        claim["stack_file"] = str(path)
+        path.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         write_claim(project, claim)
         active = active_services(project, values, modes)
         stop_inactive_services(project, values, active)
@@ -124,33 +125,49 @@ def up(args):
         for record in records:
             if record not in started:
                 run_dependency(record, "down")
-    finally:
-        claim["pid"] = None
-        write_claim(project, claim)
     print(f"Stack {project} is up. Modes: {describe(modes)}.", file=sys.stderr)
     print(f"Stack file: {stack_file(name)}", file=sys.stderr)
+
+
+def take_stack_file(project, path):
+    """Moves another stack of this checkout off `path`, so two stacks never share one stack file."""
+    with registry_lock():
+        holders = [other for other, claim in other_claims(project) if claim["checkout"] == str(CHECKOUT) and claim.get("stack_file") == str(path)]
+    for other in holders:
+        with stack_lock(other):
+            claim = read_claim(other)
+            if not claim or claim.get("stack_file") != str(path):
+                continue
+            new_path = stack_file(other.removeprefix(f"{APP}-"))
+            if path.exists():
+                path.replace(new_path)
+            claim["stack_file"] = str(new_path)
+            write_claim(other, claim)
+            print(f"stack: moved the stack file of {other} to {new_path}", file=sys.stderr)
 
 
 def down(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = own_claim(project) or {}
-    run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
-    for record in dependency_records(claim):
-        run_dependency(record, "down")
-    claimed_stack_file(name, claim).unlink(missing_ok=True)
+    with stack_lock(project):
+        claim = own_claim(project) or {}
+        run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
+        for record in dependency_records(claim):
+            run_dependency(record, "down")
+        claimed_stack_file(name, claim).unlink(missing_ok=True)
 
 
 def destroy(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = own_claim(project) or {}
-    run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
-    for record in dependency_records(claim):
-        run_dependency(record, "destroy")
-    claimed_stack_file(name, claim).unlink(missing_ok=True)
-    with registry_lock():
-        (REGISTRY / f"{project}.json").unlink(missing_ok=True)
+    with stack_lock(project):
+        claim = own_claim(project) or {}
+        run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
+        for record in dependency_records(claim):
+            run_dependency(record, "destroy")
+        claimed_stack_file(name, claim).unlink(missing_ok=True)
+        with registry_lock():
+            (REGISTRY / f"{project}.json").unlink(missing_ok=True)
 
 
 def status(args):
@@ -277,6 +294,30 @@ def registry_lock():
         yield
 
 
+@contextlib.contextmanager
+def stack_lock(project):
+    REGISTRY.mkdir(parents=True, exist_ok=True)
+    with open(REGISTRY / f"{project}.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"stack: waiting for another command on stack {project}", file=sys.stderr)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def is_busy(project):
+    path = REGISTRY / f"{project}.lock"
+    if not path.exists():
+        return False
+    with open(path) as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+    return False
+
+
 def read_claim(project):
     path = REGISTRY / f"{project}.json"
     return json.loads(path.read_text()) if path.exists() else None
@@ -323,8 +364,7 @@ def other_claims(project):
 
 
 def is_abandoned(project, claim):
-    pid = claim.get("pid")
-    if pid and process_is_alive(pid):
+    if is_busy(project):
         return False
     if claim.get("stack_file") and Path(claim["stack_file"]).exists():
         return False
@@ -343,16 +383,6 @@ def dependency_is_claimed(record):
     if not config.exists():
         return False
     return (REGISTRY / f"{json.loads(config.read_text())['app']}-{record['name']}.json").exists()
-
-
-def process_is_alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def port_is_free(port):
