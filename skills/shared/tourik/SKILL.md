@@ -1,7 +1,6 @@
 ---
 name: tourik
-description: Use when the user asks for tourik mode.
-disable-model-invocation: true
+description: Use when the user asks for "tourik mode".
 ---
 
 # tourik
