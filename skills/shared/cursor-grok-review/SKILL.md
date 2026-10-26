@@ -77,7 +77,10 @@ CURSOR_CONFIG_DIR="$REVIEW_DIR/cursor-config" cursor-agent -p --trust \
 
 This is a static review: the caller remains responsible for tests.
 
-Wait until the review finishes, then report.
+Wait until the review finishes, then report. If the calling tool notifies you
+when a background command exits, end your turn and wait for that notice. Never
+start a polling loop or a monitor to watch the review. Without such a notice,
+check its status with short waits.
 
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not
