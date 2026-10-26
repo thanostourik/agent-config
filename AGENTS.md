@@ -127,15 +127,16 @@ Without `harness`, the source folder decides:
 - `hooks/shared/x.json` goes to the three tools with hooks.
 
 A `harness` list replaces that default completely. It does not add to it. For
-example, `codex-review` lives in `skills/shared/` and uses:
+example, `render-plan` lives in `skills/shared/` and uses:
 
 ```yaml
 metadata:
-  harness: "claude-code, grok, opencode, cursor"
+  harness: "grok, opencode"
 ```
 
-That keeps it out of `~/.codex/skills/`. A skill that should also go to
-`~/.agents/skills/` must list every destination, `agents` included.
+That keeps it out of the Claude Code, Codex, and Cursor skill folders. A
+skill that should also go to `~/.agents/skills/` must list every destination,
+`agents` included.
 
 For a skill, the field sits in the opening `SKILL.md` frontmatter. Use exactly
 two spaces before `harness`, double quotes, and one line of comma-separated
@@ -154,9 +155,12 @@ definitions have no `harness` field. They go only to their own tool.
 To make a value in skill Markdown configurable, write `{{defaults.<name>}}`
 and declare its shipped value in `config.defaults.json` under
 `skills.<skill>.defaults.<name>`. Sync replaces the marker with the merged
-value. A marker without a value, or a value without a marker, stops sync, even
-for a disabled skill. Keep the skill's wording that an explicit user choice
-wins.
+value. A value is a single-line string or a list of them. A list renders as
+its items joined with `, `: `["codex-review", "grok-review"]` becomes
+`codex-review, grok-review`. A list in `config.json` replaces the whole
+shipped list. A marker without a value, or a value without a marker, stops
+sync, even for a disabled skill. Keep the skill's wording that an explicit
+user choice wins.
 
 ## Where sync installs each file
 

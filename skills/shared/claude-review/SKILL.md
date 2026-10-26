@@ -1,9 +1,6 @@
 ---
 name: claude-review
-description: Use only when the user explicitly requests a Claude review or invokes this skill.
-disable-model-invocation: true
-metadata:
-  harness: "codex, grok, opencode, cursor"
+description: Use when the user requests a Claude review, or when another skill such as review-loop runs one.
 ---
 
 # Claude review
@@ -28,6 +25,13 @@ Set `REVIEW_TARGET` to the `/code-review` target:
 `/code-review` reviews every uncommitted change. If the tree holds user changes
 outside the requested target, say so when presenting the findings.
 
+## Review a branch against a base
+
+`/code-review` takes no base. When the base is the default branch, set
+`REVIEW_TARGET` to the branch. For any other base, write a `prompt.md` holding
+only the target and `git diff <base>...<branch>`, and run it as a custom
+question, described below.
+
 ## Run and monitor
 
 Start the command below using the calling tool's background or resumable
@@ -47,6 +51,11 @@ claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   --output-format text "/code-review $REVIEW_EFFORT $REVIEW_TARGET" \
   </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
 ```
+
+For a custom question, such as whether given proof files show criteria
+working, write a self-contained `prompt.md` and replace the last argument,
+`"/code-review $REVIEW_EFFORT $REVIEW_TARGET"`, with
+`"$(cat "$REVIEW_DIR/prompt.md")"`. Keep every other flag.
 
 The allowed tools let the reviewer read files and run read-only git commands;
 `dontAsk` rejects everything else. Never add `--fix`, which edits files,

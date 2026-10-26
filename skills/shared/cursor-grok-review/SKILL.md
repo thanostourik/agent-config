@@ -1,9 +1,6 @@
 ---
 name: cursor-grok-review
-description: Use only when the user explicitly requests a Grok review through Cursor or invokes this skill.
-disable-model-invocation: true
-metadata:
-  harness: "claude-code, codex, grok, opencode"
+description: Use when the user requests a Grok review through Cursor, or when another skill such as review-loop runs one.
 ---
 
 # Cursor Grok review
@@ -56,6 +53,11 @@ The user's own Cursor config may approve every tool, and print mode then
 ignores `--mode ask`. This separate config is what keeps the reviewer read-only:
 file writes and every shell command except read-only git are rejected. Cursor
 also writes session files into this directory, so use a new one for every run.
+
+## Review a branch against a base
+
+Cursor has no built-in review. `prompt.md` holds only the target and
+`git diff <base>...<branch>`. A custom prompt replaces it.
 
 ## Run and monitor
 
