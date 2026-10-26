@@ -34,6 +34,7 @@
         "provider": "claudeAgent", "model": "claude-opus-5-5", "effort": "high"
       }
     },
+    "tourik": { "enabled": true },
     "triple-review": {
       "enabled": true,
       "defaults": {
