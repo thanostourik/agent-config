@@ -56,7 +56,7 @@ Helper agents build and repair the recipes, so your own context stays small. A *
 Answer these from the codebase. Ask the user only what you cannot observe.
 
 - **Surface:** what the project exposes to people or other software: web UI, CLI/TUI, desktop app, API, mobile app, firmware, library. Pick the primary one and note the rest.
-- **Verification triggers:** the changes that could affect that behavior, named from this repo. Include internal components and configuration, not only screens. Examples: endpoints, services, migrations, routing and authentication for a backend; command handling, output and file effects for a CLI. Observable behavior includes responses, permissions, stored data, background jobs and external side effects.
+- **Verification triggers:** the changes that could affect that behavior, named from this repo. Include internal components and configuration, not only screens. Examples: endpoints, services, routing and authentication for a backend; command handling, output and file effects for a CLI. Observable behavior includes responses, permissions, stored data, background jobs and external side effects.
 - **Run:** how the app starts locally. Prefer the repo's documented dev command. Note ports, env vars, seed data and auth.
 - **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and the docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service in another repo, learn how to start it there. Ask the user where that checkout is if you need to read it.
 - **Contract sources:** the README, docs, plans, tests and specs that say what the features should do. Note when there is nothing beyond a high-level README.
