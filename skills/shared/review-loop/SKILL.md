@@ -28,7 +28,8 @@ works. A fresh reviewer then checks that proof against the intent.
   | R1-2 | codex-review, grok-review | medium | `src/b.ts:12` races on save | declined | the lock in `save()` serializes it | `abc123` |
 
   `reviewer` lists every reviewer that raised the finding, so the user can see
-  each reviewer's hit rate. `severity` is `high`, `medium`, `low`, or `nit`.
+  each reviewer's hit rate. `severity` is `high`, `medium`, `low`, or `nit`,
+  set by your own check of the code, not by the reviewer's label.
   `commit` is the head commit when you decided.
 
 ## Budget
@@ -40,7 +41,7 @@ auth, data loss, or state and concurrency, or when the user asks.
 
 1. Commit your work, so every reviewer sees the same code. Pushing follows the
    caller's rules; this skill never pushes.
-2. Start every reviewer at once. Each runs its tool's built-in review command
+2. Start every reviewer before you end your turn to wait. Each runs its tool's built-in review command
    on the whole branch against its base, the same command every round. Round
    two is not a review of the changes since round one.
    - In T3 Code, a review skill with a T3 delegate path runs that way: a
@@ -49,7 +50,9 @@ auth, data loss, or state and concurrency, or when the user asks.
    - Every other reviewer runs its skill's CLI command. `codex-review` always
      does.
    - A skill without a built-in review command, such as `cursor-grok-review`,
-     gets a prompt with only the target and the git command that shows it.
+     gets a prompt with only the target and the git command that shows it,
+     `git diff <base>...HEAD`. So does a reviewer whose built-in command
+     cannot use the base: Grok's `/review` always compares with `origin/main`.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
@@ -64,8 +67,8 @@ auth, data loss, or state and concurrency, or when the user asks.
 6. After fixes that change behavior, verify the affected features the way the
    project does, then commit.
 
-Stop when a round is clean: after skipping what the ledger already holds,
-nothing above `nit` is left. Also stop when the budget is spent. A spent
+Stop when a round is clean: every reviewer finished, and after skipping what
+the ledger already holds, nothing above `nit` is left. Also stop when the budget is spent. A spent
 budget is not approval; report what is still open.
 
 ## Proof

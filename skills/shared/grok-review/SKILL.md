@@ -46,9 +46,11 @@ options: {reasoningEffort: <effort>}}`, and the `/review` line as the whole
 task. Set no `role`: `role: "review"` puts a sentence in front of the task, and
 Grok then no longer reads it as a slash command.
 
-End your turn and wait for the completion notice. The result is the review's
-closing summary, which names its findings file under `/tmp/grok-<user>/`. The
-delegate has no read-only sandbox, so check `git status --short` afterwards.
+Once every other task you need is started, end your turn and wait for the
+completion notice. The result is the review's closing summary, which names its
+findings file under `/tmp/grok-<user>/`. The delegate has no read-only
+sandbox, so compare `git status --short` with the one you recorded. Report any
+file it changed, and never commit those changes as part of the reviewed work.
 If the delegate is unavailable or fails, run the command below.
 
 ## Run and monitor

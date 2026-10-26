@@ -47,6 +47,10 @@ claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
 ```
 
+For a custom question, such as whether given proof files show criteria
+working, write a self-contained `prompt.md` and pass its text in place of
+`/code-review $REVIEW_EFFORT $REVIEW_TARGET`.
+
 The allowed tools let the reviewer read files and run read-only git commands;
 `dontAsk` rejects everything else. Never add `--fix`, which edits files,
 `--comment` or `--post`, which publish findings, or `ultra`, which starts a
