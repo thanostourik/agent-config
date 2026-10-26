@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 7
+
+- **Script:** copy `local-stack/stack` again. After a branch switch, `up` of the new branch's stack moves the earlier stack's `.stack.env` to `.stack-<its name>.env`, so `destroy` of one stack no longer deletes the other's file. `up`, `down` and `destroy` on one stack now wait for each other. **Check:** start two `up --name lsproof-a` at once and confirm the second prints that it waits; then `up` on one branch, switch branches, `up` again, `destroy --name <first branch>`, and confirm the new branch's `.stack.env` remains.
+
 ## Version 6
 
 - **Proof action:** it is no longer asked or recorded; each run picks it from the code. Remove the Decisions line that names it. **Check:** none.
