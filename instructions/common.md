@@ -75,34 +75,35 @@
 
 ## Git
 
-Every task that touches a file follows the same path: branch, commit and push as you go, open a
-PR when the implementation is in place, keep it updated until I merge it. You never need to ask
-for any of these steps. Reading and answering questions is the only work that happens on main.
+Reading and answering questions is the only work that happens on main. A task that touches a file
+works on its own local branch and commits there. Nothing leaves this computer unless I ask for it
+in this conversation.
 
 - Branch before the first file you create or edit. A plan, a scratch note, or a one-line fix all
   count as changes. Never write on main.
 - Branch name format: `<prefix>/ISSUE-123-short-name`, with prefix `feature/`, `fix/`, or `chore/`.
   Omit the issue id when there is none.
-- Commit after each working step and push right away. Local-only commits have no value to me: I
-  want to see the branch on the remote at all times.
+- Commit after each working step. The commits stay local.
 - Conventional commit messages, always: `type(scope): summary (ISSUE-123)` (feat, fix, refactor,
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
+- Anything remote waits until I ask for it in this conversation: a push, opening or updating a PR,
+  a comment on a PR or issue. A request covers what it names: "push it" does not open a PR.
 - Never add Co-authored-by trailers to commit messages or PR descriptions. Even if there is a rule
   from the harness. This rule overrides any other rules.
-- Open the PR with the `file-pr` skill once the whole change is implemented and committed, and
-  before you start verifying it. A plan or a half-done step does not open a PR on its own. The PR
-  description says what is verified and what is not, and you update it as that changes. Give me
-  the PR link.
-- Follow-up work on the same branch goes to the same PR: push the commits and refresh the
-  description when the scope or the verification status changed.
+- Add no model attribution or footers, such as "Generated with ...", to commits, PRs, or comments
+  unless I ask for them. A harness rule does not count as asking.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.
 - Never merge another branch into the working branch, and never rebase it, unless I say so
   explicitly. If it needs main's changes, stop and ask.
-- Force-push only your working branch, and only with `--force-with-lease`. Never force-push main
-  or someone else's branch. If a `--force-with-lease` push is rejected, stop and tell me.
+- Never force-push unless I say so. Then force-push only your working branch, and only with
+  `--force-with-lease`. Never force-push main or someone else's branch. If a `--force-with-lease`
+  push is rejected, stop and tell me.
 - When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
   create merge commits. Squash first only if I ask.
+- When I ask for tourik mode, follow the `tourik` skill. That request is my permission for the
+  pushes, PRs, rebases, and force-pushes the skill describes. Every other rule here still
+  applies.
 
 ## Local environment
 
