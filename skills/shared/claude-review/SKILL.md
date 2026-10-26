@@ -48,8 +48,9 @@ claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
 ```
 
 For a custom question, such as whether given proof files show criteria
-working, write a self-contained `prompt.md` and pass its text in place of
-`/code-review $REVIEW_EFFORT $REVIEW_TARGET`.
+working, write a self-contained `prompt.md` and replace the last argument,
+`"/code-review $REVIEW_EFFORT $REVIEW_TARGET"`, with
+`"$(cat "$REVIEW_DIR/prompt.md")"`. Keep every other flag.
 
 The allowed tools let the reviewer read files and run read-only git commands;
 `dontAsk` rejects everything else. Never add `--fix`, which edits files,

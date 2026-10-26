@@ -49,8 +49,9 @@ Grok then no longer reads it as a slash command.
 Once every other task you need is started, end your turn and wait for the
 completion notice. The result is the review's closing summary, which names its
 findings file under `/tmp/grok-<user>/`. The delegate has no read-only
-sandbox, so compare `git status --short` with the one you recorded. Report any
-file it changed, and never commit those changes as part of the reviewed work.
+sandbox, so compare `git status --short` and `git rev-parse HEAD` with the ones
+you recorded. Report any change it made, and never treat its files or commits
+as part of the reviewed work.
 If the delegate is unavailable or fails, run the command below.
 
 ## Run and monitor

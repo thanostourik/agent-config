@@ -52,24 +52,27 @@ auth, data loss, or state and concurrency, or when the user asks.
    - A skill without a built-in review command, such as `cursor-grok-review`,
      gets a prompt with only the target and the git command that shows it,
      `git diff <base>...HEAD`. So does a reviewer whose built-in command
-     cannot use the base: Grok's `/review` always compares with `origin/main`.
+     cannot use the base, through its CLI: Grok's `/review` compares only with
+     `origin/main` or `origin/master`.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
 4. Wait until every reviewer finishes. If one fails, start it once more. If it
-   fails again, go on without it and say so in the report.
+   fails again, go on without it. That round is not clean, and the report
+   says so.
 5. Check each finding against the code:
-   - Already in the ledger: add the reviewer to that row and skip it, unless
-     the code around it changed since that row's commit. Then decide again.
+   - Declined earlier: add the reviewer to that row and skip it, unless the
+     code around it changed since that row's commit. Then decide again.
+   - Fixed earlier and raised again: check it again; the fix may not hold.
    - Real: fix it.
    - Not real: decline it with a reason a reader can check.
    Record every new finding in the ledger.
 6. After fixes that change behavior, verify the affected features the way the
    project does, then commit.
 
-Stop when a round is clean: every reviewer finished, and after skipping what
-the ledger already holds, nothing above `nit` is left. Also stop when the budget is spent. A spent
-budget is not approval; report what is still open.
+Stop when a round is clean: every reviewer finished, and after skipping the
+declined findings, nothing above `nit` is left. Also stop when the budget is
+spent. A spent budget is not approval; report what is still open.
 
 ## Proof
 
