@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 8
+
+- **Script:** copy `local-stack/stack` again. Every stack, the default one included, writes `local-stack/.stack-<name>.env` and keeps that path. `.stack.env` is now a link to the checked-out branch's stack file, which `up` of that stack points there; `down` and `destroy` leave it. Then run `up` once on the checked-out branch, which replaces the old `.stack.env` file with the link. **Check:** `up` on one branch, switch to another, `up` again, and confirm `.stack.env` links to `.stack-<new branch>.env` and `.stack-<first branch>.env` still holds the first stack's ports; `destroy --name <first branch>` and confirm `.stack-<new branch>.env` remains; start two `up --name lsproof-a` at once and confirm the second prints that it waits.
+
 ## Version 7
 
 - **Script:** copy `local-stack/stack` again. After a branch switch, `up` of the new branch's stack moves the earlier stack's `.stack.env` to `.stack-<its name>.env`, so `destroy` of one stack no longer deletes the other's file. `up`, `down` and `destroy` on one stack now wait for each other. **Check:** start two `up --name lsproof-a` at once and confirm the second prints that it waits; then `up` on one branch, switch branches, `up` again, `destroy --name <first branch>`, and confirm the new branch's `.stack.env` remains.

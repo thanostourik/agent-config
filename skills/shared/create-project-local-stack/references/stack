@@ -21,6 +21,7 @@ PORTS = CONFIG.get("ports", {})
 SWITCHES = CONFIG.get("switches", {})
 VARS = CONFIG.get("vars", {})
 PROVIDES = CONFIG.get("provides", [])
+DEFAULT_STACK_FILE = HERE / ".stack.env"
 REGISTRY = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "local-stacks"
 SPARE_PORTS = range(10000, 32768)
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -110,13 +111,11 @@ def up(args):
         claim["needs"] = records
         claim["values"] = values
         path = stack_file(name)
-        take_stack_file(project, path)
-        previous_file = claim.get("stack_file")
-        if previous_file and Path(previous_file) != path:
-            Path(previous_file).unlink(missing_ok=True)
         claim["stack_file"] = str(path)
         path.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         write_claim(project, claim)
+        if name == stack_name(default_name()):
+            link_default_stack_file(path)
         active = active_services(project, values, modes)
         stop_inactive_services(project, values, active)
         if active:
@@ -129,21 +128,11 @@ def up(args):
     print(f"Stack file: {stack_file(name)}", file=sys.stderr)
 
 
-def take_stack_file(project, path):
-    """Moves another stack of this checkout off `path`, so two stacks never share one stack file."""
-    with registry_lock():
-        holders = [other for other, claim in other_claims(project) if claim["checkout"] == str(CHECKOUT) and claim.get("stack_file") == str(path)]
-    for other in holders:
-        with stack_lock(other):
-            claim = read_claim(other)
-            if not claim or claim.get("stack_file") != str(path):
-                continue
-            new_path = stack_file(other.removeprefix(f"{APP}-"))
-            if path.exists():
-                path.replace(new_path)
-            claim["stack_file"] = str(new_path)
-            write_claim(other, claim)
-            print(f"stack: moved the stack file of {other} to {new_path}", file=sys.stderr)
+def link_default_stack_file(path):
+    temporary = HERE / f".stack.{os.getpid()}.env"
+    temporary.unlink(missing_ok=True)
+    temporary.symlink_to(path.name)
+    temporary.replace(DEFAULT_STACK_FILE)
 
 
 def down(args):
@@ -154,7 +143,7 @@ def down(args):
         run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
         for record in dependency_records(claim):
             run_dependency(record, "down")
-        claimed_stack_file(name, claim).unlink(missing_ok=True)
+        stack_file(name).unlink(missing_ok=True)
 
 
 def destroy(args):
@@ -165,7 +154,7 @@ def destroy(args):
         run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
         for record in dependency_records(claim):
             run_dependency(record, "destroy")
-        claimed_stack_file(name, claim).unlink(missing_ok=True)
+        stack_file(name).unlink(missing_ok=True)
         with registry_lock():
             (REGISTRY / f"{project}.json").unlink(missing_ok=True)
 
@@ -178,7 +167,7 @@ def status(args):
         print(f"No stack {project}.")
         return
     print(f"Stack {project} of {claim['checkout']}. Modes: {describe(claim.get('modes', {}))}.")
-    print(f"Stack file: {claimed_stack_file(name, claim)}")
+    print(f"Stack file: {stack_file(name)}")
     for key, port in claim["ports"].items():
         print(f"  {key}={port}")
     for record in dependency_records(claim):
@@ -188,7 +177,8 @@ def status(args):
 
 def env(args):
     name = stack_name(args.name)
-    path = claimed_stack_file(name, own_claim(f"{APP}-{name}"))
+    own_claim(f"{APP}-{name}")
+    path = stack_file(name)
     if not path.exists():
         raise StackError(f"no stack file {path}; run `local-stack/stack up` first")
     for key, value in parse_env(path.read_text()).items():
@@ -234,10 +224,6 @@ def own_claim(project):
     return claim
 
 
-def claimed_stack_file(name, claim):
-    return Path(claim["stack_file"]) if claim and claim.get("stack_file") else stack_file(name)
-
-
 def dependency_records(claim):
     needs = claim.get("needs") or []
     if isinstance(needs, dict):
@@ -246,8 +232,7 @@ def dependency_records(claim):
 
 
 def stack_file(name):
-    suffix = "" if name == stack_name(default_name()) else f"-{name}"
-    return HERE / f".stack{suffix}.env"
+    return HERE / f".stack-{name}.env"
 
 
 def chosen_modes(args):
@@ -429,7 +414,7 @@ def run_dependency(record, *command):
 def saved_values(name, claim):
     if claim.get("values"):
         return claim["values"]
-    path = claimed_stack_file(name, claim)
+    path = stack_file(name)
     if path.exists():
         return parse_env(path.read_text())
     values = {key: "" for spec in SWITCHES.values() for mode in spec["modes"].values() for key in mode.get("vars", {})}
