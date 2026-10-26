@@ -88,7 +88,8 @@ spent. A spent budget is not approval; report what is still open.
    - The intent, quoted word for word: the Jira ticket or the user's request.
      When neither exists, the acceptance criteria you wrote into the PR
      description.
-   - The paths of the raw proof files. No summary from you.
+   - The paths of the raw proof files. Not the ledger, a summary, or anything
+     else you wrote.
    - The question: for each criterion, does the proof show it working? Answer
      shown, not shown, or shows a bug, and name the file that shows it.
 3. Proof missing: gather it and run the evidence check once more.
