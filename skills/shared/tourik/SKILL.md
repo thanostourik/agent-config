@@ -45,10 +45,13 @@ you again, so ending the turn early stops the work.
 3. **Verify** as "How to verify" below says.
 4. **Open the PR** as a draft with the `file-pr` skill. From here on, update
    its description whenever the scope or the verification status changes.
-5. **Review.** Run the `review-loop` skill on the PR.
+5. **Review.** Run the `review-loop` skill on the PR. If it made fixes in two
+   or more rounds, run the `depatch` skill on the branch. Do not act on its
+   result or stop to ask about it: it goes into the report.
 6. **Ready gate.** All of this must hold on the latest commit:
    - Every intended behavior has proof.
-   - Every review finding is fixed, or declined with a written reason.
+   - Every review finding is fixed, declined with a written reason, or
+     recorded as `out of scope` by `review-loop`.
    - The PR has no conflicts with its base. If it has, rebase onto the base,
      push with `--force-with-lease`, and redo the proof the rebase could
      change.
@@ -59,6 +62,8 @@ you again, so ending the turn early stops the work.
    - the proof
    - every decision you made alone
    - the declined findings, with reasons
+   - follow-ups: the out-of-scope findings
+   - the `depatch` verdict and patch scars, when it ran
    - what is unverified
 
 ## How to verify
