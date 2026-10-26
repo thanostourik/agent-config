@@ -11,12 +11,19 @@ works. A fresh reviewer then checks that proof against the intent.
 
 ## Setup
 
-- **Reviewers:** the review skills the user names; otherwise
-  `{{defaults.reviewers}}`. Each entry is a review skill. That skill's own
-  defaults give the model and effort, and it says how to run and wait for the
-  review. If a listed
-  skill is not available to you, tell the user and stop. Do not substitute
-  another reviewer.
+- **Reviewers:** two lists of review skills.
+  - Round reviewers review in every round: `{{defaults.reviewers}}`.
+  - Final reviewers review once, in the final round:
+    `{{defaults.final_reviewers}}`. This list is for reviewers worth one
+    full review but too slow to wait for in every round.
+
+  A list the user names replaces the default one. When the user names
+  reviewers without saying which list, they are the round reviewers and there
+  are no final reviewers. A final reviewer that is also a round reviewer
+  already reviews every round, so it is not a final reviewer. Each entry is a
+  review skill. That skill's own defaults give the model and effort, and it
+  says how to run and wait for the review. If a listed skill is not available
+  to you, tell the user and stop. Do not substitute another reviewer.
 - **Target:** the current branch against its base: the PR's base branch, or
   `origin/main` when there is no PR. Note `git diff --shortstat <base>...HEAD`
   before round one.
@@ -44,9 +51,11 @@ request wins.
 
 1. Commit your work, so every reviewer sees the same code. Pushing follows the
    caller's rules; this skill never pushes.
-2. Start every reviewer before you end your turn to wait. Each reviews the
-   whole branch against its base the way its skill says, the same way every
-   round. Round two is not a review of the changes since round one.
+2. Start every reviewer of this round before you end your turn to wait. A
+   round runs the round reviewers; the final round runs the final reviewers
+   too. Each reviews the whole branch against its base the way its skill
+   says, the same way every round. Round two is not a review of the changes
+   since round one.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
@@ -68,18 +77,25 @@ request wins.
 6. After fixes that change behavior, verify the affected features the way the
    project does, then commit.
 
-Stop when a round is clean: every reviewer finished, and after skipping the
-declined and out-of-scope findings, nothing above `nit` is left. Also stop
-when the budget is spent. A spent budget is not approval; report what is still
-open.
+A round is clean when every reviewer finished, and after skipping the declined
+and out-of-scope findings, nothing above `nit` is left.
+
+The final round comes right after the first clean round. When no round was
+clean yet and the budget allows only one more, that one is the final round.
+The final reviewers never run again after it. Without final reviewers, there
+is no final round.
+
+Stop when a round is clean and the final round has run, or there is none.
+Also stop when the budget is spent. A spent budget is not approval; report
+what is still open.
 
 ## Proof
 
 1. Verify the head commit the way the project does. Keep the raw proof in
    `.plans/scratch/<branch>/proof/`: screenshots, transcripts, and command
    output with exit codes.
-2. Run one evidence check with a fresh reviewer: the first reviewer in the
-   list, through its skill's custom-prompt mode. The prompt holds only:
+2. Run one evidence check with a fresh reviewer: the first round reviewer,
+   through its skill's custom-prompt mode. The prompt holds only:
    - The intent, quoted word for word: the Jira ticket or the user's request.
      When neither exists, the acceptance criteria you wrote into the PR
      description.
@@ -98,9 +114,10 @@ This skill never writes to the PR. The caller decides what goes there.
 
 The report lists:
 
-- The rounds: head commit and result of each, and why the loop stopped.
-- The reviewers, each with the model and harness that ran it, for example
-  `GPT-6.1 Sol through Codex`.
+- The rounds: head commit and result of each, which one was the final round,
+  and why the loop stopped.
+- The round reviewers and the final reviewers, each with the model and harness
+  that ran it, for example `GPT-6.1 Sol through Codex`.
 - The fixed findings.
 - The declined findings, each with its reason.
 - The out-of-scope findings, as follow-ups for the user.
