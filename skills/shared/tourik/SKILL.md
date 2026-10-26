@@ -10,13 +10,11 @@ the work until the PR is ready for me to merge. Never merge it."
 
 ## What this mode allows
 
-Without asking again, you may:
+The active instructions already have you branch, push after each commit, and
+keep a draft PR updated. On top of that, without asking again, you may:
 
-- create a branch for the work before the first file you create or edit
-- commit after each working step and push right away
-- open the PR with the `file-pr` skill as a draft, keep its description
-  current, and mark it ready at the end
 - rebase your own branch onto its base, and push it with `--force-with-lease`
+- mark the PR ready for review at the end
 
 You never merge the PR. You never push to, rebase, or rewrite `main` or another
 person's branch. You never merge another branch into yours. If a
@@ -28,7 +26,7 @@ in every commit message.
 
 ## Stay active
 
-Stay active from step 1 to step 7 without ending your turn. Nobody will prompt
+Stay active from step 1 to step 6 without ending your turn. Nobody will prompt
 you again, so ending the turn early stops the work.
 
 ## Steps
@@ -39,16 +37,15 @@ you again, so ending the turn early stops the work.
 
    If the goal is ambiguous in a way that changes the result, ask. If the
    intent has no clear acceptance criteria, write 3 to 5 checkable criteria.
-   They go into the PR description in step 4.
-2. **Implement** the smallest change that meets the intent.
+   They go into the PR description.
+2. **Implement** the smallest change that meets the intent. Call `file-pr`
+   with the argument `attribution` every time it opens or updates the PR.
 3. **Verify** as "How to verify" below says.
-4. **Open the PR** as a draft with the `file-pr` skill, called with the
-   argument `attribution`. From here on, update its description whenever the
-   scope or the verification status changes.
-5. **Review.** Run the `review-loop` skill on the PR. If it made fixes in two
-   or more rounds, run the `depatch` skill on the branch. Do not act on its
-   result or stop to ask about it: it goes into the report.
-6. **Ready gate.** All of this must hold on the latest commit:
+4. **Review.** Run the `review-loop` skill on the PR. Then update the PR with
+   `file-pr`, so its description gets the `Reviewed by` line. If the loop made
+   fixes in two or more rounds, run the `depatch` skill on the branch. Do not
+   act on its result or stop to ask about it: it goes into the report.
+5. **Ready gate.** All of this must hold on the latest commit:
    - Every intended behavior has proof.
    - Every review finding is fixed, declined with a written reason, or
      recorded as `out of scope` by `review-loop`.
@@ -57,7 +54,7 @@ you again, so ending the turn early stops the work.
      change.
 
    Then mark the PR ready for review.
-7. **Report:**
+6. **Report:**
    - the PR link
    - the proof
    - every decision you made alone
