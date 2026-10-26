@@ -68,14 +68,16 @@ start a polling loop or a monitor to watch the review. Without such a notice,
 check its status with short waits.
 
 Grok sometimes keeps running after it has finished. It has finished when
-`report.md` holds its final answer; for `/review`, that is the summary naming
-the findings file. If the process is still running a minute after that answer
-appeared, stop it and assess the report: that review is complete, not failed.
+`report.md` ends with its final answer and has not changed for a minute. For
+`/review`, the final answer is the closing summary that ends with the paths of
+the full notes and the summary file; an earlier line naming the notes file comes
+from the sub-reviewer, not the end. If the process is still running then, stop
+it and assess the report: that review is complete, not failed.
 
 In every other case, a running process alone does not prove progress, and
 silence or elapsed time alone does not prove a hang and must not trigger
 cancellation. If the review appears stuck, inspect its process state and logs.
-Report what you can establish and keep monitoring when the evidence is
+Report what you can establish and keep waiting when the evidence is
 inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
