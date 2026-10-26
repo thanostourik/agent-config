@@ -35,8 +35,10 @@ works. A fresh reviewer then checks that proof against the intent.
 
 ## Budget
 
-Three rounds. Raise it to five when a finding concerns security, permissions,
-auth, data loss, or state and concurrency, or when the user asks.
+{{defaults.rounds}} rounds. Raise it to {{defaults.max_rounds}} when a
+finding concerns security, permissions, auth, data loss, or state and
+concurrency, or when the user asks. A number of rounds the user names in the
+request wins.
 
 ## A round
 

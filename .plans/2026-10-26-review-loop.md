@@ -22,7 +22,7 @@ smallest change; older problems are recorded `out of scope` and reported as
 follow-ups. The report shows the diff size before and after.
 
 Budget: 3 rounds, 5 for security, permissions, auth, data loss, or
-state/concurrency findings, or on request. Stop on a clean round (nothing
+state/concurrency findings, or on request; both are skill defaults. Stop on a clean round (nothing
 above nit after the ledger filter) or when the budget ends, which is not
 approval. Then verify the head commit, and run one evidence check with the
 first reviewer in prompt mode: the intent quoted word for word plus the raw

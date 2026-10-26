@@ -29,7 +29,11 @@
     "render-plan": { "enabled": true },
     "review-loop": {
       "enabled": true,
-      "defaults": { "reviewers": ["codex-review", "grok-review"] }
+      "defaults": {
+        "reviewers": ["codex-review", "grok-review"],
+        "rounds": "3",
+        "max_rounds": "5"
+      }
     },
     "squash-merge-pr": { "enabled": true },
     "t3-fan-out": {
