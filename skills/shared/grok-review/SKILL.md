@@ -62,12 +62,21 @@ is safe only inside the `read-only` sandbox: the kernel blocks writes outside
 that file in the report. This is a static review: the caller remains
 responsible for tests.
 
-Wait until the review finishes, then report.
+Wait until the review finishes, then report. If the calling tool notifies you
+when a background command exits, end your turn and wait for that notice. Never
+start a polling loop or a monitor to watch the review. Without such a notice,
+check its status with short waits.
 
-If the review appears stuck, inspect its process state and logs. A running
-process alone does not prove progress; silence or elapsed time alone does not
-prove a hang and must not trigger cancellation. Report what you can establish
-and keep monitoring when the evidence is inconclusive.
+Grok sometimes keeps running after it has finished. It has finished when
+`report.md` holds its final answer; for `/review`, that is the summary naming
+the findings file. If the process is still running a minute after that answer
+appeared, stop it and assess the report: that review is complete, not failed.
+
+In every other case, a running process alone does not prove progress, and
+silence or elapsed time alone does not prove a hang and must not trigger
+cancellation. If the review appears stuck, inspect its process state and logs.
+Report what you can establish and keep monitoring when the evidence is
+inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
