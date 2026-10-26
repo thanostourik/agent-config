@@ -18,7 +18,8 @@ works. A fresh reviewer then checks that proof against the intent.
   skill is not available to you, tell the user and stop. Do not substitute
   another reviewer.
 - **Target:** the current branch against its base: the PR's base branch, or
-  `origin/main` when there is no PR.
+  `origin/main` when there is no PR. Note `git diff --shortstat <base>...HEAD`
+  before round one.
 - **Ledger:** `.plans/scratch/<branch>/review-ledger.md`, one table row per
   finding:
 
@@ -64,18 +65,23 @@ auth, data loss, or state and concurrency, or when the user asks.
 4. Wait until every reviewer finishes. If one fails, start it once more. If it
    fails again, go on without it. That round is not clean, and the report
    says so.
-5. Check each finding against the code:
-   - Declined earlier: add the reviewer to that row and skip it, unless the
-     code around it changed since that row's commit. Then decide again.
+5. Check each finding against the code. Review makes the change correct, not
+   bigger.
+   - Declined or out of scope earlier: add the reviewer to that row and skip
+     it, unless the code around it changed since that row's commit. Then
+     decide again.
    - Fixed earlier and raised again: check it again; the fix may not hold.
-   - Real: fix it.
+   - Real and caused by this branch, in code it changed or as a bug it
+     introduces: fix it with the smallest change that resolves it. No
+     refactors, renames, or new features.
+   - Real but already there before this branch: record it as `out of scope`.
    - Not real: decline it with a reason a reader can check.
    Record every new finding in the ledger.
 6. After fixes that change behavior, verify the affected features the way the
    project does, then commit.
 
 Stop when a round is clean: every reviewer finished, and after skipping the
-declined findings, nothing above `nit` is left. Also stop when the budget is
+declined and out-of-scope findings, nothing above `nit` is left. Also stop when the budget is
 spent. A spent budget is not approval; report what is still open.
 
 ## Proof
@@ -109,5 +115,7 @@ The report lists:
 - The reviewers.
 - The fixed findings.
 - The declined findings, each with its reason.
+- The out-of-scope findings, as follow-ups for the user.
+- The diff size against the base before and after the loop.
 - The evidence check's answer for each criterion.
 - What is unverified.

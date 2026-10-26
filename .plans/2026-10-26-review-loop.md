@@ -16,7 +16,10 @@ Everything else runs the skill's CLI command; `codex-review` is always CLI.
 The author checks each finding, fixes the real ones, declines the rest with a
 reason, and keeps `.plans/scratch/<branch>/review-ledger.md` (id, reviewer,
 severity, outcome, reason). A declined finding raised again is skipped unless
-the code around it changed. Behavior fixes are re-verified.
+the code around it changed. Behavior fixes are re-verified. Review makes the change
+correct, not bigger: only bugs this branch caused are fixed, each with the
+smallest change; older problems are recorded `out of scope` and reported as
+follow-ups. The report shows the diff size before and after.
 
 Budget: 3 rounds, 5 for security, permissions, auth, data loss, or
 state/concurrency findings, or on request. Stop on a clean round (nothing
