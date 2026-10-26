@@ -1,7 +1,6 @@
 ---
 name: codex-review
-description: Use only when the user explicitly requests a Codex review or invokes this skill.
-disable-model-invocation: true
+description: Use when the user requests a Codex review, or when another skill such as review-loop runs one.
 metadata:
   harness: "claude-code, grok, opencode, cursor"
 ---

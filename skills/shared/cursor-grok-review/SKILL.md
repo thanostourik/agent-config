@@ -1,7 +1,6 @@
 ---
 name: cursor-grok-review
-description: Use only when the user explicitly requests a Grok review through Cursor or invokes this skill.
-disable-model-invocation: true
+description: Use when the user requests a Grok review through Cursor, or when another skill such as review-loop runs one.
 metadata:
   harness: "claude-code, codex, grok, opencode"
 ---

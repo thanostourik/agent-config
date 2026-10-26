@@ -1,7 +1,6 @@
 ---
 name: grok-review
-description: Use only when the user explicitly requests a Grok review or invokes this skill.
-disable-model-invocation: true
+description: Use when the user requests a Grok review, or when another skill such as review-loop runs one.
 metadata:
   harness: "claude-code, codex, opencode, cursor"
 ---
@@ -36,6 +35,21 @@ bugs, regressions, and requirements mismatches with severity, file and line,
 failure scenario, and fix direction; for plans, feasibility and missing
 decisions. Request an explicit statement if no substantive issues are found,
 and instruct it to review without edits or tests.
+
+## Run as a T3 delegate
+
+In T3 Code, when `prompt.md` is a `/review` line, run it as a delegate instead
+of the command below. Call `orchestrator_capabilities` and check that provider
+`grok` offers the selected model and effort. Then call `delegate_task` with
+`mode: "async"`, `target: {providerInstanceId: "grok", model: <model>,
+options: {reasoningEffort: <effort>}}`, and the `/review` line as the whole
+task. Set no `role`: `role: "review"` puts a sentence in front of the task, and
+Grok then no longer reads it as a slash command.
+
+End your turn and wait for the completion notice. The result is the review's
+closing summary, which names its findings file under `/tmp/grok-<user>/`. The
+delegate has no read-only sandbox, so check `git status --short` afterwards.
+If the delegate is unavailable or fails, run the command below.
 
 ## Run and monitor
 
