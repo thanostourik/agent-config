@@ -27,6 +27,10 @@
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
     "render-plan": { "enabled": true },
+    "review-loop": {
+      "enabled": true,
+      "defaults": { "reviewers": ["codex-review", "grok-review"] }
+    },
     "squash-merge-pr": { "enabled": true },
     "t3-fan-out": {
       "enabled": true,
