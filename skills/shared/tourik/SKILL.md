@@ -42,8 +42,9 @@ you again, so ending the turn early stops the work.
    They go into the PR description in step 4.
 2. **Implement** the smallest change that meets the intent.
 3. **Verify** as "How to verify" below says.
-4. **Open the PR** as a draft with the `file-pr` skill. From here on, update
-   its description whenever the scope or the verification status changes.
+4. **Open the PR** as a draft with the `file-pr` skill, called with the
+   argument `attribution`. From here on, update its description whenever the
+   scope or the verification status changes.
 5. **Review.** Run the `review-loop` skill on the PR. If it made fixes in two
    or more rounds, run the `depatch` skill on the branch. Do not act on its
    result or stop to ask about it: it goes into the report.
