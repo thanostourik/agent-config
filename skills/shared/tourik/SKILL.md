@@ -42,9 +42,7 @@ you again, so ending the turn early stops the work.
    intent has no clear acceptance criteria, write 3 to 5 checkable criteria.
    They go into the PR description in step 4.
 2. **Implement** the smallest change that meets the intent.
-3. **Verify** the way the project does: its instructions, docs, and
-   verification skills. When the project has an isolated local stack, run it
-   as your own stack, not a shared one.
+3. **Verify** as "How to verify" below says.
 4. **Open the PR** as a draft with the `file-pr` skill. From here on, update
    its description whenever the scope or the verification status changes.
 5. **Review.** Run the `review-loop` skill on the PR.
@@ -63,11 +61,40 @@ you again, so ending the turn early stops the work.
    - the declined findings, with reasons
    - what is unverified
 
+## How to verify
+
+First find out how this project lets an agent run the app:
+
+- **A `verify-<app>` skill** in `.agents/skills/` or `.claude/skills/`. Its
+  Isolation section says `Isolation level: full | shared | checks-only`.
+  - `full`: every run gets its own disposable environment. Start yours, even
+    while other agents run theirs.
+  - `shared`: verification uses resources others may be using. The skill's
+    Doctor check runs before every launch.
+  - `checks-only`: run the tests and checks the skill names, and report the
+    live steps as unverified.
+- **No verify skill, but a `local-stack/` folder** (the project's `AGENTS.md`
+  has a "Local stack" section). Run
+  `local-stack/stack up --app --stubs --name <branch>` and read the ports from
+  `local-stack/stack env --name <branch>`. At the end, also after a failure,
+  run `local-stack/stack destroy --name <branch>`.
+- **Neither:** there is no isolated way to run the app. Never start the
+  project's normal dev setup: it can touch the developer's running app, data,
+  or ports. Run the tests, lint, and type checks, then ask. Suggest
+  `/create-project-local-stack` in the question.
+
+Before a launch, check only that Docker works (`docker compose version`), then
+try. Do not check ports first: the stack picks them from its own registry. A
+failed launch or a Doctor refusal is a blocker: report the error and ask.
+Never fall back to a shared instance or the developer's default stack.
+
 ## When to ask
 
 Ask only when you are blocked:
 
 - the change cannot be proven
+- the project has no isolated way to run the app
+- a launch fails, or the Doctor check refuses
 - the ready gate cannot pass
 - the next step is destructive, reaches outside the repository, or touches
   other branches
