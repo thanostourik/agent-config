@@ -16,6 +16,12 @@ current commit and `git status --short`. Use a unique directory under
 `.plans/scratch/` for the prompt, report, and log, and exclude it from the review.
 Do not include unrelated user changes unless they are part of the requested target.
 
+## Review a branch against a base
+
+Use the standard diff review with `--base <base>`. Codex always runs through
+the CLI below, in T3 Code too: its `/review` does not work through a delegate.
+A custom prompt uses the prompt form below.
+
 ## Run and monitor
 
 Start the command below using the calling tool's background or resumable

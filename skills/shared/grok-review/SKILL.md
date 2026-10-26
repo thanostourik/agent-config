@@ -34,6 +34,14 @@ failure scenario, and fix direction; for plans, feasibility and missing
 decisions. Request an explicit statement if no substantive issues are found,
 and instruct it to review without edits or tests.
 
+## Review a branch against a base
+
+When the base is `origin/main` or `origin/master`, `prompt.md` is
+`/review --branch <branch>`. It ignores uncommitted files in the tree. For any
+other base, `prompt.md` holds only the target and `git diff <base>...<branch>`.
+That prompt, like every custom prompt, runs through the CLI command under "Run
+and monitor", never as a T3 delegate.
+
 ## Run as a T3 delegate
 
 In T3 Code, when `prompt.md` is a `/review` line, run it as a delegate instead

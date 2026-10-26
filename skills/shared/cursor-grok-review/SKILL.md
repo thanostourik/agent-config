@@ -54,6 +54,11 @@ ignores `--mode ask`. This separate config is what keeps the reviewer read-only:
 file writes and every shell command except read-only git are rejected. Cursor
 also writes session files into this directory, so use a new one for every run.
 
+## Review a branch against a base
+
+Cursor has no built-in review. `prompt.md` holds only the target and
+`git diff <base>...<branch>`. A custom prompt replaces it.
+
 ## Run and monitor
 
 Start the command below using the calling tool's background or resumable

@@ -25,6 +25,13 @@ Set `REVIEW_TARGET` to the `/code-review` target:
 `/code-review` reviews every uncommitted change. If the tree holds user changes
 outside the requested target, say so when presenting the findings.
 
+## Review a branch against a base
+
+`/code-review` takes no base. When the base is the default branch, set
+`REVIEW_TARGET` to the branch. For any other base, write a `prompt.md` holding
+only the target and `git diff <base>...<branch>`, and run it as a custom
+question, described below.
+
 ## Run and monitor
 
 Start the command below using the calling tool's background or resumable

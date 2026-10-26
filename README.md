@@ -21,8 +21,9 @@ and Jira MCP are on, and each skill's model, provider, and effort under
 example, `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}`
 changes one model, and `{"skills": {"bro": {"enabled": false}}}` turns `bro`
 off. A list replaces the whole shipped list:
-`{"skills": {"review-loop": {"defaults": {"reviewers": ["grok-review"]}}}}`. The next `./sync --apply` removes the copies it installed for disabled
-items. A model or effort you name in a request still wins.
+`{"skills": {"review-loop": {"defaults": {"reviewers": ["grok-review"]}}}}`.
+The next `./sync --apply` removes the copies it installed for disabled items.
+A model or effort you name in a request still wins.
 
 ## Project verification skills
 

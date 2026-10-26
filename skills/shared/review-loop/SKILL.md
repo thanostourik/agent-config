@@ -12,9 +12,9 @@ works. A fresh reviewer then checks that proof against the intent.
 ## Setup
 
 - **Reviewers:** the review skills the user names; otherwise
-  `{{defaults.reviewers}}`. Each entry is a review skill, such as
-  `codex-review` or `grok-review`. That skill's own defaults give the model
-  and effort, and it says how to run and wait for the review. If a listed
+  `{{defaults.reviewers}}`. Each entry is a review skill. That skill's own
+  defaults give the model and effort, and it says how to run and wait for the
+  review. If a listed
   skill is not available to you, tell the user and stop. Do not substitute
   another reviewer.
 - **Target:** the current branch against its base: the PR's base branch, or
@@ -25,8 +25,8 @@ works. A fresh reviewer then checks that proof against the intent.
 
   | id | reviewer | severity | finding | outcome | reason | commit |
   | --- | --- | --- | --- | --- | --- | --- |
-  | R1-1 | grok-review | high | `src/a.ts:40` drops the last page | fixed | | `abc123` |
-  | R1-2 | codex-review, grok-review | medium | `src/b.ts:12` races on save | declined | the lock in `save()` serializes it | `abc123` |
+  | R1-1 | b-review | high | `src/a.ts:40` drops the last page | fixed | | `abc123` |
+  | R1-2 | a-review, b-review | medium | `src/b.ts:12` races on save | declined | the lock in `save()` serializes it | `abc123` |
 
   `reviewer` lists every reviewer that raised the finding, so the user can see
   each reviewer's hit rate. `severity` is `high`, `medium`, `low`, or `nit`,
@@ -42,23 +42,9 @@ auth, data loss, or state and concurrency, or when the user asks.
 
 1. Commit your work, so every reviewer sees the same code. Pushing follows the
    caller's rules; this skill never pushes.
-2. Start every reviewer before you end your turn to wait. Each runs its
-   tool's built-in review command on the whole branch against its base, the
-   same command every round. Round two is not a review of the changes since
-   round one.
-   - For `grok-review`, that command is `/review --branch <branch>`. It works
-     with uncommitted files in the tree, but it compares only with
-     `origin/main` or `origin/master`.
-   - In T3 Code, a review skill with a T3 delegate path runs that way: a
-     `delegate_task` whose task is only the slash command, with no `role`.
-     Today that is `grok-review`.
-   - Every other reviewer runs its skill's CLI command. `codex-review` always
-     does.
-   - A skill without a built-in review command, such as `cursor-grok-review`,
-     gets a prompt with only the target and the git command that shows it,
-     `git diff <base>...HEAD`. So does a reviewer whose built-in command
-     cannot use the base, such as Grok's for a PR into another branch. That
-     prompt always runs through the skill's CLI, in T3 Code too.
+2. Start every reviewer before you end your turn to wait. Each reviews the
+   whole branch against its base the way its skill says, the same way every
+   round. Round two is not a review of the changes since round one.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
@@ -81,8 +67,9 @@ auth, data loss, or state and concurrency, or when the user asks.
    project does, then commit.
 
 Stop when a round is clean: every reviewer finished, and after skipping the
-declined and out-of-scope findings, nothing above `nit` is left. Also stop when the budget is
-spent. A spent budget is not approval; report what is still open.
+declined and out-of-scope findings, nothing above `nit` is left. Also stop
+when the budget is spent. A spent budget is not approval; report what is still
+open.
 
 ## Proof
 
