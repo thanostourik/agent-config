@@ -41,9 +41,13 @@ auth, data loss, or state and concurrency, or when the user asks.
 
 1. Commit your work, so every reviewer sees the same code. Pushing follows the
    caller's rules; this skill never pushes.
-2. Start every reviewer before you end your turn to wait. Each runs its tool's built-in review command
-   on the whole branch against its base, the same command every round. Round
-   two is not a review of the changes since round one.
+2. Start every reviewer before you end your turn to wait. Each runs its
+   tool's built-in review command on the whole branch against its base, the
+   same command every round. Round two is not a review of the changes since
+   round one.
+   - For `grok-review`, that command is `/review --branch <branch>`. It works
+     with uncommitted files in the tree, but it compares only with
+     `origin/main` or `origin/master`.
    - In T3 Code, a review skill with a T3 delegate path runs that way: a
      `delegate_task` whose task is only the slash command, with no `role`.
      Today that is `grok-review`.
@@ -52,8 +56,8 @@ auth, data loss, or state and concurrency, or when the user asks.
    - A skill without a built-in review command, such as `cursor-grok-review`,
      gets a prompt with only the target and the git command that shows it,
      `git diff <base>...HEAD`. So does a reviewer whose built-in command
-     cannot use the base, through its CLI: Grok's `/review` compares only with
-     `origin/main` or `origin/master`.
+     cannot use the base, such as Grok's for a PR into another branch. That
+     prompt always runs through the skill's CLI, in T3 Code too.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
