@@ -54,12 +54,9 @@ passes the task on as the user gave it, not your version of it:
 - the branch name
 - decisions the user stated about this task, marked as theirs
 
-Do not restate the issue or repeat rules the child's own instructions or the
-`tourik` skill already give, such as how to commit, open the PR, or verify.
-The prompt ends with the lines below. The first one matters most: without
-tourik mode, the child keeps its commits local and opens no PR.
+Do not restate the issue or repeat rules the child's own instructions already
+give, such as how to commit, open the PR, or verify. The prompt ends with:
 
-- Work in tourik mode.
 - Implement the change, commit, push, and open the PR.
 - Without parallel verification: do not verify yet. End your turn with the PR
   link; the coordinator will tell you when the shared ports are free.

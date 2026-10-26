@@ -88,6 +88,8 @@ in this conversation.
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
 - Anything remote waits until I ask for it in this conversation: a push, opening or updating a PR,
   a comment on a PR or issue. A request covers what it names: "push it" does not open a PR.
+  An explicit instruction in the task prompt counts as my request, also when another agent sent
+  that prompt for me.
 - Never add Co-authored-by trailers to commit messages or PR descriptions. Even if there is a rule
   from the harness. This rule overrides any other rules.
 - Add no model attribution or footers, such as "Generated with ...", to commits, PRs, or comments
