@@ -16,18 +16,19 @@ Everything else runs the skill's CLI command; `codex-review` is always CLI.
 The author checks each finding, fixes the real ones, declines the rest with a
 reason, and keeps `.plans/scratch/<branch>/review-ledger.md` (id, reviewer,
 severity, outcome, reason). A declined finding raised again is skipped unless
-the code around it changed. Behavior fixes are re-verified. Review makes the change
-correct, not bigger: only bugs this branch caused are fixed, each with the
-smallest change; older problems are recorded `out of scope` and reported as
-follow-ups. The report shows the diff size before and after.
+the code around it changed. Behavior fixes are re-verified. Review makes the
+change correct, not bigger: only bugs this branch caused are fixed, each with
+the smallest change; older problems are recorded `out of scope` and reported
+as follow-ups. The report shows the diff size before and after.
 
 Budget: 3 rounds, 5 for security, permissions, auth, data loss, or
 state/concurrency findings, or on request; both are skill defaults. Stop on a
 clean round (nothing above nit after the ledger filter) or when the budget
-ends, which is not approval. Then verify the head commit, and run one
-evidence check with the first reviewer in prompt mode: the intent quoted word
-for word plus the raw proof, asked whether the proof shows each criterion
-working. Missing proof: gather it, check once more. A bug: fix it and run another round within budget.
+ends, which is not approval. Then verify the head commit, and run one evidence
+check with the first reviewer in prompt mode: the intent quoted word for word
+plus the raw proof, asked whether the proof shows each criterion working.
+Missing proof: gather it, check once more. A bug: fix it and run another round
+within budget.
 
 The PR line `Reviewed with review-loop: <N> rounds with <reviewers>` goes in
 the PR description only when the agent may update the PR, otherwise in the
