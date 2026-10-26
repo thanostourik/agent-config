@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# drive.sh [--jobs N] [feature...]: run the bash blocks of feature recipes, N features at a time.
+# drive.sh [--jobs N] [feature...]: run the bash blocks of feature recipes, N features at a time; with an apps file, export each app checkout's path as APP_<NAME> first.
 # drive.sh --check [feature...]: only list the steps drive.sh refuses to run and the findings rec.sh run refuses, coverage only when .cache/record/contract-map.tsv exists; exit 2 when there are any.
 set -uo pipefail
 
@@ -48,6 +48,7 @@ if [[ -n "$check" ]]; then
   rm -rf "$work"
   exit 0
 fi
+export_apps "$skill/apps" || exit 2
 
 drive_feature() {
   local feature=$1 dir="$work/$feature/run" logs="$work/$feature/steps" evidence="$skill/.cache/evidence/$feature"

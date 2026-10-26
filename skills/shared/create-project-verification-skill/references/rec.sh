@@ -5,14 +5,14 @@
 # rec.sh <feature> peek [--after '<Label>']... [--find '<expression>']...: run the staged file's Preconditions and the steps through the last <Label> as run does, save one snapshot with bin/observe.sh after Preconditions or after each <Label> to .cache/record/<feature>/peek.txt, peek-<n>.txt for the n-th of several flags, then evaluate each expression with bin/find.sh on the last state reached and print its match count and up to 3 matches, then run Clean up; a failing step stops the steps and its state goes to the next snapshot file. Each step it ran, failed ones and Clean up included, gets a line of its label and block hash in .cache/record/<feature>/reached.tsv.
 # rec.sh <feature> facts: print .cache/record/<feature>/facts.tsv: attempts, passed_hash, last_result, last_log, last_snapshot and the verify- and Verify fixture names of the staged file; without one, attempts 0 and the other keys empty.
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
-# rec.sh affected: list in .cache/changed.txt the files changed since the commit in features/last-reviewed, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
+# rec.sh affected: list in .cache/changed.txt the files changed since the commit on the first line of features/last-reviewed, and those of each app checkout in the apps file since its <app> <commit> line there, as <app>/<path>, write each matching ## Change triggers line's features with the file to .cache/triggered.tsv, and print and save to .cache/affected.txt the indexed features those files or a kept staged copy touch, how many were skipped and each unmapped change; with no such commit, say to record every feature.
 # rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
 # rec.sh map: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt.
 # rec.sh brief <feature>...: build the contract map as map does when it is missing, then write each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
 # rec.sh next [<running feature>...]: print the features of .cache/record/queue.txt to start now, one per line, and append them to .cache/record/started.txt: up to Recorders at once of maintain-verify-<app>/SKILL.md minus the running ones that are not alone, else, with none left and none running, the next one alone. A feature is alone when its installed or staged file contains Runs alone., every feature when the Drive section of SKILL.md uses --jobs 1.
 # rec.sh fix-brief <feature>...: write each feature's fix-read.md and fix-brief.md, the ### Fixer template filled from its failure in the summary of .cache/drive.txt.
 # rec.sh sendback: print each feature whose report says no drift while its facts show no run.
-# rec.sh reviewed '<message>': write the last commit outside features/last-reviewed to that file and commit it alone with that message, only when it changes.
+# rec.sh reviewed '<message>': write the last commit outside features/last-reviewed to that file, then an <app> <HEAD commit> line for each app in the apps file, and commit it alone with that message, only when it changes.
 # rec.sh install [<feature>...]: give a staged file with no ## Gotchas section one, holding each Gotchas line of the installed file that neither the staged file nor features/README.md Gotchas holds, move staged files that passed run into features/, check them with drive.sh --check and keep only facts.tsv of their record folders.
 set -uo pipefail
 shopt -s nullglob
@@ -22,6 +22,7 @@ fail_tail=60
 skill=$(cd "$(dirname "$0")/.." && pwd)
 cd "$skill/../../.."
 source "$skill/bin/steps.sh"
+export_apps "$skill/apps" || exit 2
 
 usage_all="usage: rec.sh <feature> start
        rec.sh <feature> run [--known-failure '<Label>']
@@ -114,14 +115,50 @@ block() {
 
 template() { awk -v h="### $1" '$0 == h {s = 1; next} s && /^```/ {if (f) exit; f = 1; next} f' "$skill/../maintain-$(basename "$skill")/SKILL.md"; }
 
+app_names() { [[ ! -f "$skill/apps" ]] || awk 'NF { print $1 }' "$skill/apps"; }
+
+app_dir() { local variable; variable=$(app_variable "$1"); echo "${!variable}"; }
+
+app_commit() { awk -v n="$1" 'NR > 1 && $1 == n { print $2 }' "$skill/features/last-reviewed"; }
+
+diff_paths() {
+  local name=$1 commit=$2 dir=. prefix="" untracked
+  shift 2
+  (($#)) && [[ -n "$commit" ]] || return 0
+  [[ -z "$name" ]] || dir=$(app_dir "$name") prefix=$name/
+  git -C "$dir" diff --src-prefix="a/$prefix" --dst-prefix="b/$prefix" "$commit" -- "$@"
+  git -C "$dir" ls-files -o --exclude-standard -- "$@" | while read -r untracked; do git -C "$dir" diff --no-index --src-prefix="a/$prefix" --dst-prefix="b/$prefix" -- /dev/null "$untracked"; done
+}
+
+changes() {
+  local commit=$1 name path own=() paths
+  shift
+  for path in "$@"; do app_names | grep -qxF "${path%%/*}" || own+=("$path"); done
+  diff_paths "" "$commit" "${own[@]}"
+  for name in $(app_names); do
+    paths=()
+    for path in "$@"; do [[ "${path%%/*}" != "$name" ]] || paths+=("${path#*/}"); done
+    diff_paths "$name" "$(app_commit "$name")" "${paths[@]}"
+  done
+}
+
 fill() { awk '{o = ""; while (match($0, /[{][{][a-z_]+[}][}]/)) {o = o substr($0, 1, RSTART - 1) ENVIRON[substr($0, RSTART + 2, RLENGTH - 4)]; $0 = substr($0, RSTART + RLENGTH)} print o $0}'; }
 
 affected() {
-  local v b
+  local v b name dir
   set +u +o pipefail
-  v=$(relative "$skill") b=$(cat "$v/features/last-reviewed")
+  v=$(relative "$skill") b=$(head -n 1 "$v/features/last-reviewed")
   git cat-file -e "$b^{commit}" 2>/dev/null || { echo "no commit $b: record every feature"; return; }
-  { git diff --name-only "$b"; git ls-files -o --exclude-standard; } | grep -v -e "^$v/features/last-reviewed$" -e "^$v/[.]cache/" | sort -u > "$v/.cache/changed.txt"
+  for name in $(app_names); do
+    git -C "$(app_dir "$name")" cat-file -e "$(app_commit "$name")^{commit}" 2>/dev/null || { echo "no commit of $name in $v/features/last-reviewed: record every feature"; return; }
+  done
+  {
+    git diff --name-only "$b"; git ls-files -o --exclude-standard
+    for name in $(app_names); do
+      dir=$(app_dir "$name")
+      { git -C "$dir" diff --name-only "$(app_commit "$name")"; git -C "$dir" ls-files -o --exclude-standard; } | sed "s|^|$name/|"
+    done
+  } | grep -v -e "^$v/features/last-reviewed$" -e "^$v/[.]cache/" | sort -u > "$v/.cache/changed.txt"
   awk -v b="$b" -v d="$v/features/" -v p="$v/.cache/triggered.tsv" -v kept="$(printf '%s\n' "$v"/.cache/record/*/*.md)" '
     BEGIN { printf "" > p }
     FNR == 1 { n++ }
@@ -249,7 +286,7 @@ brief() {
   [[ -f $r/contract-map.tsv ]] || map
   set +u +o pipefail
   export root=$PWD feature index_line other_features new convert read_commands conventions_changed=none GIT_LITERAL_PATHSPECS=1
-  b=$(cat "$v/features/last-reviewed" 2>/dev/null)
+  b=$(head -n 1 "$v/features/last-reviewed" 2>/dev/null)
   test -f "$v/.cache/starting-README.md" && test "$(cat "$r/mode.txt")" = changed && conventions_changed=$(diff <(section "Driving conventions" "$v/.cache/starting-README.md") <(section "Driving conventions" "$v/features/README.md") | grep '^[<>]' || echo none)
   test "$(printf '%s\n' "$conventions_changed" | wc -l)" -gt 8 && conventions_changed='the Driving conventions were rewritten; follow the current ones in the common file'
   for feature in "$@"; do
@@ -264,7 +301,7 @@ brief() {
     rm -f "$d"
     if test "$(cat "$r/mode.txt")$new" = changedno && git cat-file -e "$b^{commit}" 2>/dev/null; then
       mapfile -t p < <(awk -F'\t' -v f="$feature" '$1 == f {print $2}' "$v/.cache/triggered.tsv"; echo "$v/features/$feature.md")
-      { git diff "$b" -- "${p[@]}"; git ls-files -o --exclude-standard -- "${p[@]}" | while read -r u; do git diff --no-index -- /dev/null "$u"; done; } > "$d.full"
+      changes "$b" "${p[@]}" > "$d.full"
       head -c 19980 "$d.full" > "$d"; test "$(wc -c < "$d.full")" -le 19980 || printf '\n(truncated)\n' >> "$d"; rm "$d.full"; test -s "$d" || rm "$d"
     fi
     read_commands=$(test "$($h "$c" | wc -c)" -le 20000 && echo "$h $c" || { echo "$h"; for o in $(seq 1 20000 "$(wc -c < "$c")"); do echo "   tail -c +$o $c | head -c 20000"; done; }; test -f "$d" && echo "   cat $d")
@@ -295,9 +332,9 @@ sendback() {
 }
 
 reviewed() {
-  local l c
+  local l c name
   l=$(relative "$skill")/features/last-reviewed
-  c=$(git log -1 --format=%H -- . ":(exclude)$l")
+  c=$(git log -1 --format=%H -- . ":(exclude)$l"; for name in $(app_names); do echo "$name $(git -C "$(app_dir "$name")" rev-parse HEAD)"; done)
   [[ "$c" != "$(cat "$l" 2>/dev/null)" ]] || return 0
   echo "$c" > "$l" && git add "$l" && git commit -m "$1" -- "$l"
 }
