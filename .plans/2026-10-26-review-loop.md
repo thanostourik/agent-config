@@ -34,6 +34,7 @@ Supporting changes:
 
 - `sync`: a skill default may be a JSON list of strings, rendered joined with
   `, `. An override replaces the whole list. Tests and `AGENTS.md` updated.
-- The four review skills become agent-invocable; `grok-review` gets its T3
-  delegate path.
+- The four review skills become agent-invocable and install into every tool,
+  their own included, so the default reviewers exist wherever `review-loop`
+  does; `grok-review` gets its T3 delegate path.
 - `review-loop` added to `config.defaults.json`.

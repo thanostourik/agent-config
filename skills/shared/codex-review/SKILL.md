@@ -1,8 +1,6 @@
 ---
 name: codex-review
 description: Use when the user requests a Codex review, or when another skill such as review-loop runs one.
-metadata:
-  harness: "claude-code, grok, opencode, cursor"
 ---
 
 # Codex review

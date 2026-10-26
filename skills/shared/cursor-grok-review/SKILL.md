@@ -1,8 +1,6 @@
 ---
 name: cursor-grok-review
 description: Use when the user requests a Grok review through Cursor, or when another skill such as review-loop runs one.
-metadata:
-  harness: "claude-code, codex, grok, opencode"
 ---
 
 # Cursor Grok review

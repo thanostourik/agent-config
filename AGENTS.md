@@ -127,15 +127,16 @@ Without `harness`, the source folder decides:
 - `hooks/shared/x.json` goes to the three tools with hooks.
 
 A `harness` list replaces that default completely. It does not add to it. For
-example, `codex-review` lives in `skills/shared/` and uses:
+example, `render-plan` lives in `skills/shared/` and uses:
 
 ```yaml
 metadata:
-  harness: "claude-code, grok, opencode, cursor"
+  harness: "grok, opencode"
 ```
 
-That keeps it out of `~/.codex/skills/`. A skill that should also go to
-`~/.agents/skills/` must list every destination, `agents` included.
+That keeps it out of the Claude Code, Codex, and Cursor skill folders. A
+skill that should also go to `~/.agents/skills/` must list every destination,
+`agents` included.
 
 For a skill, the field sits in the opening `SKILL.md` frontmatter. Use exactly
 two spaces before `harness`, double quotes, and one line of comma-separated
