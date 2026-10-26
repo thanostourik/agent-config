@@ -85,7 +85,7 @@ check its status with short waits.
 If the review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress; silence or elapsed time alone does not
 prove a hang and must not trigger cancellation. Report what you can establish
-and keep monitoring when the evidence is inconclusive.
+and keep waiting when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
