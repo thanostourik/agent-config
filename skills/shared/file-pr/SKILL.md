@@ -64,6 +64,7 @@ Write the `Reviewed by` line only when a review loop ran on the branch. Take
 the reviewers and the number of rounds from its report. Each reviewer is
 `<model> through <harness>`, joined with commas and a final `and`, for example
 `Reviewed by GPT-6.1 Sol through Codex and Grok 4.7 through Grok in 3 rounds.`
+Write `round` when N is 1.
 The `Filed by` line always comes last.
 
 `<harness>` is the coding tool running the model, for example `Claude Code` or

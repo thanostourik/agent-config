@@ -105,8 +105,8 @@ questions is the only work that happens on main.
   or someone else's branch. If a `--force-with-lease` push is rejected, stop and tell me.
 - When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
   create merge commits. Squash first only if I ask.
-- When I ask for tourik mode, follow the `tourik` skill. That request is my permission for the
-  rebases and the ready-for-review step the skill describes. Every other rule here still applies.
+- When I ask for tourik mode, follow the `tourik` skill. That request is my permission for what
+  the skill allows beyond these rules. Every other rule here still applies.
 
 ## Local environment
 

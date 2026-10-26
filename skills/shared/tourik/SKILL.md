@@ -10,19 +10,13 @@ the work until the PR is ready for me to merge. Never merge it."
 
 ## What this mode allows
 
-The active instructions already have you branch, push after each commit, and
-keep a draft PR updated. On top of that, without asking again, you may:
+On top of the active instructions, you may, without asking again:
 
-- rebase your own branch onto its base, and push it with `--force-with-lease`
+- rebase your own branch onto its base
 - mark the PR ready for review at the end
 
-You never merge the PR. You never push to, rebase, or rewrite `main` or another
-person's branch. You never merge another branch into yours. If a
-`--force-with-lease` push is rejected, someone else pushed: stop and ask.
-
-Name the branch and write commit messages in the formats the active
-instructions give. When the work has an issue ID, put it in the branch name and
-in every commit message.
+Call `file-pr` with the argument `attribution` every time it opens or updates
+the PR.
 
 ## Stay active
 
@@ -38,8 +32,7 @@ you again, so ending the turn early stops the work.
    If the goal is ambiguous in a way that changes the result, ask. If the
    intent has no clear acceptance criteria, write 3 to 5 checkable criteria.
    They go into the PR description.
-2. **Implement** the smallest change that meets the intent. Call `file-pr`
-   with the argument `attribution` every time it opens or updates the PR.
+2. **Implement** the smallest change that meets the intent.
 3. **Verify** as "How to verify" below says.
 4. **Review.** Run the `review-loop` skill on the PR. Then update the PR with
    `file-pr`, so its description gets the `Reviewed by` line. If the loop made
