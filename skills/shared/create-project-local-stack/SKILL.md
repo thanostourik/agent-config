@@ -25,7 +25,7 @@ The script [`references/stack`](references/stack) already handles stack names, p
 - **Shared service:** an outside service an agent must not call without permission, because other people use it, or because a call costs money, sends messages, changes data others see or uses up a limit. `--stubs` replaces it.
 - **Stub:** something in the stack that answers in place of an outside service: a local emulator of it, or a small server you write. In questions to the user, call it a "fake".
 - **Dependency stack:** another repo's stack that this stack starts, through a mode with a `"stack"` key.
-- **Stack file:** `local-stack/.stack.env`, the `KEY=value` file `up` writes and `down` deletes. An app running on the host reads it.
+- **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file, and an app running on the host reads it.
 - **Claim:** a stack's record in the machine's registry: its checkout, ports, modes, values and dependency stacks.
 
 ## Ask, never guess
