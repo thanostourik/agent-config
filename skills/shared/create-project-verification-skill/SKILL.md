@@ -2,7 +2,7 @@
 name: create-project-verification-skill
 metadata:
   harness: "claude-code, codex, grok, cursor"
-description: "Generate the project's own verification skills, committed in the repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive the real app and prove its work. Use for /create-project-verification-skill, /create-project-verification-skill quick, or \"set up verification for this repo\"."
+description: "Generate the project's own verification skills, committed in the repo or in a separate companion repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive the real app and prove its work. Use for /create-project-verification-skill, /create-project-verification-skill quick, or \"set up verification for this repo\"."
 disable-model-invocation: true
 ---
 
@@ -23,6 +23,12 @@ If `.agents/skills/verify-*` or `.agents/skills/maintain-verify-*` already exist
 
 When you send a message anyway, you may add one progress line, such as `recorded 12/88`, at most once per 6 finished recorders. Never send a message or reorder work just to report.
 
+## Companion repo
+
+Some projects must not show that agents work on them. Their verification skills live in a **companion repo**: a separate git repo next to the app checkouts that holds only agent files. Before anything else, run one `git ls-files` here. When it lists no app source, such as a build file or a source tree, this is a companion: ask the user for the path of each app checkout, then go on. Write them to `.agents/skills/verify-<app>/apps`, one line per app, `<name> <path>`, the path relative to this repo's root, such as `otis ../otis`. `bin/drive.sh` and `bin/rec.sh` export each path as `APP_<NAME>`, upper case with `-` as `_`, and a value the caller already set wins, so a run can drive another checkout: `APP_OTIS=~/wt/otis bin/drive.sh search`. A helper that needs an app checkout starts with `source "$(dirname "$0")/steps.sh" && export_apps "$(dirname "$0")/../apps"`.
+
+In a companion, the steps below read source, docs and tests in the app checkouts and write only to this repo. Nothing goes into an app checkout: no file, no dependency, no ignore entry, no commit. A checkout that does not build or start is reported, not fixed. Each change-trigger glob starts with its app's name, such as `` `otis/src/export/*`: pdf-export ``. Playwright, when the project lacks it, goes into this repo's own `package.json`. The `## Verification` section of step 6 goes into this repo's `AGENTS.md`.
+
 ## What you write
 
 ```
@@ -31,6 +37,7 @@ When you send a message anyway, you may add one progress line, such as `recorded
   features/README.md, features/<feature>.md     the feature map
   bin/                                          helpers, including drive.sh, doctor.sh, observe.sh and find.sh
   .gitignore                                    ignores .cache/
+  apps                                          in a companion repo only: the app checkouts
   .cache/                                       everything a run writes
 .agents/skills/maintain-verify-<app>/           map maintenance with three drive modes
   SKILL.md

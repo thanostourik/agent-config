@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
-# steps.sh: sourced by drive.sh and rec.sh; slug <label>, snapshot_path [<log>], split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, removes_evidence <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>
+# steps.sh: sourced by drive.sh and rec.sh; slug <label>, snapshot_path [<log>], split_steps <feature file> <dir>, check_steps <dir> <feature file> [<feature> <contract map>], run_step <state> <block> <log>, calls_run_script <block>, removes_evidence <block>, fixture_names <file>..., contract_map <words file> <contract source>..., contract_bundle <words file> <contract map> <feature> <feature file>, fix_read <log> <feature file> <traps file> <SKILL.md>, app_variable <app>, export_apps <apps file>
 
 step_timeout=600
 
 slug() { tr 'A-Z' 'a-z' <<< "$1" | tr -cs 'a-z0-9' '-' | sed 's/-$//'; }
+
+app_variable() { echo "APP_$(tr 'a-z-' 'A-Z_' <<< "$1")"; }
+
+export_apps() {
+  local root name path variable
+  [[ -f "$1" ]] || return 0
+  root=$(cd "$(dirname "$1")/../../.." && pwd)
+  while read -r name path; do
+    [[ -n "$name" ]] || continue
+    variable=$(app_variable "$name")
+    [[ -n "${!variable:-}" ]] || printf -v "$variable" '%s' "$(cd "$root" && cd "$path" 2>/dev/null && pwd)"
+    [[ -n "${!variable}" ]] || { echo "no checkout of $name at $path; set $variable to it" >&2; return 1; }
+    export "${variable?}"
+  done < "$1"
+}
 
 snapshot_path() { grep -o '\[Snapshot\]([^)]*)' "$@" | tail -n 1 | sed 's/^\[Snapshot\](//; s/)$//'; }
 

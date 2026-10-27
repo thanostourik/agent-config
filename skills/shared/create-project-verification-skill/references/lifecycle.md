@@ -10,7 +10,14 @@ Pick one level while generating. Write it into the generated Isolation section a
 - **shared**: the project cannot create an owned environment, and the user approved named shared resources.
 - **checks-only**: no live driving. The skill names the focused tests, lint and type checks to run instead. Live steps are reported `blocked: no isolation`.
 
-Aim for **full**. Find every way the project runs an environment, such as `local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV, and note for each whether it is isolated and disposable or shared. Prefer an isolated, disposable one; `local-stack/stack` is the known-good shape (`up --app --stubs --name <run id>`, then `destroy --name <run id>`, with its Compose project label as the ownership marker). Always ask the user which one to use, showing what you found and what each one lacks, such as "`dev.sh` gives each branch its own stack but still sends real emails". When you find none, ask the user how to proceed: suggest `/create-project-local-stack` if it is installed, a setup the user provides, or one of the other two levels. Build a setup yourself only when the user asks, as part of the repo, never inside the verify skill's `bin/`. Do not choose for the user. Never assume read-only access to a running developer instance is acceptable.
+Isolation never blocks the work. Find every way the project runs an environment, such as `local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV, and note for each whether it is isolated and disposable or shared. In a companion repo, look in the app checkouts. Take the first case that applies:
+
+- **Isolated and disposable:** use it at level `full`, and name it in the report. Ask only when there are several. `local-stack/stack` is the known-good shape (`up --app --stubs --name <run id>`, then `destroy --name <run id>`, with its Compose project label as the ownership marker).
+- **Not isolated:** say what it shares, such as "`dev.sh` gives each branch its own stack but still sends real emails", and use it at level `shared` only when the user approves.
+- **None, or the user declines:** ask the user to start the app and say where it answers. Their running app is then the approved resource of level `shared`. When `/create-project-local-stack` is installed, name it in that question as the way to reach `full` later.
+- **The user cannot run the app either:** level `checks-only`.
+
+Build a setup yourself only when the user asks, as part of the repo, never inside the verify skill's `bin/`. Never use a running developer instance without the user's approval.
 
 ## Ownership
 
@@ -47,4 +54,5 @@ Use it only when the user chose it. Write these rules into the generated skill.
 - Doctor checks that the targeted resources are the approved ones, for example the right host and database name, and refuses anything else.
 - A step that needs a write outside a marked fixture, or a resource that is not on the approved list, asks the user first and names the resource.
 - Deployed and remote services are never eligible. Report those steps blocked.
+- When the user runs the app, Launch only checks that it answers where the user said, and Cleanup removes the run's fixtures but never stops the app or touches its other data.
 - Every report is labeled `lower confidence: shared <resources>`.
