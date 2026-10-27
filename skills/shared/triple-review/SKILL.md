@@ -14,9 +14,9 @@ give the user one short report.
   base: the PR's base branch, or `origin/main` when there is no PR. Write down
   the head commit; a later re-review starts from it.
 - **Intent:** what the change is supposed to do, in two or three sentences.
-  Take it from the user's request, the PR description, or the plan in
-  `.plans/`. The reviewers judge "simpler" and "over-engineered" against it. If
-  you cannot find it, ask the user before you start.
+  Take it from the user's request, the PR description, or the plan this branch
+  added in `.plans/`. The reviewers judge "simpler" and "over-engineered"
+  against it. If you cannot find it, ask the user before you start.
 
 ## Reviewers
 

@@ -44,9 +44,15 @@ Good:
 > The "new worktree" default was ignored when starting new threads on existing
 > worktrees. Now new threads consistently use your configured preferences.
 
+Keep the description short enough to read in a minute. State the problem in two
+or three sentences and how the change solves it in a few more. Mention a risk
+only when someone must act on it before or after the merge. Leave out design
+details, decisions, and file lists; reviewers find those in the changed files.
+
 End the description with a `## Verification` section that separates what was
-actually run from what was not. Name each check and its result. When a check
-has not run yet, say so plainly and say how the user can run it. Do not present
+actually run from what was not. Give each check one line: what ran and the
+result. List what was not verified the same way, one line per item, with how
+the user can check it. Do not present
 untested work as tested. When verification finishes later, update the section.
 Follow any repository PR template.
 
