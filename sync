@@ -130,7 +130,7 @@ def load_config():
                         raise ValueError(
                             f"configuration skills.{name}.defaults.{key} must be a "
                             "nonempty, single-line string without surrounding whitespace "
-                            "or {{ or }}, or a nonempty list of such strings")
+                            "or {{ or }}, or a list of such strings")
     mcp = data.get("mcp")
     if mcp is not None:
         if not isinstance(mcp, dict):
@@ -510,7 +510,7 @@ def default_skill_harnesses(default):
 
 def valid_skill_default(value):
     if isinstance(value, list):
-        return bool(value) and all(valid_skill_default_text(item) for item in value)
+        return all(valid_skill_default_text(item) for item in value)
     return valid_skill_default_text(value)
 
 
@@ -520,7 +520,9 @@ def valid_skill_default_text(value):
 
 
 def render_skill_default(value):
-    return ", ".join(value) if isinstance(value, list) else value
+    if isinstance(value, list):
+        return ", ".join(value) or "none"
+    return value
 
 
 def render_skill_markdown(skill, config):

@@ -30,7 +30,8 @@
     "review-loop": {
       "enabled": true,
       "defaults": {
-        "reviewers": ["codex-review", "grok-review"],
+        "reviewers": ["codex-review"],
+        "final_reviewers": ["grok-review"],
         "rounds": "3",
         "max_rounds": "5"
       }

@@ -517,7 +517,7 @@ class SyncTest(unittest.TestCase):
         self.write_config({"skills": {"example": {"defaults": {"reviewers": ["c-review"]}}}})
         self.run_sync("--apply")
         self.assertEqual(installed.read_text(), "Model m1; reviewers c-review.")
-        for reviewers in ([], ["a-review", ""], ["a\nb"], [["a"]], ["{{x}}"]):
+        for reviewers in (["a-review", ""], ["a\nb"], [["a"]], ["{{x}}"]):
             self.write_config({"skills": {"example": {"defaults": {"reviewers": reviewers}}}})
             self.run_sync("--apply", expected=2)
         self.assertEqual(installed.read_text(), "Model m1; reviewers c-review.")
