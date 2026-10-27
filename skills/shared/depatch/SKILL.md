@@ -28,8 +28,8 @@ Write what the target does today, as behaviours a user or caller can observe,
 not as code. For example: "`--check` exits 1 when the state file is out of
 date". Take them from:
 
-- for a branch: the conversation, the plan in `.plans/`, the PR description,
-  the tests, and the diff
+- for a branch: the conversation, the plan this branch added in `.plans/`, the
+  PR description, the tests, and the diff
 - for existing code: the code, its tests and docs, and its git history with the
   PRs and issues it links
 

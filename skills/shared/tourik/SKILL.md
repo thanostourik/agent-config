@@ -27,7 +27,8 @@ you again, so ending the turn early stops the work.
 
 1. **Intent.** Find what the change must do:
    - When the user gives a Jira ticket, read it through the Jira MCP.
-   - Otherwise take it from the user's request, or from a plan in `.plans/`.
+   - Otherwise take it from the user's request, or from the plan this branch
+     added in `.plans/`.
 
    If the goal is ambiguous in a way that changes the result, ask. If the
    intent has no clear acceptance criteria, write 3 to 5 checkable criteria.
