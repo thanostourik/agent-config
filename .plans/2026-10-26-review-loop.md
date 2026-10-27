@@ -41,9 +41,10 @@ mode: the intent quoted word for word plus the raw proof, asked whether the
 proof shows each criterion working. Missing proof: gather it, check once more.
 A bug: fix it and run another round within budget.
 
-The PR line `Reviewed with review-loop: <N> rounds with <reviewers>` goes in
-the PR description only when the agent may update the PR, otherwise in the
-report. The loop never pushes.
+The loop never writes to the PR and never pushes. Its report names the round
+and final reviewers, each with its model and harness. `file-pr` turns that into
+the PR's `Reviewed by` line, which names the final reviewers apart because they
+reviewed only the final round.
 
 Supporting changes:
 

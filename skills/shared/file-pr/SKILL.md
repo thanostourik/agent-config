@@ -56,7 +56,7 @@ attribution. Add attribution only when the skill is called with the argument
 Then end the description with these lines after the verification section, each
 in its own paragraph:
 
-> Reviewed by <reviewers> in <N> rounds.
+> Reviewed by <reviewers> in <N> rounds[, and by <final reviewers> in the final round].
 >
 > Filed by <model> through <harness>[ in <host>].
 
@@ -64,7 +64,10 @@ Write the `Reviewed by` line only when a review loop ran on the branch. Take
 the reviewers and the number of rounds from its report. Each reviewer is
 `<model> through <harness>`, joined with commas and a final `and`, for example
 `Reviewed by GPT-6.1 Sol through Codex and Grok 4.7 through Grok in 3 rounds.`
-Write `round` when N is 1.
+Write `round` when N is 1. When the report names final reviewers, they
+reviewed only the final round, so name them only in the last part:
+`Reviewed by GPT-6.1 Sol through Codex in 3 rounds, and by Grok 4.7 through Grok in the final round.`
+Leave that part out when no final round ran.
 The `Filed by` line always comes last.
 
 `<harness>` is the coding tool running the model, for example `Claude Code` or
