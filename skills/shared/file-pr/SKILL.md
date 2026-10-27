@@ -52,9 +52,9 @@ details, decisions, and file lists; reviewers find those in the changed files.
 End the description with a `## Verification` section that separates what was
 actually run from what was not. Give each check one line: what ran and the
 result. List what was not verified the same way, one line per item, with how
-the user can check it. Do not present
-untested work as tested. When verification finishes later, update the section.
-Follow any repository PR template.
+the user can check it. Do not present untested work as tested. When
+verification finishes later, update the section. Follow any repository PR
+template.
 
 By default, end the description with the `## Verification` section and add no
 attribution. Add the attribution line only when the skill is called with the
