@@ -121,3 +121,17 @@ questions is the only work that happens on main.
 - Type safety is useful, take advantage of it.
 - Never use `any` unless 100% necessary or specifically instructed.
 - Prefer inferred return types. Add an explicit one only when inference gives a wrong or unreadable type.
+
+## React
+
+- Don't write `useEffect` or `useLayoutEffect` in app code. An effect usually hides a design
+  decision. Use one of these instead:
+  - compute the value during render from props and state;
+  - do the work in the event handler that caused it (the click, the submit, the stream callback);
+  - fetch with the project's data library (for example SWR's `useSWR`), not inside an effect;
+  - read browser state (localStorage, tab visibility) with `useSyncExternalStore` or a library;
+  - reset a component's state by changing its `key`, not with an effect that watches a prop.
+- Moving an effect into a custom hook does not remove it.
+- If the only trigger is "the page opened", ask whether the behaviour should exist at all.
+- If you think an effect is unavoidable, stop and tell me why, and what you tried, before writing it.
+- Background: https://react.dev/learn/you-might-not-need-an-effect
