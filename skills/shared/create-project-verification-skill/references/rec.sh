@@ -124,7 +124,8 @@ app_commit() { awk -v n="$1" 'NR > 1 && $1 == n { print $2 }' "$skill/features/l
 diff_paths() {
   local name=$1 commit=$2 dir=. prefix="" untracked
   shift 2
-  (($#)) && [[ -n "$commit" ]] || return 0
+  (($#)) || return 0
+  [[ -n "$commit" ]] || { echo "rec.sh: no commit of $name in features/last-reviewed; changes.diff leaves out its files" >&2; return 0; }
   [[ -z "$name" ]] || dir=$(app_dir "$name") prefix=$name/
   git -C "$dir" diff --src-prefix="a/$prefix" --dst-prefix="b/$prefix" "$commit" -- "$@"
   git -C "$dir" ls-files -o --exclude-standard -- "$@" | while read -r untracked; do git -C "$dir" diff --no-index --src-prefix="a/$prefix" --dst-prefix="b/$prefix" -- /dev/null "$untracked"; done
