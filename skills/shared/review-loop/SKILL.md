@@ -17,7 +17,8 @@ works. A fresh reviewer then checks that proof against the intent.
     `{{defaults.final_reviewers}}`. This list is for reviewers worth one
     full review but too slow to wait for in every round.
 
-  A list the user names replaces the default one. When the user names
+  `none` means an empty list. With no round reviewers, tell the user and
+  stop. A list the user names replaces the default one. When the user names
   reviewers without saying which list, they are the round reviewers and there
   are no final reviewers. A final reviewer that is also a round reviewer
   already reviews every round, so it is not a final reviewer. Each entry is a

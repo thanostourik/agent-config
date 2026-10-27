@@ -14,9 +14,10 @@ came back clean, so running it every round set the length of every round and
 of the loop. A list named in the request wins; reviewers named without a list
 are round reviewers, with no final round. A final reviewer that is also a
 round reviewer is only a round reviewer, so listing Grok in both brings back
-Grok every round, and `["codex-review"]` as final reviewers turns the final
-round off. Each entry is a review skill; that skill's config gives model and
-effort. In a round, its reviewers run in parallel the same built-in review
+Grok every round. An empty `final_reviewers` turns the final round off: sync
+renders an empty list as `none`, and the skill reads `none` as an empty list.
+Each entry is a review skill; that skill's config gives model and effort. In a
+round, its reviewers run in parallel the same built-in review
 command on the whole branch against its base. They stay blind: no intent,
 ledger, or notes from the author. In T3, a skill with a T3 path
 (`grok-review`) runs as a `delegate_task` whose task is only the slash
@@ -47,7 +48,8 @@ report. The loop never pushes.
 Supporting changes:
 
 - `sync`: a skill default may be a JSON list of strings, rendered joined with
-  `, `. An override replaces the whole list. Tests and `AGENTS.md` updated.
+  `, `, or `none` when empty. An override replaces the whole list. Tests and
+  `AGENTS.md` updated.
 - The four review skills become agent-invocable and install into every tool,
   their own included, so the default reviewers exist wherever `review-loop`
   does; `grok-review` gets its T3 delegate path.
