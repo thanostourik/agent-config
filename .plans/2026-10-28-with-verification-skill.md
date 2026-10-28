@@ -30,16 +30,19 @@ the companion, does the task, and verifies it with the companion's
 - Running: read the companion's `verify-<app>/SKILL.md` and follow it. Every
   helper call gets `APP_<NAME>=<current checkout>`, so the run drives and
   diffs this checkout, not the main one.
-- One run per companion: before the first drive, `mkdir` the lock
+- One run per companion: before anything touches the companion, `mkdir` the lock
   `<companion>/.agents/skills/verify-<app>/.cache/with-verification.lock`
   and write the current checkout path into it; remove it after cleanup. If
   it exists, stop and name the checkout that holds it, and the folder to
-  delete when that run is gone. A run started inside the companion does not
+  delete when that run is gone. The lock also covers a branch switch in the
+  companion. A run started inside the companion does not
   check the lock.
-- Map drift: when the run finds behavior the feature map no longer
-  describes, ask with the question tool: report the drift only, for a later
-  `/maintain-verify-<app>` from the companion, or update the map now in the
-  companion on its own branch with a draft PR.
+- Map drift: the verify skill updates its map before driving. In a
+  companion, ask with the question tool: report only (drive what the map
+  still describes, list the rest as not verified, for a later
+  `/maintain-verify-<app>` from the companion), or update now (a branch in a
+  clean companion, map update, drive, draft PR, then back to the companion's
+  previous branch).
 - The repo's own `AGENTS.md` keeps steering verification without the
   trigger; this skill changes nothing there.
 
