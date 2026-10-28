@@ -98,8 +98,8 @@ what is still open.
 2. Run one evidence check with a fresh reviewer: the first round reviewer,
    through its skill's custom-prompt mode. The prompt holds only:
    - The intent, quoted word for word: the Jira ticket or the user's request.
-     When neither exists, the acceptance criteria you wrote into the PR
-     description.
+     When neither exists, the acceptance criteria in
+     `.plans/scratch/<branch>/criteria.md`.
    - The paths of the raw proof files. Not the ledger, a summary, or anything
      else you wrote.
    - The question: for each criterion, does the proof show it working? Answer
