@@ -31,7 +31,7 @@
       "enabled": true,
       "defaults": {
         "reviewers": ["codex-review"],
-        "final_reviewers": ["grok-review"],
+        "one_pass_reviewers": ["grok-review"],
         "rounds": "3",
         "max_rounds": "5"
       }

@@ -13,23 +13,30 @@ works. A fresh reviewer then checks that proof against the intent.
 
 - **Reviewers:** two lists of review skills.
   - Round reviewers review in every round: `{{defaults.reviewers}}`.
-  - Final reviewers review once, in the final round:
-    `{{defaults.final_reviewers}}`. This list is for reviewers worth one
-    full review but too slow to wait for in every round.
+  - One-pass reviewers review once, starting in round one:
+    `{{defaults.one_pass_reviewers}}`. This list is for reviewers worth one
+    full review but too slow to wait for. They keep running while you fix
+    findings and while later rounds run.
 
   `none` means an empty list. With no round reviewers, tell the user and
   stop. A list the user names replaces the default one. When the user names
   reviewers without saying which list, they are the round reviewers and there
-  are no final reviewers. A final reviewer that is also a round reviewer
-  already reviews every round, so it is not a final reviewer. Each entry is a
-  review skill. That skill's own defaults give the model and effort, and it
+  are no one-pass reviewers. A one-pass reviewer that is also a round reviewer
+  already reviews every round, so it is not a one-pass reviewer. Each entry is
+  a review skill. That skill's own defaults give the model and effort, and it
   says how to run and wait for the review. If a listed skill is not available
   to you, tell the user and stop. Do not substitute another reviewer.
 - **Target:** the current branch against its base: the PR's base branch, or
-  `origin/main` when there is no PR. Note `git diff --shortstat <base>...HEAD`
+  `origin/main` when there is no PR. Note `git diff --shortstat` of the target
   before round one.
-- **Ledger:** `.plans/scratch/<branch>/review-ledger.md`, one table row per
-  finding:
+- **Follow-up loop:** the ledger already holds an earlier loop on this branch.
+  The target is then the last loop's last reviewed commit up to `HEAD`, and
+  the one-pass reviewers do not run. When that commit is no longer on the
+  branch, for example after a rebase, the target is the whole branch again. A
+  target or reviewers the user names win.
+- **Ledger:** `.plans/scratch/<branch>/review-ledger.md`. Each loop gets its
+  own section, which starts with its target and ends with its last reviewed
+  commit. One table row per finding:
 
   | id | reviewer | severity | finding | outcome | reason | commit |
   | --- | --- | --- | --- | --- | --- | --- |
@@ -43,7 +50,7 @@ works. A fresh reviewer then checks that proof against the intent.
 
 ## Budget
 
-{{defaults.rounds}} rounds. Raise it to {{defaults.max_rounds}} when a
+{{defaults.rounds}} rounds. Raise it to {{defaults.max_rounds}} when a `high`
 finding concerns security, permissions, auth, data loss, or state and
 concurrency, or when the user asks. A number of rounds the user names in the
 request wins.
@@ -52,17 +59,16 @@ request wins.
 
 1. Commit your work, so every reviewer sees the same code. Pushing follows the
    caller's rules; this skill never pushes.
-2. Start every reviewer of this round before you end your turn to wait. A
-   round runs the round reviewers; the final round runs the final reviewers
-   too. Each reviews the whole branch against its base the way its skill
-   says, the same way every round. Round two is not a review of the changes
-   since round one.
+2. Start every round reviewer before you end your turn to wait. In round one,
+   start the one-pass reviewers too. Each reviews the target the way its
+   skill says, the same way every round. Round two is not a review of the
+   changes since round one.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
-4. Wait until every reviewer finishes. If one fails, start it once more. If it
-   fails again, go on without it. That round is not clean, and the report
-   says so.
+4. Wait until every round reviewer finishes, but not the one-pass reviewers.
+   If a reviewer fails, start it once more. If it fails again, go on without
+   it. That round is not clean, and the report says so.
 5. Check each finding against the code. Review makes the change correct, not
    bigger.
    - Declined or out of scope earlier: add the reviewer to that row and skip
@@ -78,17 +84,20 @@ request wins.
 6. After fixes that change behavior, verify the affected features the way the
    project does, then commit.
 
-A round is clean when every reviewer finished, and after skipping the declined
-and out-of-scope findings, nothing above `nit` is left.
+A round is clean when every round reviewer finished, and after skipping the
+declined and out-of-scope findings, nothing above `low` is left. Fix the
+`low` findings too, but they need no review round of their own.
 
-The final round comes right after the first clean round. When no round was
-clean yet and the budget allows only one more, that one is the final round.
-The final reviewers never run again after it. Without final reviewers, there
-is no final round.
+A one-pass reviewer reviews the round one commit while you keep committing.
+When it finishes, check its findings against the current code, the same way
+as a round's. They count toward the round running then. The commits you made
+while it ran are yours, not changes it made, when its skill checks the git
+state. If it finishes after a clean round and leaves something above `low`,
+fix that and run another round.
 
-Stop when a round is clean and the final round has run, or there is none.
-Also stop when the budget is spent. A spent budget is not approval; report
-what is still open.
+Stop when the latest round is clean and every one-pass reviewer has finished
+with nothing above `low` left. Also stop when the budget is spent. A spent
+budget is not approval; report what is still open.
 
 ## Proof
 
@@ -115,10 +124,10 @@ This skill never writes to the PR. The caller decides what goes there.
 
 The report lists:
 
-- The rounds: head commit and result of each, which one was the final round,
-  and why the loop stopped.
-- The round reviewers and the final reviewers, each with the model and harness
-  that ran it, for example `GPT-6.1 Sol through Codex`.
+- The target, and whether it was a follow-up loop.
+- The rounds: head commit and result of each, and why the loop stopped.
+- The round reviewers and the one-pass reviewers, each with the model and
+  harness that ran it, for example `GPT-6.1 Sol through Codex`.
 - The fixed findings.
 - The declined findings, each with its reason.
 - The out-of-scope findings, as follow-ups for the user.

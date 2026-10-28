@@ -22,7 +22,7 @@ example, `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}`
 changes one model, and `{"skills": {"bro": {"enabled": false}}}` turns `bro`
 off. A list replaces the whole shipped list:
 `{"skills": {"review-loop": {"defaults": {"reviewers": ["codex-review", "grok-review"]}}}}`
-runs Grok in every review-loop round, not only in its final round.
+runs Grok in every review-loop round, not only once.
 The next `./sync --apply` removes the copies it installed for disabled items.
 A model or effort you name in a request still wins.
 
