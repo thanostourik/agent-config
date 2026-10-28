@@ -31,8 +31,8 @@ you again, so ending the turn early stops the work.
      added in `.plans/`.
 
    If the goal is ambiguous in a way that changes the result, ask. If the
-   intent has no clear acceptance criteria, write 3 to 5 checkable criteria.
-   They go into the PR description.
+   intent has no clear acceptance criteria, write 3 to 5 checkable criteria
+   to `.plans/scratch/<branch>/criteria.md`.
 2. **Implement** the smallest change that meets the intent.
 3. **Verify** as "How to verify" below says.
 4. **Review.** Run the `review-loop` skill on the PR. Then update the PR with

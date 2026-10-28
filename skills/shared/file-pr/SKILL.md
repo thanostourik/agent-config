@@ -28,10 +28,30 @@ Good:
 
 Use measured numbers only when the change's validation supports them.
 
-Open the description with the problem the user wanted solved, then briefly
-explain how the final change solves it. Check the description against the final
-diff so it describes what actually changed. Do not lead with an implementation
-inventory:
+The description is for the person who merges the PR. They need to understand
+the problem, check that the change solves it, and review the code. Keep it
+short enough to read in a minute. Unless the repository has its own PR
+template, use exactly this shape and add no other sections:
+
+```markdown
+<The problem the user wanted solved, or the feature, in two or three sentences.>
+
+## What changed
+- <a behavior a user or caller now sees, one per line>
+
+## Verification
+- <check>: <result>
+- Not verified: <item>. Check it by <how>.
+- Check it yourself: <commands>
+
+## Action needed
+- <what the merger must do before or after the merge, and why>
+```
+
+**What changed** says what a user or caller can now see or do, one short line
+each. Never say how the code does it: leave out design details, decisions, and
+file lists. Reviewers find those in the changed files and the plan. Check each
+line against the final diff.
 
 Bad:
 > Removed implicit workspace carry-over from every "new thread" entry point
@@ -42,25 +62,26 @@ Bad:
 
 Good:
 > The "new worktree" default was ignored when starting new threads on existing
-> worktrees. Now new threads consistently use your configured preferences.
+> worktrees.
+>
+> ## What changed
+> - New threads always use your configured branch, worktree, and env mode.
 
-Keep the description short enough to read in a minute. State the problem in two
-or three sentences and how the change solves it in a few more. Mention a risk
-only when someone must act on it before or after the merge. Leave out design
-details, decisions, and file lists; reviewers find those in the changed files.
+**Verification** separates what was actually run from what was not. Give each
+check one line: what ran and the result. List what was not verified the same
+way, one line per item, with how the user can check it. Add the `Check it
+yourself` line only when a hand check shows something the tests do not. Do not
+present untested work as tested. When verification finishes later, update the
+section.
 
-End the description with a `## Verification` section that separates what was
-actually run from what was not. Give each check one line: what ran and the
-result. List what was not verified the same way, one line per item, with how
-the user can check it. Do not present untested work as tested. When
-verification finishes later, update the section. Follow any repository PR
-template.
+**Action needed** lists what the merger must do before or after the merge,
+breaking changes included. Leave the section out when there is nothing to do.
 
-By default, end the description with the `## Verification` section and add no
-attribution. Add attribution only when the skill is called with the argument
-`attribution` (for example `/file-pr attribution`) or the user asks for it.
-Then end the description with these lines after the verification section, each
-in its own paragraph:
+By default, the description ends with its last section and has no attribution.
+Add attribution only when the skill is called with the argument `attribution`
+(for example `/file-pr attribution`) or the user asks for it. Then end the
+description with these lines after the last section, each in its own
+paragraph:
 
 > Reviewed by <reviewers> in <N> rounds[, and by <final reviewers> in the final round].
 >
