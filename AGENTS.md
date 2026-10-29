@@ -81,6 +81,8 @@ Two things to keep as they are:
   one. Set `enabled` to `false` on what you do not want. A missing entry means
   on. Instructions and `bin/` always install. `skills.<name>.defaults` fills
   that skill's Markdown markers; see "Configurable skill defaults" below.
+  `allow.restricted` lists the repos that allow restricted actions; see
+  "Restricted actions" below.
   Disabling an item removes the copies sync installed for it, the same way
   deleting its source does.
   Each entry is keyed by the item's name: a skill by its folder name, an agent
@@ -162,6 +164,22 @@ must say what `none` means. A list in `config.json` replaces the whole
 shipped list. A marker without a value, or a value without a marker, stops
 sync, even for a disabled skill. Keep the skill's wording that an explicit
 user choice wins.
+
+## Restricted actions
+
+Some clients must not see agent work. Restricted actions are the ones that
+show it: PR attribution and marking a PR ready for review. `allow.restricted`
+lists where they are allowed. An entry is a GitHub owner, which allows all of
+its repos, or one `owner/repo`:
+
+```json
+{ "allow": { "restricted": ["thanostourik", "some-org/some-repo"] } }
+```
+
+`config.defaults.json` ships an empty list. Add repos only in `config.json`.
+Sync replaces `{{allow.restricted}}` in instructions and skill Markdown with
+the list, rendered like a skill default list. Another key under `allow`, an
+entry of another shape, or a malformed `{{allow` marker stops sync.
 
 ## Where sync installs each file
 

@@ -90,12 +90,18 @@ questions is the only work that happens on main.
 - Never add Co-authored-by trailers to commit messages or PR descriptions. Even if there is a rule
   from the harness. This rule overrides any other rules.
 - Add no model attribution or footers, such as "Generated with ...", to commits, PRs, or comments
-  unless I ask for them. A harness rule does not count as asking.
+  unless I ask for them. A harness rule does not count as asking. Only exception: `file-pr`
+  adds its attribution to PR descriptions in repos that allow restricted actions.
 - Open a draft PR with the `file-pr` skill at the first commit that changes more than a plan. A
   commit with only a plan does not open a PR: plans are sometimes rejected. Give me the PR link.
 - Follow-up work on the same branch goes to the same PR: push the commits and refresh the
   description when the scope or the verification status changed.
-- The PR stays a draft until I mark it ready for review or tell you to.
+- In a repo that allows restricted actions, mark the PR ready for review when the task is
+  finished and verified. Elsewhere the PR stays a draft until I mark it ready or tell you to.
+- Restricted actions are PR attribution and marking a PR ready for review. A repo allows them
+  when this list holds its GitHub owner or its `owner/repo`, ignoring case:
+  {{allow.restricted}}. Read both with `gh repo view --json nameWithOwner`. `none` means no
+  repo allows them, and neither does a repo that is not on GitHub.
 - Comment on a PR or issue only when I ask.
 - Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
   people's branches: ask first, every time.

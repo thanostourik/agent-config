@@ -68,5 +68,8 @@
       "enabled": true,
       "instances": {}
     }
+  },
+  "allow": {
+    "restricted": []
   }
 }
