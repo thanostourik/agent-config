@@ -78,10 +78,9 @@ section.
 breaking changes included. Leave the section out when there is nothing to do.
 
 By default, the description ends with its last section and has no attribution.
-Add attribution only when the skill is called with the argument `attribution`
-(for example `/file-pr attribution`) or the user asks for it. Then end the
-description with these lines after the last section, each in its own
-paragraph:
+Add attribution only when the active instructions allow restricted actions in
+this repository, or the user asks for it. Then end the description with these
+lines after the last section, each in its own paragraph:
 
 > Reviewed by <reviewers> in <N> rounds[, and once by <one-pass reviewers>].
 >

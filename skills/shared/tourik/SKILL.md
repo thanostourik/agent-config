@@ -10,13 +10,8 @@ the work until the PR is ready for me to merge. Never merge it."
 
 ## What this mode allows
 
-On top of the active instructions, you may, without asking again:
-
-- rebase your own branch onto its base
-- mark the PR ready for review at the end
-
-Call `file-pr` with the argument `attribution` every time it opens or updates
-the PR.
+On top of the active instructions, you may rebase your own branch onto its
+base without asking again.
 
 ## Stay active
 
@@ -47,9 +42,10 @@ you again, so ending the turn early stops the work.
      push with `--force-with-lease`, and redo the proof the rebase could
      change.
 
-   Then mark the PR ready for review.
+   Then mark the PR ready for review, if the active instructions allow
+   restricted actions in this repository. Otherwise leave it a draft.
 6. **Report:**
-   - the PR link
+   - the PR link, and whether it is still a draft
    - the proof
    - every decision you made alone
    - the declined findings, with reasons

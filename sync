@@ -20,6 +20,8 @@ config.defaults.json supplies the shipped settings; config.json (gitignored)
 overrides individual settings. Missing enabled switches stay on.
 Disabled items are removed like any other item that left the repository.
 skills.<name>.defaults overrides marked defaults in that skill's Markdown.
+allow.restricted lists the GitHub owners and owner/repo names where restricted
+actions are allowed; it replaces {{allow.restricted}} in skills and instructions.
 Jira MCP URLs live only in config.json; sync owns only its server entries in
 each tool's MCP config, and does not put secrets in those files.
 """
@@ -78,6 +80,8 @@ HOOK_EVENTS = {
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 SKILL_DEFAULT = re.compile(r"\{\{defaults\.([a-z][a-z0-9_]*)\}\}")
+ALLOW_RESTRICTED = "{{allow.restricted}}"
+ALLOW_ENTRY = re.compile(r"^[A-Za-z0-9-]+(/[A-Za-z0-9._-]+)?$")
 STATE = ".config/agent-config/state.json"
 BACKUPS = ".config/agent-config/backups"
 BLOCKED = object()
@@ -131,6 +135,14 @@ def load_config():
                             f"configuration skills.{name}.defaults.{key} must be a "
                             "nonempty, single-line string without surrounding whitespace "
                             "or {{ or }}, or a list of such strings")
+    allow = data.get("allow", {})
+    if not isinstance(allow, dict) or allow.keys() - {"restricted"}:
+        raise ValueError("configuration allow must be an object whose only key is restricted")
+    restricted = allow.get("restricted", [])
+    if not isinstance(restricted, list) or not all(
+            isinstance(entry, str) and ALLOW_ENTRY.match(entry) for entry in restricted):
+        raise ValueError("configuration allow.restricted must be a list of GitHub "
+                         "owners or owner/repo names")
     mcp = data.get("mcp")
     if mcp is not None:
         if not isinstance(mcp, dict):
@@ -525,6 +537,13 @@ def render_skill_default(value):
     return value
 
 
+def render_allow(contents, config, source):
+    if re.search(r"\{\{\s*allow\b", contents.replace(ALLOW_RESTRICTED, "")):
+        raise ValueError(f"{source}: malformed allow marker; use {ALLOW_RESTRICTED}")
+    restricted = config.get("allow", {}).get("restricted", [])
+    return contents.replace(ALLOW_RESTRICTED, render_skill_default(restricted))
+
+
 def render_skill_markdown(skill, config):
     markdown = {file: file.read_bytes().decode("utf-8") for file in sorted(skill.rglob("*"))
                 if file.is_file() and file.suffix.lower() == ".md"}
@@ -544,8 +563,9 @@ def render_skill_markdown(skill, config):
     if missing:
         raise ValueError(f"configuration skills.{skill.name}.defaults is missing "
                          f"values: {', '.join(sorted(missing))}")
-    return {file: SKILL_DEFAULT.sub(lambda match: render_skill_default(values[match[1]]),
-                                   contents).encode("utf-8")
+    return {file: render_allow(
+                SKILL_DEFAULT.sub(lambda match: render_skill_default(values[match[1]]),
+                                  contents), config, file).encode("utf-8")
             for file, contents in markdown.items()}
 
 
@@ -692,7 +712,8 @@ def desired_files(config, home, hooks_by_tool):
 
     for tool, destinations in TOOLS.items():
         specific = (ROOT / f"instructions/{tool}.md").read_text().strip()
-        contents = "\n\n".join(part for part in [common, specific] if part)
+        contents = render_allow("\n\n".join(part for part in [common, specific] if part),
+                                config, f"instructions for {tool}")
         if contents:
             if tool == "cursor":
                 contents = CURSOR_HEADER + contents
