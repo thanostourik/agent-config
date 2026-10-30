@@ -123,7 +123,7 @@ Claude Code reads `CLAUDE.md`, not `AGENTS.md`. If the project has no `CLAUDE.md
 
 Read the rest of those files and anything they import for conflicting verification guidance. Replace superseded manual launch and cleanup recipes with references to the skill. Reconcile stale startup restrictions with the user's instructions and existing authorization. Do not invent a new approval requirement or silently remove a deliberate restriction. If a conflict cannot be resolved from those instructions, ask about that one conflict. Keep ports, resource names and lifecycle commands only in the skill, so there is one maintained procedure.
 
-Keep the project's test, lint and type-check guidance, and add the exact focused commands from the repo where missing. In a companion, these commands run in the app checkouts, so each names its checkout, such as `(cd ../otis && mvn -q test)`. Do not turn every verification into a full build. If an older verification system exists, report what it overlaps and conflicts with. Do not delete it without explicit authorization. Leave unrelated instructions alone.
+Keep the project's test, lint and type-check guidance, and add the exact focused commands from the repo where missing. In a companion, each command names its checkout and writes nothing into it: a command that leaves output, such as `mvn test` writing `target/`, runs in launch's build copy. Do not turn every verification into a full build. If an older verification system exists, report what it overlaps and conflicts with. Do not delete it without explicit authorization. Leave unrelated instructions alone.
 
 ## 7. Prove it
 
