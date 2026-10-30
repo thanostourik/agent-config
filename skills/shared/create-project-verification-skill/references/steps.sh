@@ -199,14 +199,15 @@ removes_evidence() {
 
 contract_map() {
   awk -F '\t' '
+    BEGIN { group = "^[[:space:]]*(describe[(]|((public|final|abstract|internal|open)[[:space:]]+)*class ([A-Za-z0-9_]*Tests?|Test[A-Za-z0-9_]*)([^A-Za-z0-9_]|$))" }
     FNR == NR { words[$1] = tolower($2); next }
     function flush(end) { for (f in kind) print f "\t" file ":" (heading ~ /^#/ ? heading : start "-" end) "\t" kind[f]; delete kind }
     function begin() { flush(FNR - 1); start = FNR; heading = $0 }
     FNR == 1 { flush(last); file = FILENAME; start = 1; heading = ""; outer = -1 }
     file ~ /\.md$/ && /^#{1,6} / { begin() }
-    file !~ /\.md$/ && /^[[:space:]]*(describe|it|test)\(/ {
+    file !~ /\.md$/ && ($0 ~ group || /^[[:space:]]*((it|test)\(|(async[[:space:]]+)?def test)/) {
       indent = match($0, /[^[:space:]]/) - 1
-      if (outer < 0 || indent <= outer) { begin(); outer = /^[[:space:]]*describe\(/ ? indent : -1 }
+      if (outer < 0 || indent <= outer) { begin(); outer = $0 ~ group ? indent : -1 }
     }
     {
       last = FNR
