@@ -61,8 +61,7 @@ give, such as how to commit, open the PR, or verify. The prompt ends with:
 - Without parallel verification: do not verify yet. End your turn with the PR
   link; the coordinator will tell you when the shared ports are free.
 - With parallel verification: then verify the way the project does.
-- When you verify, end with a one-line verdict, the PR link, and what is
-  unverified.
+- When you verify, end with a one-line verdict and the PR link.
 
 Keep every returned `threadId`. If a launch fails or its response is lost,
 check `t3_thread_list` before you launch again.
@@ -119,4 +118,4 @@ Only when the user asks for delegates. The steps above stay, with these changes:
 ## Report
 
 When every thread has finished, send one report with one line per thread: its
-verdict, its PR link, and what is unverified.
+verdict, its PR link, and anything its thread reported as unverified.
