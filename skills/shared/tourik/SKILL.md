@@ -51,7 +51,6 @@ you again, so ending the turn early stops the work.
    - the declined findings, with reasons
    - follow-ups: the out-of-scope findings
    - the `depatch` verdict and patch scars, when it ran
-   - what is unverified
 
 ## How to verify
 

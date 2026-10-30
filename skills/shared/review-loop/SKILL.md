@@ -133,4 +133,3 @@ The report lists:
 - The out-of-scope findings, as follow-ups for the user.
 - The diff size against the base before and after the loop.
 - The evidence check's answer for each criterion.
-- What is unverified.
