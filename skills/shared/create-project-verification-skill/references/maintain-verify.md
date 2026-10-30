@@ -30,7 +30,7 @@ Helpers do the reading and recording, so your context stays small. Read only wha
 - A **recorder** takes one feature and those it splits off. It writes each recipe into a **staged copy**, `.cache/record/<feature>/<feature>.md`, written whole when needed, and runs it against the live app with `bin/rec.sh <feature> run`. Its only tracked edit is an index line. Recorders work in the modes that drive.
 - A **fixer** takes one feature that failed a drive, repairs its recipe in a staged copy and runs that copy with `bin/rec.sh <feature> run`.
 
-Start recorders and fixers with the brief files and one-line prompts under Helper briefs. Without a subagent tool, do the same work yourself, one feature at a time, still through `bin/rec.sh`.
+Start recorders and fixers with the brief files and one-line prompts under Helper briefs. Start subagents in `delegate_task` in async mode when available, otherwise as background subagents. Without a subagent tool, do the same work yourself, one feature at a time, still through `bin/rec.sh`.
 
 ## Edit scope
 
