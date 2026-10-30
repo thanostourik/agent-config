@@ -78,3 +78,18 @@ Rejected:
   context small, and `Runs alone.` covers shared state.
 - A Maven cache under `.cache/`, the `setsid` race, stale port lists and git
   identity in `rec.sh reviewed`: implementation details the runs handled.
+
+## Third round, from the second verification runs
+
+Fixed:
+
+- Companion test commands use the tool's no-write option, such as
+  `python3 -B`, or a fresh copy under `.cache/`; launch's build copy exists
+  only during a run.
+- Step 1 says that in a companion a broken checkout is only reported.
+- The `| grep -q` trap under `pipefail` applies to helpers too.
+
+Left as they are, because they are generator traits outside companion mode:
+Playwright CLI 1.64 output and session details, contract words matching as
+substrings, the main-screen grep pattern, vague wording in step 7, the
+recorder's step count, and images that a run pulls.

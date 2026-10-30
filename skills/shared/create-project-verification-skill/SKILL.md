@@ -64,7 +64,7 @@ Answer these from the codebase. Ask the user only what you cannot observe.
 - **Side effects of starting:** what startup may change: files, data, processes, external systems. Check what is already running (`ps`, `ss -ltn`), such as an installed copy of the app holding a port, a global hotkey or a single-instance lock, and record it as original state. See [`references/lifecycle.md`](references/lifecycle.md).
 - **Observe:** the evidence you can capture: screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, database state.
 
-If the checkout does not build or start as-is, fix that first, or report it precisely, before generating. A skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, marked as verification scaffolding, and remove it in cleanup.
+If the checkout does not build or start as-is, fix that first, or report it precisely, before generating; in a companion, only report it. A skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, marked as verification scaffolding, and remove it in cleanup.
 
 ## 2. Decide once, write one path
 
@@ -123,7 +123,7 @@ Claude Code reads `CLAUDE.md`, not `AGENTS.md`. If the project has no `CLAUDE.md
 
 Read the rest of those files and anything they import for conflicting verification guidance. Replace superseded manual launch and cleanup recipes with references to the skill. Reconcile stale startup restrictions with the user's instructions and existing authorization. Do not invent a new approval requirement or silently remove a deliberate restriction. If a conflict cannot be resolved from those instructions, ask about that one conflict. Keep ports, resource names and lifecycle commands only in the skill, so there is one maintained procedure.
 
-Keep the project's test, lint and type-check guidance, and add the exact focused commands from the repo where missing. In a companion, each command names its checkout and writes nothing into it: a command that leaves output, such as `mvn test` writing `target/`, runs in launch's build copy. Do not turn every verification into a full build. If an older verification system exists, report what it overlaps and conflicts with. Do not delete it without explicit authorization. Leave unrelated instructions alone.
+Keep the project's test, lint and type-check guidance, and add the exact focused commands from the repo where missing. In a companion, each command names its checkout and writes nothing into it: use the tool's no-write option, such as `python3 -B`, or run it in a fresh copy under `.cache/`, as `mvn test`, which writes `target/`, needs. Do not turn every verification into a full build. If an older verification system exists, report what it overlaps and conflicts with. Do not delete it without explicit authorization. Leave unrelated instructions alone.
 
 ## 7. Prove it
 
