@@ -97,7 +97,8 @@ questions is the only work that happens on main.
 - Follow-up work on the same branch goes to the same PR: push the commits and refresh the
   description when the scope or the verification status changed.
 - In a repo that allows restricted actions, mark the PR ready for review when the task is
-  finished and verified. Elsewhere the PR stays a draft until I mark it ready or tell you to.
+  finished and verified. Finished: everything I asked for in this task is done. Verified: you
+  checked it the way the Verification section says.
 - Restricted actions are PR attribution and marking a PR ready for review. A repo allows them
   when this list holds its GitHub owner or its `owner/repo`, ignoring case:
   {{allow.restricted}}. Read both with `gh repo view --json nameWithOwner`. `none` means no
