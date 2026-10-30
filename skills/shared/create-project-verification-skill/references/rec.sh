@@ -7,7 +7,7 @@
 # rec.sh <feature> index '<index line>': replace the line linking ./<feature>.md in the ## Features list of features/README.md, or add it after the line of its parent, the listed feature whose name followed by - starts <feature>, the longest one, else at the end of that list.
 # rec.sh affected: list in .cache/changed.txt the files changed since the commit on the first line of features/last-reviewed, and those of each app checkout in the apps file since its <app> <commit> line there, as <app>/<path>, empty .cache/triggered.tsv for the selection, and print and save to .cache/affected.txt the indexed features whose feature file changed or has a kept staged copy, then each changed file outside .agents/ and .claude/ with its added and removed line counts; with no such commit, say to record every feature.
 # rec.sh diff <file>...: write to .cache/selection.diff the changes of those files of .cache/changed.txt since features/last-reviewed, and print its size and the commands that read it in 20,000-byte pieces, five at most.
-# rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
+# rec.sh common: write .cache/record/brief-common.md from features/README.md, the Helpers section of SKILL.md, the first steps of the shortest accepted recipe of at least five steps, else .cache/record/first-example.md, and .cache/record/main-screen.txt, cut to stay under 20,000 bytes, and print its size.
 # rec.sh map: write .cache/record/contract-map.tsv from contract-words.tsv and the files listed in contract-sources.txt.
 # rec.sh brief <feature>...: build the contract map as map does when it is missing, then write each feature's contract.md, changes.diff and brief.md, the ### Recorder template of maintain-verify-<app>/SKILL.md filled from the index, mode.txt and convert.txt.
 # rec.sh next [<running feature>...]: print the features of .cache/record/queue.txt to start now, one per line, and append them to .cache/record/started.txt: up to Recorders at once of maintain-verify-<app>/SKILL.md minus the running ones that are not alone, else, with none left and none running, the next one alone. A feature is alone when its installed or staged file contains Runs alone., every feature when the Drive section of SKILL.md uses --jobs 1.
@@ -228,21 +228,26 @@ common_file() {
   printf '\n## From %s\n' "$v/features/README.md"
   for name in Baseline "Driving conventions" "Feature file shape"; do block "$name" "$(section "$name" "$readme")"; done
   block "Helpers, from $v/SKILL.md; call them by name, they are on PATH inside a run" "$(section Helpers "$skill/SKILL.md")"
-  block "Example recipe, from this project" "$1"
+  block "${3:-Example recipe, from this project}" "$1"
   block "The app's main screen: the role-and-name lines of an accessibility snapshot taken after the baseline sign-in" "$2"
   block "Gotchas, from $v/features/README.md" "$(section Gotchas "$readme")"
 }
 
 common() {
-  local out="$skill/.cache/record/brief-common.md" file example screen
+  local out="$skill/.cache/record/brief-common.md" file example screen title
   file=$(example_file)
-  [[ -z "$file" ]] || example=$(recipe_start "$file" 2)
+  if [[ -n "$file" ]]; then
+    example=$(recipe_start "$file" 2)
+  elif [[ -f "$skill/.cache/record/first-example.md" ]]; then
+    example=$(cat "$skill/.cache/record/first-example.md")
+    title="Example recipe, from a fictional app; take its shape, not its commands"
+  fi
   screen=$(cat "$skill/.cache/record/main-screen.txt" 2>/dev/null)
   mkdir -p "$skill/.cache/record"
-  common_file "${example:-}" "$screen" > "$out"
+  common_file "${example:-}" "$screen" "${title:-}" > "$out"
   if (($(wc -c < "$out") >= 20000)); then
     screen=$(grep -E '^[[:space:]]*- (heading|link|tab) ' <<< "$screen")
-    common_file "${example:-}" "$screen" > "$out"
+    common_file "${example:-}" "$screen" "${title:-}" > "$out"
   fi
   if (($(wc -c < "$out") >= 20000)) && [[ -n "$file" ]]; then
     common_file "$(recipe_start "$file" 1)" "$screen" > "$out"
