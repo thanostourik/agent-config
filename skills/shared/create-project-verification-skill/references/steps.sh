@@ -10,6 +10,7 @@ app_variable() { echo "APP_$(tr 'a-z-' 'A-Z_' <<< "$1")"; }
 export_apps() {
   local root name path variable
   [[ -f "$1" ]] || return 0
+  export GIT_OPTIONAL_LOCKS=0
   root=$(cd "$(dirname "$1")/../../.." && pwd)
   while read -r name path; do
     [[ -n "$name" ]] || continue
