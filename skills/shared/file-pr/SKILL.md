@@ -41,7 +41,6 @@ template, use exactly this shape and add no other sections:
 
 ## Verification
 - <check>: <result>
-- Not verified: <item>. Check it by <how>.
 - Check it yourself: <commands>
 
 ## Action needed
@@ -68,11 +67,10 @@ Good:
 > - New threads always use your configured branch, worktree, and env mode.
 
 **Verification** separates what was actually run from what was not. Give each
-check one line: what ran and the result. List what was not verified the same
-way, one line per item, with how the user can check it. Add the `Check it
-yourself` line only when a hand check shows something the tests do not. Do not
-present untested work as tested. When verification finishes later, update the
-section.
+check one line: what ran and the result. A gap that needs something you do not
+have gets its own line that names that thing. Add the `Check it yourself` line
+only when a hand check shows something the tests do not. Do not present
+untested work as tested. When verification finishes later, update the section.
 
 **Action needed** lists what the merger must do before or after the merge,
 breaking changes included. Leave the section out when there is nothing to do.

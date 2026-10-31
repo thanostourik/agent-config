@@ -6,4 +6,3 @@
 - Read ports and addresses from `local-stack/stack env --name <name>`. Never assume a port.
 - When you are done, run `local-stack/stack destroy --name <name>`, also after a failure.
 - Never run `up`, `down` or `destroy` without `--name`: the default name is the developer's own stack.
-- The README's Switches table lists what each stub cannot catch. Report those things as not verified.
