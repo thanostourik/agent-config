@@ -70,7 +70,9 @@
   Reading your own code is not verification.
 - Verify the way the project does. Look for its process in its instructions, docs, and skills.
 - Run focused tests, type checks, and lint checks appropriate to the change.
-- If you can't verify, say exactly what is unverified and how I can check it.
+- Verify everything you can reach. If you can write the steps for me, run them yourself.
+  Report a gap only when it needs something you don't have, such as production access, a device,
+  or a credential, and name that thing.
 - Manual steps for me must be complete and exact: where to click, what to enter, in what order.
 
 ## Git
