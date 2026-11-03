@@ -132,7 +132,12 @@ Write and make executable:
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
   - `after-feature.sh` closing the feature's session, and cleanup closing every session the
-    run opened and removing its `<session>.err` files under `~/.cache/ms-playwright/daemon/`.
+    run opened and removing its `<session>.err` files under `~/.cache/ms-playwright/daemon/`;
+    the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
+  - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
+    found in minutes;
+  - a sign-in helper that saves each account's storage state once per run and loads it in
+    one call.
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
@@ -150,9 +155,11 @@ Then write `PROJECT.md`, under about 10 KB, with these sections:
 - **Focused checks:** the test, lint and type-check commands.
 - **Gotchas:** traps that hold for several features, one line each with the fix. A trap of
   one feature stays in that recipe's header. Start with the driver's.
-  Playwright CLI: `click` and `fill` do not wait for the element, so wait in `run-code`
-  first; a `confirm()` dialog blocks every command until it is handled; a role name matches
-  as a substring unless `exact: true`.
+  Playwright CLI: act through `run-code` only. The CLI's `click` and `press` wait 6 to 10 s
+  for the network to go quiet and do not wait for the element; a `run-code` click takes
+  about a second. After a click that navigates, wait for the new URL or state before the
+  next check. A `confirm()` dialog blocks every command until it is handled; a role name
+  matches as a substring unless `exact: true`.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
@@ -222,7 +229,8 @@ Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe run
 from a fresh environment while the others run in parallel. Then run `bin/verify all` again
 on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
 a recorder with its summary line. Write the `--jobs` value that worked into `PROJECT.md`
-when it is not the default. When `# alone` features remain, write the lane count that keeps
+when it is not the default; raise `--jobs` while the machine has idle cores, since a
+browser-driven drive is limited by how many features run at once. When `# alone` features remain, write the lane count that keeps
 the full drive shortest into the skill's `lanes` file: about their total time divided by the
 longest parallel feature, as far as memory allows. Then check the lifecycle once:
 

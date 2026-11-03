@@ -138,7 +138,8 @@ wait_for 10 api GET /notes?title=verify-create-note
   counts per key, account or caller, so take a new one. Check whether a wait is needed
   before waiting.
 - Do a multi-step UI action in one driver call (one Playwright `run-code` with several
-  actions and their waits): every call costs about a second.
+  actions and their waits): every call costs about a second. Never use the Playwright CLI's
+  `click` or `press`: each waits 6 to 10 s for the network to go quiet.
 - Wait for an event, never a margin: to prove a job left something alone, add an old probe
   item and stop waiting when the job removes it.
 - Make a race impossible instead of racing it: when a job would remove state a step still
