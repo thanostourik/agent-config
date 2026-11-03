@@ -112,6 +112,13 @@ questions is the only work that happens on main.
   explicitly. If it needs main's changes, stop and ask.
 - Force-push only your working branch, and only with `--force-with-lease`. Never force-push main
   or someone else's branch. If a `--force-with-lease` push is rejected, stop and tell me.
+- Stacked PRs: build a stack only when I ask for one or accept a split you proposed. Create and
+  change it only with `gh stack`, never with `gh pr create --base <another PR's branch>`: only
+  GitHub's stacks keep the PRs above open when a lower one merges. Run it without prompts:
+  `gh stack init <branch>`, `gh stack add <branch>`, `gh stack submit --auto`,
+  `gh stack view --json`. Every unmerged layer of your own stack counts as your working branch:
+  rebase and push the layers with `gh stack rebase`, `gh stack sync`, and `gh stack push` without
+  asking. Layers merge one at a time, starting with the one that targets the stack's base.
 - When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
   create merge commits. Squash first only if I ask.
 - When I ask for tourik mode, follow the `tourik` skill. That request is my permission for what

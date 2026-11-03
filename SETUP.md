@@ -20,6 +20,11 @@ after that. Add a section when something new needs steps beyond `./sync`.
    the Apache gate, not the Jira account. When the gate is removed, set
    `"gate": false` and run `./sync --apply` again.
 
+## Stacked PRs
+
+1. Once: `gh extension install github/gh-stack`
+2. Check it: `gh stack --version`
+
 ## render-plan
 
 1. Once, in a normal terminal: `npx postplan auth login`

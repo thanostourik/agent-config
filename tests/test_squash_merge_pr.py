@@ -11,7 +11,8 @@ SCRIPT = Path(__file__).resolve().parents[1] / "bin/squash-merge-pr"
 REPO = "owner/repo"
 
 # Stands in for gh. `pr view` prints pr.json; `pr merge` records its arguments,
-# squashes the branch into main in the local origin, and marks the PR merged.
+# squashes the branch into main in the local origin, and marks the PR merged. The PR
+# is in no stack, and no other PR is based on its branch.
 FAKE_GH = f"""#!{sys.executable}
 import json, os, subprocess, sys
 from pathlib import Path
@@ -39,6 +40,8 @@ elif args[:2] == ["pr", "view"]:
     if enabled:
         text = "\\033[1;37m" + text + "\\033[m"
     print(text, end="" if text.endswith("\\n") else "\\n")
+elif args[0] == "api" and "--method" not in args or args[:2] == ["pr", "list"]:
+    pass
 elif args[:2] == ["pr", "merge"]:
     body_file = args[args.index("--body-file") + 1]
     call = {{"subject": args[args.index("--subject") + 1],
@@ -201,8 +204,7 @@ class SquashMergePrTest(unittest.TestCase):
     def test_refuses_pr_that_is_a_draft_or_from_a_fork_or_not_open(self):
         for override, message in ({"isDraft": True}, "is a draft"), \
                 ({"isCrossRepository": True}, "is from a fork"), \
-                ({"state": "CLOSED"}, "is not open"), \
-                ({"baseRefName": "dev"}, "does not target main"):
+                ({"state": "CLOSED"}, "is not open"):
             with self.subTest(message):
                 self.write_pr(**override)
                 self.assert_refused(message)
