@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
-# verify up                 start or reuse the run's environment (launch.sh, then doctor.sh)
-# verify down               remove the run's environment (cleanup.sh)
+# verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh), plus N extra copies for '# alone' features
+# verify down               remove the run's environment and its lanes (cleanup.sh)
 # verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base
 # verify all                drive every feature
 # verify <feature>...       drive those features
@@ -12,13 +12,14 @@ set -uo pipefail
 skill=$(cd "$(dirname "$0")/.." && pwd)
 root=$(cd "$skill/../../.." && pwd)
 cache=$skill/.cache
-max_jobs=8 deadline=180 base="" dry=""
+max_jobs=8 deadline=180 base="" dry="" lanes=""
 
 args=()
 while (($#)); do
   case $1 in
     --jobs) max_jobs=${2:?--jobs needs a number}; shift 2 ;;
     --deadline) deadline=${2:?--deadline needs seconds}; shift 2 ;;
+    --lanes) lanes=${2:?--lanes needs a number}; shift 2 ;;
     *) args+=("$1"); shift ;;
   esac
 done
@@ -176,7 +177,18 @@ doctor() {
 
 header() { sed -n "s/^# $2:[[:space:]]*//p" "$skill/features/$1.sh"; }
 
+lane_count() { cat "$cache/lanes" 2> /dev/null || echo 0; }
+lane_id() { if (($1 == 0)); then cat "$cache/run-id"; else echo "$(cat "$cache/run-id")-l$1"; fi; }
+
+on_lane() {
+  local lane=$1
+  shift
+  VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") "$@"
+}
+
 run_feature() {
+  local lane=$2
+  export VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane")
   local feature=$1 dir=$cache/drive/$1 start=$SECONDS status limit
   limit=$(header "$feature" deadline)
   limit=${limit:-$deadline}
@@ -219,10 +231,11 @@ line_of() {
 }
 
 drive() {
-  local feature together=() alone=() pids=() started=$SECONDS result=0
+  local feature together=() alone=() pids=() started=$SECONDS result=0 lane count
   (($#)) || { echo "verify: no features to drive" >&2; return 2; }
   [[ -f "$cache/run-id" ]] || { echo "verify: no environment; run 'bin/verify up' first" >&2; return 2; }
-  export VERIFY_RUN_ID=$(cat "$cache/run-id")
+  export VERIFY_RUN_ID=$(cat "$cache/run-id") VERIFY_LANE=0
+  count=$(lane_count)
   run=$cache/drive/.run-$$
   mkdir -p "$run"
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
@@ -232,19 +245,32 @@ drive() {
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
+  run_lane() {
+    local lane=$1 index=0 feature
+    for feature in "${alone[@]}"; do
+      ((index++ % count + 1 == lane)) || continue
+      [[ -e "$run/stop" ]] && break
+      run_feature "$feature" "$lane"
+    done
+  }
+  if ((count > 0)); then
+    for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
+  fi
   for feature in "${together[@]}"; do
-    while (($(jobs -rp | wc -l) >= max_jobs)); do wait -n; done
+    while (($(jobs -rp | wc -l) >= max_jobs + count)); do wait -n; done
     [[ -e "$run/stop" ]] && break
-    run_feature "$feature" &
+    run_feature "$feature" 0 &
     pids+=($!)
   done
   wait
-  for feature in "${alone[@]}"; do
-    [[ -e "$run/stop" ]] && break
-    run_feature "$feature" &
-    pids+=($!)
-    wait
-  done
+  if ((count == 0)); then
+    for feature in "${alone[@]}"; do
+      [[ -e "$run/stop" ]] && break
+      run_feature "$feature" 0 &
+      pids+=($!)
+      wait
+    done
+  fi
   trap - INT TERM
   echo
   echo "Summary ($((SECONDS - started))s, $# features)"
@@ -264,14 +290,31 @@ command=${1:-}
 case $command in
   up)
     [[ -f "$cache/run-id" ]] || echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"
-    export VERIFY_RUN_ID=$(cat "$cache/run-id")
-    "$skill/bin/launch.sh" "$@" || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; exit 1; }
-    doctor "$cache/doctor.log" || { echo "verify: doctor.sh failed after launch, see $cache/doctor.log" >&2; exit 1; }
-    echo "up: $VERIFY_RUN_ID" ;;
+    [[ -z "$lanes" ]] || echo "$lanes" > "$cache/lanes"
+    count=$(lane_count) failed=0
+    if ((count == 0)); then
+      on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
+    else
+      for ((lane = 0; lane <= count; lane++)); do
+        on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 &
+      done
+      for ((lane = 0; lane <= count; lane++)); do wait -n || failed=1; done
+      ((failed == 0)) || tail -n 20 "$cache"/launch-*.log >&2
+    fi
+    ((failed == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; exit 1; }
+    for ((lane = 0; lane <= count; lane++)); do
+      on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; exit 1; }
+    done
+    echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")" ;;
   down)
-    [[ -f "$cache/run-id" ]] && export VERIFY_RUN_ID=$(cat "$cache/run-id")
-    "$skill/bin/cleanup.sh" "$@" || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id"
+    count=$(lane_count) failed=0
+    if [[ -f "$cache/run-id" ]]; then
+      for ((lane = count; lane >= 0; lane--)); do on_lane "$lane" "$skill/bin/cleanup.sh" "$@" || failed=1; done
+    else
+      "$skill/bin/cleanup.sh" "$@" || failed=1
+    fi
+    ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
+    rm -f "$cache/run-id" "$cache/lanes"
     echo "down" ;;
   list)
     for feature in $(all_features); do printf '%s: %s\n' "$feature" "$(summary_of "$feature")"; done ;;
