@@ -1,7 +1,8 @@
 #!/bin/bash
-# squash-merge-pr [PR number or URL]: squash merge the PR for the current branch,
-# update local main, and delete the PR's local and remote branches. In a linked
-# worktree it also removes that worktree. Stops at the first failed command or unmet
+# squash-merge-pr [PR number or URL]: squash merge the PR for the current branch into
+# its base branch, update the local base branch, point open PRs based on the PR's branch
+# at that base, and delete the PR's local and remote branches. In a linked worktree it
+# also removes that worktree. Stops at the first failed command or unmet
 # check, and says which step it was and whether the PR was already merged.
 
 set -euo pipefail
@@ -66,12 +67,18 @@ url=$(field url)
 number=$(field number)
 branch=$(field headRefName)
 head=$(field headRefOid)
+base=$(field baseRefName)
+stack=$(gh api "repos/$repo/pulls/$number" --jq '.stack // empty')
 [ "$(field state)" = OPEN ] || die "$url is not open"
-[ "$(field baseRefName)" = main ] || die "$url does not target main"
+if [ -n "$stack" ]; then
+  [ "$base" = "$(jq -r .base.ref <<< "$stack")" ] || die "$url is stacked on $base; merge the PRs below it first: ${url%/pull/*}/stack/$(jq -r .number <<< "$stack")"
+fi
 [ "$(field isCrossRepository)" = false ] || die "$url is from a fork"
 [ "$(field isDraft)" = false ] || die "$url is a draft"
 [[ $url == */"$repo"/pull/* ]] || die "$url does not belong to origin ($repo)"
 [ "$branch" != main ] || die "the PR's head branch is main"
+base_worktree=$(git worktree list --porcelain | awk -v ref="branch refs/heads/$base" '/^worktree /{path = substr($0, 10)} $0 == ref {print path; exit}')
+[ "$linked" = yes ] || [ -z "$base_worktree" ] || die "$base is checked out in $base_worktree, so this checkout cannot switch to it"
 [ "$(git branch --show-current)" = "$branch" ] || die "the current branch is not the PR's head branch ($branch)"
 [ "$(git rev-parse HEAD)" = "$head" ] || die "the local branch is not at the PR's head commit $head"
 [ "$(field mergeable)" = MERGEABLE ] || die "$url is not mergeable (mergeable: $(field mergeable))"
@@ -98,7 +105,21 @@ field body | awk '
 
 step "merging the PR"
 merged="unknown, check the PR"
-gh pr merge "$url" --repo "$repo" --squash --match-head-commit "$head" --subject "$subject" --body-file "$body_file"
+if [ -z "$stack" ]; then
+  gh pr merge "$url" --repo "$repo" --squash --match-head-commit "$head" --subject "$subject" --body-file "$body_file"
+else
+  # GitHub merges a stacked PR only through its asynchronous merge API.
+  result=$(jq -n --arg sha "$head" --arg title "$subject" --rawfile body "$body_file" \
+    '{merge_method: "squash", sha: $sha, commit_title: $title, commit_message: ($body | sub("\n+$"; ""))}' \
+    | gh api --method PUT "repos/$repo/pulls/$number/merge-async" --input -)
+  uuid=$(jq -r .details.uuid <<< "$result")
+  for _ in $(seq 150); do
+    [ "$(jq -r .status <<< "$result")" = pending ] || break
+    sleep 2
+    result=$(gh api "repos/$repo/pulls/$number/merge-async/$uuid")
+  done
+  [ "$(jq -r .status <<< "$result")" = merged ] || die "GitHub did not merge the PR ($(jq -r '.status + ": " + .details.message' <<< "$result"))"
+fi
 
 step "confirming the merge"
 pr=$(gh pr view "$url" --repo "$repo" --json state,mergeCommit)
@@ -109,21 +130,22 @@ fi
 merged=yes
 merge_commit=$(field mergeCommit.oid)
 
-step "updating main"
-# A branch can be checked out in one worktree only, so a linked worktree cannot switch to main.
-if [ "$linked" = no ]; then
-  git switch main
-  git pull --ff-only origin main
+step "updating $base"
+if [ -n "$base_worktree" ]; then
+  git -C "$base_worktree" pull --ff-only origin "$base"
 else
-  main_worktree=$(git worktree list --porcelain | awk '/^worktree /{path = substr($0, 10)} $0 == "branch refs/heads/main" {print path; exit}')
-  if [ -n "$main_worktree" ]; then
-    git -C "$main_worktree" pull --ff-only origin main
-  else
-    git fetch origin main:main
-  fi
+  git fetch origin "$base:$base"
 fi
-[ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || die "local main differs from origin/main"
-git merge-base --is-ancestor "$merge_commit" main || die "main does not contain the merge commit $merge_commit"
+[ "$linked" = yes ] || git switch "$base"
+[ "$(git rev-parse "refs/heads/$base")" = "$(git rev-parse "refs/remotes/origin/$base")" ] || die "local $base differs from origin/$base"
+git merge-base --is-ancestor "$merge_commit" "refs/heads/$base" || die "$base does not contain the merge commit $merge_commit"
+
+# GitHub closes an open PR whose base branch is deleted.
+step "pointing the PRs based on $branch at $base"
+retargeted=$(gh pr list --repo "$repo" --base "$branch" --state open --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"')
+for dependent in $(cut -d ' ' -f 1 <<< "$retargeted"); do
+  gh pr edit "$dependent" --repo "$repo" --base "$base"
+done
 
 step "deleting the PR branches"
 remote_sha=$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)
@@ -146,10 +168,17 @@ git rev-parse --verify --quiet "refs/heads/$branch" > /dev/null && die "the loca
 if [ "$linked" = yes ]; then
   [ ! -e "$worktree" ] || die "the worktree $worktree still exists"
 else
-  [ "$(git branch --show-current)" = main ] || die "the current branch is not main"
+  [ "$(git branch --show-current)" = "$base" ] || die "the current branch is not $base"
   [ -z "$(git status --porcelain)" ] || die "the working tree is not clean"
 fi
 
 removed=
 [ "$linked" = no ] || removed=" The worktree $worktree is removed."
-echo "Merged $url as $merge_commit. Local main is up to date; $branch is deleted locally and on origin.$removed"
+echo "Merged $url as $merge_commit. Local $base is up to date; $branch is deleted locally and on origin.$removed"
+if [ -n "$stack" ] && [ "$(jq '.size > .position' <<< "$stack")" = true ]; then
+  echo "GitHub rebased the stacked PRs above it. In a checkout of one of them, update their local branches with: gh stack sync"
+fi
+while read -r dependent dependent_branch; do
+  [ -n "$dependent" ] || continue
+  echo "PR #$dependent now targets $base. In the checkout of $dependent_branch, drop $branch's commits from it with: git fetch origin && git rebase --onto origin/$base $head && git push --force-with-lease"
+done <<< "$retargeted"
