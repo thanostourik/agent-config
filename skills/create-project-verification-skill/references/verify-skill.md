@@ -176,7 +176,9 @@ fewer exist)
 data your recipe created. A step label never contains a comma. The environment is
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
 blocked with its last summary line. A defect in a helper: fix it when the fix is small and
-cannot break other features, and name it in your result line; otherwise report
+cannot break other features, by writing a copy and moving it over the helper with mv (other
+drives are running it, and bash reads a script while it runs), and name it in your result
+line; otherwise report
 blocked: helper <name>: <defect>. Behavior another feature covers is setup here, with no
 checks of its own. Return one line per feature: passed, product defect: <what>, or
 blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
