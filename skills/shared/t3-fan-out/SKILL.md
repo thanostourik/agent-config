@@ -118,4 +118,4 @@ Only when the user asks for delegates. The steps above stay, with these changes:
 ## Report
 
 When every thread has finished, send one report with one line per thread: its
-verdict, its PR link, and anything its thread reported as unverified.
+verdict and its PR link.

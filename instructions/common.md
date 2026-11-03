@@ -71,8 +71,14 @@
 - Verify the way the project does. Look for its process in its instructions, docs, and skills.
 - Run focused tests, type checks, and lint checks appropriate to the change.
 - Verify everything you can reach. If you can write the steps for me, run them yourself.
-  Report a gap only when it needs something you don't have, such as production access, a device,
-  or a credential, and name that thing.
+  Reachable means anything you can do on a run you own: change its config, stop or pause its
+  containers, seed data, run its tests, compile.
+- Report a gap only when it needs access you don't have: production, a device, a credential,
+  a paid outside service, or a decision of mine. Name that thing. A fake that stands in for an
+  outside service is not a gap. A missing switch in our own tooling is not a gap either: work
+  around it on your own run.
+- Never end a report with a standing "unverified" section. When you brief another agent, do not
+  ask it for one.
 - Manual steps for me must be complete and exact: where to click, what to enter, in what order.
 
 ## Git
