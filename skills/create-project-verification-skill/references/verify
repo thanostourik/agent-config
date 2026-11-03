@@ -263,36 +263,31 @@ drive() {
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
   doctor "$run/doctor.log" || { echo "verify: doctor.sh failed, see $run/doctor.log" >&2; return 2; }
   for feature in "$@"; do
-    rm -rf "${cache:?}/drive/$feature"
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
+  ((${#alone[@]})) && mapfile -t alone < <(for feature in "${alone[@]}"; do echo "$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 0) $feature"; done | sort -rn | cut -d' ' -f2)
+  for feature in "$@"; do rm -rf "${cache:?}/drive/$feature"; done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
   run_lane() {
-    local lane=$1 index=0 feature
+    local lane=$1 feature
     for feature in "${alone[@]}"; do
-      ((index++ % count + 1 == lane)) || continue
       [[ -e "$run/stop" ]] && break
+      mkdir "$run/claim-$feature" 2> /dev/null || continue
       run_feature "$feature" "$lane"
     done
   }
-  if ((count > 0)); then
-    for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
-  fi
+  for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
+  local together_pids=()
   for feature in "${together[@]}"; do
     while (($(jobs -rp | wc -l) >= max_jobs + count)); do wait -n; done
     [[ -e "$run/stop" ]] && break
     run_feature "$feature" 0 &
-    pids+=($!)
+    pids+=($!) together_pids+=($!)
   done
+  for pid in "${together_pids[@]}"; do wait "$pid"; done
+  run_lane 0 &
+  pids+=($!)
   wait
-  if ((count == 0)); then
-    for feature in "${alone[@]}"; do
-      [[ -e "$run/stop" ]] && break
-      run_feature "$feature" 0 &
-      pids+=($!)
-      wait
-    done
-  fi
   trap - INT TERM
   echo
   echo "Summary ($((SECONDS - started))s, $# features)"
