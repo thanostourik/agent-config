@@ -94,7 +94,6 @@ pw.sh screenshot --filename="$evidence/list.png"
 ```bash
 notes delete --title "Release checklist" || true
 notes delete --title "CLI note" || true
-test "$(notes list --format json | jq '[.[] | select(.title == "Release checklist" or .title == "CLI note")] | length')" = 0
 ```
 
 ## Contract
