@@ -231,6 +231,7 @@ run_feature() {
   limit=${limit:-$deadline}
   mkdir -p "$cache/drive"
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
+  start=$SECONDS
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
   echo "$limit" > "$dir/deadline"
@@ -239,6 +240,8 @@ run_feature() {
   status=$?
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
+  line_of "$feature" > "$run/line-$feature"
+  echo $? > "$run/rc-$feature"
   rm -rf "$cache/drive/.lock-$feature"
   if ((status)) && [[ ! -e "$run/stop" ]] && ! doctor "$run/doctor.log"; then
     echo "$feature" > "$run/stop"
@@ -248,7 +251,6 @@ run_feature() {
 
 line_of() {
   local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds known
-  [[ -e "$dir/status" ]] || { echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $run/doctor.log)"; return 1; }
   status=$(cat "$dir/status") seconds=$(cat "$dir/seconds")
   [[ -e "$dir/step" ]] && step=$(cat "$dir/step")
   [[ -e "$dir/result" ]] && result=$(head -n 1 "$dir/result")
@@ -310,7 +312,18 @@ drive() {
   trap - INT TERM
   echo
   echo "Summary ($((SECONDS - started))s, $# features)"
-  for feature in "$@"; do line_of "$feature" > "$run/line" || grep -q '(known failure)' "$run/line" || result=1; cat "$run/line"; done
+  for feature in "$@"; do
+    if [[ -f "$run/line-$feature" ]]; then
+      cat "$run/line-$feature"
+      (($(cat "$run/rc-$feature") == 0)) || grep -q '(known failure)' "$run/line-$feature" || result=1
+    elif [[ -s "$run/stop" ]]; then
+      echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $cache/doctor-failed.log)"
+      result=1
+    else
+      echo "$feature: not run"
+      result=1
+    fi
+  done
   local driven=0 skipped=0
   for feature in "$@"; do
     driven=$((driven + $(grep -c '^# expects:' "$skill/features/$feature.sh")))
