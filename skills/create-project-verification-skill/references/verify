@@ -291,7 +291,7 @@ drive() {
   trap - INT TERM
   echo
   echo "Summary ($((SECONDS - started))s, $# features)"
-  for feature in "$@"; do line_of "$feature" || result=1; done
+  for feature in "$@"; do line_of "$feature" > "$run/line" || grep -q '(known failure)' "$run/line" || result=1; cat "$run/line"; done
   local driven=0 skipped=0
   for feature in "$@"; do
     driven=$((driven + $(grep -c '^# expects:' "$skill/features/$feature.sh")))

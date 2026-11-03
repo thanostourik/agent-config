@@ -120,6 +120,9 @@ Write and make executable:
 - Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
+- A helper that runs a command inside a container passes environment overrides through
+  (`bin/cli -e KEY=VALUE <command>`), so a recipe can point one command at its own schema,
+  prefix or folder.
 - Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
   own harness, `pw.sh` runs the Playwright CLI (`playwright cli`) with:
   - a pinned Playwright version whose browser build is installed (`ls ~/.cache/ms-playwright`),
@@ -175,7 +178,9 @@ Build the environment for speed, because every recipe pays for it on every run:
   `.cache/run/`, so lanes (extra copies of the environment, `bin/verify up --lanes N`) can
   run side by side.
 - Shorten every timer the features wait on in the run's own configuration: job intervals,
-  retry delays, grace periods, expiries, polling. Write each override and the recipes that
+  retry delays, grace periods, expiries, polling. When the project's stack fixes the
+  environment and has no override hook, add one to the stack as part of the repo (such as a
+  compose override file it reads), or note the gap and start the job once per recipe. Write each override and the recipes that
   rely on it into `PROJECT.md`; before shortening a job for all features, check which
   recipes set up the state that job consumes.
 - Keep each copy small so lanes fit in memory: cap worker counts and heap sizes (a JVM
@@ -212,10 +217,11 @@ checks in `PROJECT.md`, and go to step 6.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
    absolute path filled in, up to 8 at once. When the host refuses one, start it when
    another returns; with no helper agents at all, record the rest yourself. Size the groups
-   so all features fit in about four rounds of the recorders you can actually run: 2 or 3
-   related features each, heaviest groups first. Start recorders on the host's fast model
+   to 2 or 3 related features each, heaviest groups first; with more groups than recorders,
+   the rest wait for a free one. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
-   Start them in the background and start a new one as each returns. Give a feature its own
+   Start them in the background and start a new one as each returns; never block on a
+   foreground command while recorders run, or their returns reach you late. Give a feature its own
    namespace (schema, prefix, account, data folder) before marking it `# alone`; when some
    stay `# alone`, run `bin/verify up --lanes 1` first, so they record alongside the
    others. After 25

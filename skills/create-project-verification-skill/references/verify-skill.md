@@ -169,7 +169,8 @@ every command from there. Read
 .agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
 its source, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
 line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
-passes. Last, run your features once together with three others
+passes. Last, run your features once together with three others (all recorded ones when
+fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
