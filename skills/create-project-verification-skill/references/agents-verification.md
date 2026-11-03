@@ -12,7 +12,7 @@ cleanup failures separately.
 
 Run the focused checks relevant to the change as well:
 
-- Tests: `<command>`
-- Lint and type checks: `<command>`
+- Tests: `<command>`, or "none" when the repo has no test suite
+- Lint and type checks: `<command>`, or "none"
 
 `/maintain-project-verification-skill` brings this skill up to date with its generator.

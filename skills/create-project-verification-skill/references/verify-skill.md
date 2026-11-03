@@ -59,7 +59,8 @@ and read its output once. Do not poll it or tail its logs.
 
 A feature is one user-facing capability: a screen, a route group, a command, an endpoint
 group, a job. Its recipe is `features/<feature>.sh`, a bash script that `verify` runs
-under `set -euo pipefail` from the repository root, with `bin/` on `PATH`:
+under `set -euo pipefail` from the repository root, with `bin/` on `PATH` and, when it
+exists, `bin/env.sh` sourced first for the run's values (base URLs, ports, keys):
 
 ```bash
 # Create a note from the browser and the CLI, and confirm the saved note.
@@ -98,12 +99,17 @@ wait_for 10 api GET /notes?title=verify-create-note
   deadline of the expected time plus a margin. Never `sleep` or `waitForTimeout`.
 - Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
   otherwise. On a failure, `bin/observe.sh` saves the app's state there.
-- Every name the recipe creates starts with `verify-<feature>`, or the closest the app's
-  naming rules allow (such as `VERIFY-ITEMS-1`), so features running at once never collide.
+- Every name the recipe creates starts with `verify-<feature>-`, dash included, or the
+  closest the app's naming rules allow (such as `VERIFY-ITEMS-1`), so features running at
+  once never collide. Cleanup matches that whole prefix, dash included: `ingestion` must
+  never delete `ingestion-sources`' data.
   The recipe creates its own data; it never relies on another feature. When leftovers of an
   interrupted run would break a check, call `cleanup` once before creating data.
 - `cleanup()` removes what the recipe created. It always runs, after a failure too. `|| true`
   goes only on a delete whose failure cannot matter.
+- Other features run at the same time on the same environment. Never assume shared state,
+  such as a global counter, a job queue or a list of every user's rows, is quiet: check only
+  what this recipe created, or mark the feature `# alone`.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
@@ -115,7 +121,9 @@ wait_for 10 api GET /notes?title=verify-create-note
 ## Recorders
 
 A recorder is a helper agent that writes one or a few new recipes. Start several at once
-when there are several features, up to 8. Give each this prompt, with the features and their
+when there are several features, up to 8. When the host refuses one, start it again when
+another returns; with no helper agents at all, record the features yourself. Give each this
+prompt, with the features and their
 one-line scopes and the repository's absolute path filled in:
 
 ```
@@ -130,7 +138,10 @@ already up: never run verify up, down or all. Stop a feature after 5 runs, and r
 blocked with its last summary line. Behavior another feature covers is setup here, with no
 checks of its own. Return one line per feature: passed, product defect: <what>, or
 blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
-header. While iterating, drive only your own features. Add one line per trap that cost you a run, for PROJECT.md's Gotchas.
+header. While iterating, drive only your own features. Edit only your own recipes: no git
+branch, commit or stash, and no edit to helpers or PROJECT.md. Stop every process your
+attempts started. Return only those lines, and one line per trap that cost you a run, for
+PROJECT.md's Gotchas.
 Features: <feature>: <scope>; ...
 ```
 

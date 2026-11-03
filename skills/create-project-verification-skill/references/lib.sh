@@ -49,4 +49,5 @@ verify_end() {
 trap 'printf "%s (line %s, exit %s)\n" "$BASH_COMMAND" "$LINENO" "$?" > "$VERIFY_DIR/error"' ERR
 trap verify_end EXIT
 trap 'exit 143' TERM INT
+[[ -f "$VERIFY_SKILL/bin/env.sh" ]] && source "$VERIFY_SKILL/bin/env.sh"
 source "$1"

@@ -201,7 +201,8 @@ line_of() {
   else
     known=""
     header "$feature" "known failure" | grep -q -x -F "$step" && known=" (known failure)"
-    echo "$feature: fail at \"$step\"$known: $(head -c 300 "$dir/error" 2> /dev/null | head -n 1) (${seconds}s, $dir/log)$tail"
+    [[ -s "$dir/error" ]] || grep -v '^\(== \|$\)' "$dir/log" | tail -n 1 > "$dir/error"
+    echo "$feature: fail at \"$step\"$known: $(head -c 300 "$dir/error" | head -n 1) (${seconds}s, $dir/log)$tail"
   fi
   return 1
 }

@@ -13,7 +13,7 @@ Pick one level while generating. Write it into the Isolation section of `PROJECT
 Isolation never blocks the work. Find every way the project runs an environment, such as `local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV, and note for each whether it is isolated and disposable or shared. In a companion repo, look in the app checkouts. Take the first case that applies:
 
 - **State in a folder or file the app takes from a flag or variable** (a CLI's data folder, a server's database file and port): point it at a folder the run owns, at level `full`. Set `HOME` for the run too when the app may fall back to it.
-- **Isolated and disposable:** use it at level `full`, and name it in the report. Ask only when there are several. `local-stack/stack` is the known-good shape (`up --app --stubs --name <run id>`, then `destroy --name <run id>`, with its Compose project label as the ownership marker).
+- **Isolated and disposable:** use it at level `full`, and name it in the report. Ask only when there are several. `local-stack/stack` is the known-good shape (`up --app --stubs --name <run id>`, then `destroy --name <run id>` and removing its lock file under `~/.local/state/local-stacks/`, with its Compose project label as the ownership marker).
 - **Not isolated:** say what it shares, such as "`dev.sh` gives each branch its own stack but still sends real emails", and use it at level `shared` only when the user approves.
 - **None, or the user declines:** ask the user to start the app and say where it answers. Their running app is then the approved resource of level `shared`. When `/create-project-local-stack` is installed, name it in that question as the way to reach `full` later.
 - **The user cannot run the app either:** level `checks-only`.
@@ -36,7 +36,8 @@ An environment is **owned** when the ownership record in `.cache/` lists it and 
 - Note the success paths that isolation makes unreachable. A disabled dependency's error path does not prove its success path.
 - When the app hard-codes a port or host that collides with the developer's, override it from outside, never in the app: a property or environment variable at start, or a small proxy in the run's stack.
 - Inspect startup commands for side effects on files, data and processes. After choosing isolation and cleanup, launch once and compare against the recorded original state.
-- If the app watches files and reloads, write into `.cache/` while it runs. A reload means asking the user.
+- If the app watches files and reloads, run it with watching off or from a copy under `.cache/`: recorders save recipes inside the checkout while it runs, and every save would reload the app under the other features. A reload you cannot avoid means asking the user.
+- A stub for an outside service the app calls, such as a sign-in provider, belongs in the skill's `bin/` and runs inside the run's environment.
 
 ## Lifecycle
 

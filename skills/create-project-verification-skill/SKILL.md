@@ -81,8 +81,9 @@ If the app does not build or start as-is, fix that or report it before going on.
 Choose the isolation level once, following
 [`references/lifecycle.md`](references/lifecycle.md): `full` (default), `shared` or
 `checks-only`. A project with `local-stack/stack` uses it: `launch.sh` runs
-`local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"` and `cleanup.sh` runs
-`local-stack/stack destroy --name "$VERIFY_RUN_ID"`. Ask the user only when `full` is not
+`local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the
+features need, and `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"` and
+removes the stack's lock file under `~/.local/state/local-stacks/`. Ask the user only when `full` is not
 possible.
 
 ## 3. Write the environment and `PROJECT.md`
@@ -95,7 +96,10 @@ Write and make executable:
   `bin/verify up` takes seconds or a short rebuild, not a fresh start. `$VERIFY_RUN_ID` names
   the run and is stable until `bin/verify down`.
 - `cleanup.sh`: removes only what the run created, on success, failure and interruption,
-  and checks that none of it remains. It never checks resources that existed before.
+  and checks that none of it remains. It never checks resources that existed before. With no
+  run recorded, it exits 0.
+- `env.sh` (optional): exports the run's values that recipes and helpers need, such as base
+  URLs, ports and keys, read from the run's record. The runner sources it before each recipe.
 - `doctor.sh`: one fast, read-only check that the environment is this run's and healthy:
   processes up, right checkout, ports owned, sign-in works. It never adopts a process outside
   the run's record.
@@ -117,7 +121,7 @@ Write and make executable:
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
-Then write `PROJECT.md`, under 8 KB, with these sections:
+Then write `PROJECT.md`, under about 10 KB, with these sections:
 
 - **Drivers:** the driver phrase, such as `Playwright CLI and curl`, and why.
 - **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
@@ -129,6 +133,9 @@ Then write `PROJECT.md`, under 8 KB, with these sections:
   or returns, and its deadline when it waits.
 - **Focused checks:** the test, lint and type-check commands.
 - **Gotchas:** traps that cost a run, one line each with the fix. Start with the driver's.
+  Playwright CLI: `click` and `fill` do not wait for the element, so wait in `run-code`
+  first; a `confirm()` dialog blocks every command until it is handled; a role name matches
+  as a substring unless `exact: true`.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`
 and `references/lib.sh` to `bin/`, and write the Claude stub and `.gitignore`. Then run
@@ -151,7 +158,8 @@ checks in `PROJECT.md`, and go to step 6.
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
-   absolute path filled in, up to 8 at once. Give
+   absolute path filled in, up to 8 at once. When the host refuses one, start it when
+   another returns; with no helper agents at all, record the rest yourself. Give
    each one feature, or 2 or 3 related small ones when there are more than 40 features, so
    all of them finish in about four rounds. Start a new one as each returns. After 25
    minutes, start no new recorder and list the features not reached.
@@ -160,7 +168,8 @@ checks in `PROJECT.md`, and go to step 6.
 ## 5. Prove it
 
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
-from a fresh environment while the others run in parallel. Send each failing feature back to
+from a fresh environment while the others run in parallel. Then run `bin/verify all` again
+on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
 a recorder with its summary line. Write the `--jobs` value that worked into `PROJECT.md`
 when it is not the default. Then check the lifecycle once:
 
@@ -176,7 +185,8 @@ when it is not the default. Then check the lifecycle once:
 Write one `## Verification` section in the project's `AGENTS.md` (the companion's, in a
 companion repo; create the file when there is none) from [`references/agents-verification.md`](references/agents-verification.md),
 with `<app>` and the focused check commands filled in. Integrate an existing verification
-section instead of adding a second one. If there is no `CLAUDE.md`, create one holding only
+section instead of adding a second one; a section that points at a verify skill this run
+replaces is rewritten. If there is no `CLAUDE.md`, create one holding only
 `@AGENTS.md`; if one exists without that import, put the same section there too. Replace
 agent instructions for launching the app by hand with a pointer to the skill; leave the
 README's instructions for people. Report an older verification
