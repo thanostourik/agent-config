@@ -54,6 +54,16 @@ def check_config():
         keys = {mode: set(spec_mode.get("vars", {})) for mode, spec_mode in modes.items()}
         if len({frozenset(names) for names in keys.values()}) > 1:
             raise StackError(f"stack.json: every mode of switch {switch!r} must set the same variables")
+        for mode, spec_mode in modes.items():
+            for target, request in spec_mode.get("dependencies", {}).items():
+                where = f"stack.json: {switch}={mode} dependencies.{target}"
+                if not any("stack" in target_mode for target_mode in SWITCHES.get(target, {}).get("modes", {}).values()):
+                    raise StackError(f"{where}: {target!r} is not a switch with a stack mode")
+                if set(request) - {"modes", "env"}:
+                    raise StackError(f"{where}: only \"modes\" and \"env\" are allowed")
+                for key in request.get("env", {}):
+                    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+                        raise StackError(f"{where}: {key!r} must be an upper-case variable name")
 
 
 def parse_args():
@@ -88,7 +98,8 @@ def up(args):
         with registry_lock():
             claim = claim_ports(project)
             write_claim(project, claim)
-        values = {"LOCAL_STACK_GATEWAY_IP": gateway_ip(), **claim["ports"]}
+        values = {"LOCAL_STACK_GATEWAY_IP": gateway_ip(), "LOCAL_STACK_CHECKOUT": str(CHECKOUT), **claim["ports"]}
+        requests = dependency_requests(modes, values)
         records = dependency_records(claim)
         started = []
         for switch, mode in modes.items():
@@ -99,7 +110,7 @@ def up(args):
                     records.append(record)
                 claim["needs"] = records
                 write_claim(project, claim)
-                values.update(start_dependency(switch, record, args.stubs))
+                values.update(start_dependency(switch, record, args.stubs, requests.get(switch, {})))
                 started.append(record)
         for switch, mode in modes.items():
             for key, template in SWITCHES[switch]["modes"][mode].get("vars", {}).items():
@@ -389,9 +400,27 @@ def dependency_record(switch, checkout_variable, project):
     return {"switch": switch, "checkout": str(command.parent.parent), "name": project}
 
 
-def start_dependency(switch, record, stubs):
+def dependency_requests(modes, values):
+    requests = {}
+    for switch, mode in modes.items():
+        for target, request in SWITCHES[switch]["modes"][mode].get("dependencies", {}).items():
+            merged = requests.setdefault(target, {"modes": {}, "env": {}})
+            for target_switch, target_mode in request.get("modes", {}).items():
+                if merged["modes"].get(target_switch, target_mode) != target_mode:
+                    raise StackError(f"two modes ask dependency {target!r} for different {target_switch!r} modes")
+                merged["modes"][target_switch] = target_mode
+            for key, template in request.get("env", {}).items():
+                value = interpolate(template, values, f"{switch}={mode} dependencies.{target}.env.{key}")
+                if merged["env"].get(key, value) != value:
+                    raise StackError(f"two modes give dependency {target!r} different values of {key}")
+                merged["env"][key] = value
+    return requests
+
+
+def start_dependency(switch, record, stubs, request):
     command = Path(record["checkout"]) / "local-stack" / "stack"
-    run_dependency(record, "up", "--app", *(["--stubs"] if stubs else []))
+    mode_args = [f"--mode={target_switch}={mode}" for target_switch, mode in request.get("modes", {}).items()]
+    run_dependency(record, "up", "--app", *(["--stubs"] if stubs else []), *mode_args, env=request.get("env", {}))
     output = subprocess.run([str(command), "env", "--provides", "--name", record["name"]], capture_output=True, text=True, check=True).stdout
     prefix = re.sub(r"[^A-Z0-9]+", "_", switch.upper())
     values = {}
@@ -401,12 +430,12 @@ def start_dependency(switch, record, stubs):
     return values
 
 
-def run_dependency(record, *command):
+def run_dependency(record, *command, env=None):
     stack = Path(record["checkout"]) / "local-stack" / "stack"
     if not stack.exists():
         print(f"stack: skipping dependency {stack}, which no longer exists", file=sys.stderr)
         return
-    result = subprocess.run([str(stack), *command, "--name", record["name"]])
+    result = subprocess.run([str(stack), *command, "--name", record["name"]], env={**os.environ, **(env or {})})
     if result.returncode != 0:
         raise StackError(f"dependency stack {stack} {command[0]} failed")
 
