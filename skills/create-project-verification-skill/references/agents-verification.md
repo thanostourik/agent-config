@@ -1,34 +1,18 @@
 ## Verification
 
-Before calling <work-scope> complete, use
-[verify-<app>](.agents/skills/verify-<app>/SKILL.md) to select and run the relevant
-checks. Update the [feature map](.agents/skills/verify-<app>/features/README.md)
-when behavior is added, changed or removed. The skill decides which features
-need a live drive and when focused checks suffice. Unchanged intended behavior
-does not exempt a refactor from verification.
+Before calling work on <app> complete, verify it with
+[verify-<app>](.agents/skills/verify-<app>/SKILL.md): `bin/verify up`, update the recipes
+for behavior the change adds, alters or removes, `bin/verify affected`, fix failures, and
+`bin/verify down` at the end. Drive only the features the change affects; `bin/verify all`
+only when asked. Unchanged intended behavior does not exempt a refactor.
 
-Follow the skill's Isolation, Launch, Doctor and Cleanup sections. Never attach
-to or change services and data the verification did not create. Report an
-occupied required resource as a blocker. Remove what the run created and keep
-the evidence. Do not reset an environment at startup to cover for incomplete
-cleanup.
+Never attach to or change services and data the verification did not create. Report each
+driven feature as pass, fail or blocked, with evidence links to absolute paths, and report
+cleanup failures separately.
 
-Report actual coverage as pass, fail, partial or blocked, with omitted checks
-and failures stated. Source-only maintenance is not live verification. Link
-evidence with absolute Markdown targets resolved from the current checkout, and
-check that the files exist after cleanup. Report cleanup failures and any
-remaining resources.
-
-Keep the map current with
-[maintain-verify-<app>](.agents/skills/maintain-verify-<app>/SKILL.md):
-`/maintain-verify-<app>` (features with new and changed steps),
-`/maintain-verify-<app> map only` (no drives) or
-`/maintain-verify-<app> full audit` (every feature). Use
-`/maintain-project-verification-skill` to update these skills to the current
-generator.
-
-Run the focused tests, lint and type checks relevant to the change as well as any
-required feature drives. Follow the repository's commands below.
+Run the focused checks relevant to the change as well:
 
 - Tests: `<command>`
 - Lint and type checks: `<command>`
+
+`/maintain-project-verification-skill` brings this skill up to date with its generator.

@@ -124,7 +124,7 @@ lint() {
     [[ -f "$file" ]] || { echo "$feature: no features/$feature.sh"; problems=1; continue; }
     report() { echo "$feature: $1"; problems=1; }
     [[ "$(head -n 1 "$file")" == "# "?* ]] || report "line 1 is not a '# <summary>' comment"
-    grep -q '^# touches:' "$file" || report "no '# touches:' line"
+    grep -q -E '^# touches:[[:space:]]*[^[:space:]]' "$file" || report "no '# touches:' line naming the feature's source files"
     while IFS= read -r path; do
       [[ "$path" == */ || "$path" == *[*?]* ]] && { report "touches '$path': name files, not folders or globs"; continue; }
       [[ -e "$(resolve "$path")" ]] || report "touches '$path', which does not exist"
@@ -143,7 +143,7 @@ doctor() {
 }
 
 run_feature() {
-  local feature=$1 dir=$cache/run/$1 start=$SECONDS status
+  local feature=$1 dir=$cache/drive/$1 start=$SECONDS status
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
   VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
@@ -151,14 +151,14 @@ run_feature() {
   status=$?
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
-  if ((status)) && [[ ! -e "$cache/run/stop" ]] && ! doctor; then
-    echo "$feature" > "$cache/run/stop"
+  if ((status)) && [[ ! -e "$cache/drive/stop" ]] && ! doctor; then
+    echo "$feature" > "$cache/drive/stop"
   fi
 }
 
 line_of() {
-  local feature=$1 dir=$cache/run/$1 step="" result="" status seconds
-  [[ -e "$dir/status" ]] || { echo "$feature: not run (doctor failed after $(cat "$cache/run/stop" 2> /dev/null), see $cache/doctor.log)"; return 1; }
+  local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds
+  [[ -e "$dir/status" ]] || { echo "$feature: not run (doctor failed after $(cat "$cache/drive/stop" 2> /dev/null), see $cache/doctor.log)"; return 1; }
   status=$(cat "$dir/status") seconds=$(cat "$dir/seconds")
   [[ -e "$dir/step" ]] && step=$(cat "$dir/step")
   [[ -e "$dir/result" ]] && result=$(head -n 1 "$dir/result")
@@ -183,20 +183,20 @@ drive() {
   export VERIFY_RUN_ID=$(cat "$cache/run-id")
   lint "$@" > "$cache/lint.txt" || { cat "$cache/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; return 2; }
   doctor || { echo "verify: doctor.sh failed, see $cache/doctor.log" >&2; return 2; }
-  rm -rf "$cache/run" && mkdir -p "$cache/run"
+  rm -rf "$cache/drive" && mkdir -p "$cache/drive"
   for feature in "$@"; do
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
   for feature in "${together[@]}"; do
     while (($(jobs -rp | wc -l) >= max_jobs)); do wait -n; done
-    [[ -e "$cache/run/stop" ]] && break
+    [[ -e "$cache/drive/stop" ]] && break
     run_feature "$feature" &
     pids+=($!)
   done
   wait
   for feature in "${alone[@]}"; do
-    [[ -e "$cache/run/stop" ]] && break
+    [[ -e "$cache/drive/stop" ]] && break
     run_feature "$feature" &
     pids+=($!)
     wait

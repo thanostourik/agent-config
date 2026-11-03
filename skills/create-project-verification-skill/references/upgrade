@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# upgrade [<skill folder>]: bring a project's verify-<app> skill to this generator, from the repository root.
+# Copies the shipped files, converts Markdown recipes to scripts, removes the old machinery, and prints what is left for an agent.
+set -euo pipefail
+
+generator=$(cd "$(dirname "$0")/.." && pwd)
+shipped=$generator/references
+if (($#)); then
+  skill=${1%/}
+else
+  mapfile -t found < <(ls -d .agents/skills/verify-*/ 2> /dev/null)
+  ((${#found[@]} == 1)) || { echo "upgrade: found ${#found[@]} verify skills; pass one folder" >&2; exit 2; }
+  skill=${found[0]%/}
+fi
+[[ -d "$skill" && -e .git ]] || { echo "upgrade: run it from the repository root, with an existing skill folder" >&2; exit 2; }
+app=${skill##*/verify-}
+keep=$skill/.cache/upgrade
+mkdir -p "$keep" "$skill/bin" "$skill/features"
+todo=()
+
+if [[ -f "$skill/SKILL.md" ]] && ! grep -q 'shipped by `create-project-verification-skill`' "$skill/SKILL.md"; then
+  cp "$skill/SKILL.md" "$keep/SKILL.md"
+fi
+[[ -f "$skill/features/README.md" ]] && cp "$skill/features/README.md" "$keep/README.md"
+
+cp "$shipped/verify" "$shipped/lib.sh" "$skill/bin/"
+chmod +x "$skill/bin/verify" "$skill/bin/lib.sh"
+sed "s/<app>/$app/g" "$shipped/verify-skill.md" > "$skill/SKILL.md"
+description=$(sed -n 's/^description: //p' "$skill/SKILL.md")
+mkdir -p ".claude/skills/verify-$app"
+sed -e "s/<skill name>/verify-$app/g" -e "s|^description: .*|description: $description|" "$shipped/claude-stub.md" > ".claude/skills/verify-$app/SKILL.md"
+grep -q -x '.cache/' "$skill/.gitignore" 2> /dev/null || echo '.cache/' >> "$skill/.gitignore"
+
+convert() {
+  awk '
+    NR == 1 && /^# / { title = substr($0, 3); next }
+    title != "" && summary == "" && /^[^#[:space:]]/ { summary = $0; next }
+    /^## Driving it with/ { driving = 1; next }
+    driving && /^## / { driving = 0 }
+    !driving { next }
+    in_block {
+      if ($0 ~ /^```[[:space:]]*$/) in_block = 0
+      else if (label == "Clean up") clean = clean "  " $0 "\n"
+      else steps = steps $0 "\n"
+      next
+    }
+    /^Preconditions:/ { if ($0 ~ /Runs alone/) alone = 1; label = "Preconditions"; pending = 1; next }
+    /^- \*\*/ {
+      if (pending) missing = 1
+      label = $0; sub(/^- \*\*/, "", label); sub(/\*\*.*/, "", label); sub(/\.$/, "", label)
+      pending = 1
+      next
+    }
+    /^```bash[[:space:]]*$/ && pending {
+      in_block = 1; pending = 0
+      if (label != "Clean up") { quoted = label; gsub(/["$`\\]/, "\\\\&", quoted); steps = steps "\nstep \"" quoted "\"\n" }
+    }
+    END {
+      if (pending || missing || steps == "") exit 3
+      sub(/[.] .*$/, ".", summary)
+      print "# " (summary != "" ? summary : title)
+      print "# touches:"
+      if (alone) print "# alone"
+      if (clean != "") printf "\ncleanup() {\n%s}\n", clean
+      printf "%s", steps
+    }
+  ' "$1"
+}
+
+converted=() unconverted=()
+for recipe in "$skill"/features/*.md; do
+  [[ -f "$recipe" ]] || continue
+  feature=$(basename "$recipe" .md)
+  [[ "$feature" == README ]] && continue
+  if convert "$recipe" > "$keep/$feature.sh" && bash -n "$keep/$feature.sh" 2> /dev/null; then
+    mv "$keep/$feature.sh" "$skill/features/$feature.sh"
+    cp "$recipe" "$keep/$feature.md"
+    rm "$recipe"
+    converted+=("$feature")
+  else
+    unconverted+=("$feature")
+  fi
+done
+if [[ -f "$skill/features/README.md" ]] && ((${#unconverted[@]} == 0)); then rm "$skill/features/README.md"; fi
+rm -f "$skill/features/last-reviewed"
+
+removed=()
+for old in drive.sh steps.sh rec.sh find.sh; do
+  [[ -e "$skill/bin/$old" ]] && { rm "$skill/bin/$old"; removed+=("bin/$old"); }
+done
+for old in ".agents/skills/maintain-verify-$app" ".claude/skills/maintain-verify-$app"; do
+  [[ -e "$old" ]] && { rm -r "$old"; removed+=("$old"); }
+done
+for helper in "$skill"/bin/*; do
+  [[ -f "$helper" ]] || continue
+  sed -i '/^source "$(dirname "$0")\/steps.sh" && export_apps "$(dirname "$0")\/..\/apps"$/d' "$helper"
+done
+
+echo "Upgraded $skill to the current generator."
+((${#converted[@]})) && echo "Converted to scripts: ${converted[*]}"
+((${#removed[@]})) && echo "Removed: ${removed[*]}"
+echo
+echo "Left for an agent:"
+[[ -f "$skill/PROJECT.md" ]] || todo+=("Write $skill/PROJECT.md from $keep/SKILL.md and $keep/README.md, as the generator's step 3 describes.")
+((${#unconverted[@]})) && todo+=("No bash blocks to convert in: ${unconverted[*]}. Send them to recorders, then delete $skill/features/README.md.")
+mapfile -t empty < <(grep -L -E '^# touches:[[:space:]]*[^[:space:]]' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
+((${#empty[@]})) && todo+=("Fill '# touches:' from the source of: ${empty[*]}.")
+stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify' "$skill"/bin/* "$skill"/PROJECT.md 2> /dev/null | grep -v -E '/bin/(verify|lib\.sh)$' || true)
+[[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")
+[[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh.")
+for script in launch.sh cleanup.sh doctor.sh; do
+  [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
+done
+((${#converted[@]})) && todo+=("Make bin/launch.sh idempotent: a second bin/verify up reuses the run's environment and restarts only the app.")
+grep -q -s 'maintain-verify' AGENTS.md CLAUDE.md && todo+=("Replace the ## Verification section of AGENTS.md (and CLAUDE.md) with the generator's references/agents-verification.md.")
+if ((${#todo[@]})); then printf -- '- %s\n' "${todo[@]}"; else echo "- nothing"; fi
