@@ -116,10 +116,11 @@ wait_for 10 api GET /notes?title=verify-create-note
 
 A recorder is a helper agent that writes one or a few new recipes. Start several at once
 when there are several features, up to 8. Give each this prompt, with the features and their
-one-line scopes filled in:
+one-line scopes and the repository's absolute path filled in:
 
 ```
-You record end-to-end recipes for verify-<app>. From the repository root, read
+You record end-to-end recipes for verify-<app>. The repository root is <absolute path>; run
+every command from there. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
 .agents/skills/verify-<app>/PROJECT.md, and the shortest recipe in
 .agents/skills/verify-<app>/features/. Then, for each feature below, read its source, write

@@ -107,8 +107,13 @@ Write and make executable:
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
 - Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
-  own harness, `pw.sh` runs `npx playwright cli -s="$VERIFY_SESSION" "$@"` with its output
-  under `.cache/`, page snapshots silenced, and cleanup closing its sessions.
+  own harness, `pw.sh` runs the Playwright CLI (`playwright cli`) with:
+  - a pinned Playwright version whose browser build is installed (`ls ~/.cache/ms-playwright`),
+    called through its installed binary, not `npx` on every call;
+  - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
+    checkouts never share a browser session, and its output under `.cache/`;
+  - `--raw` to silence page snapshots, and the output of `open` sent to a file;
+  - cleanup closing every session the run opened.
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
@@ -145,7 +150,8 @@ checks in `PROJECT.md`, and go to step 6.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean.
-3. Start recorders with the prompt in the skill's Recorders section, up to 8 at once. Give
+3. Start recorders with the prompt in the skill's Recorders section, with the repository's
+   absolute path filled in, up to 8 at once. Give
    each one feature, or 2 or 3 related small ones when there are more than 40 features, so
    all of them finish in about four rounds. Start a new one as each returns. After 25
    minutes, start no new recorder and list the features not reached.
@@ -162,8 +168,8 @@ when it is not the default. Then check the lifecycle once:
 - Commit, change one file a feature touches, and check that
   `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
   every new recipe counts as changed. Undo the change.
-- Check that `bin/verify down` leaves nothing of the run: no process, port, container or file
-  outside `.cache/evidence/`.
+- Check that `bin/verify down` leaves nothing of the run outside `.cache/`: no process, port,
+  container, browser session or file.
 
 ## 6. Instructions and hand-over
 
@@ -172,7 +178,8 @@ companion repo; create the file when there is none) from [`references/agents-ver
 with `<app>` and the focused check commands filled in. Integrate an existing verification
 section instead of adding a second one. If there is no `CLAUDE.md`, create one holding only
 `@AGENTS.md`; if one exists without that import, put the same section there too. Replace
-superseded manual launch recipes with a pointer to the skill. Report an older verification
+agent instructions for launching the app by hand with a pointer to the skill; leave the
+README's instructions for people. Report an older verification
 system instead of deleting it.
 
 Merge `Bash(sudo:*)` into `permissions.deny` of `.claude/settings.json`, keeping the rest.
