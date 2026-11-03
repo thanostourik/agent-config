@@ -42,6 +42,9 @@ verify_end() {
   printf '\n== Clean up (%ss)\n' "$SECONDS"
   (set -e; cleanup)
   cleanup_status=$?
+  if [[ -x "$VERIFY_SKILL/bin/after-feature.sh" ]]; then
+    timeout 60 "$VERIFY_SKILL/bin/after-feature.sh" || cleanup_status=1
+  fi
   ((cleanup_status == 0)) || printf 'cleanup-failed\n' >> "$VERIFY_DIR/result"
   exit "$status"
 }

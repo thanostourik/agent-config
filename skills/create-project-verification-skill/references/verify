@@ -59,10 +59,18 @@ resolve() {
   fi
 }
 
+default_branch() {
+  local ref
+  ref=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD) && { echo "$ref"; return; }
+  for ref in main master; do
+    git -C "$1" rev-parse -q --verify "$ref^{commit}" > /dev/null && { echo "$ref"; return; }
+  done
+  return 1
+}
+
 changed_in() {
   local dir=$1 ref merge
-  ref=${base:-$(git -C "$dir" symbolic-ref -q --short refs/remotes/origin/HEAD)}
-  ref=${ref:-main}
+  ref=${base:-$(default_branch "$dir")} || { echo "verify: no default branch in $dir; pass --base <ref>" >&2; return 1; }
   merge=$(git -C "$dir" merge-base "$ref" HEAD 2> /dev/null) || { echo "verify: no merge base of $ref in $dir; pass --base <ref>" >&2; return 1; }
   { git -C "$dir" diff --name-only "$merge"; git -C "$dir" ls-files -o --exclude-standard; } | sort -u
 }
@@ -106,6 +114,7 @@ select_affected() {
   local file feature helper hit features=() untouched=()
   mapfile -t features < <(all_features)
   : > "$cache/affected"
+  changed_files > "$cache/changed" || return 1
   while IFS= read -r file; do
     hit=""
     case $file in
@@ -125,7 +134,7 @@ select_affected() {
         done ;;
     esac
     [[ -n "$hit" ]] || untouched+=("$file")
-  done < <(changed_files)
+  done < "$cache/changed"
   if [[ -s "$cache/affected" ]]; then
     echo "Selected:"
     sort -u "$cache/affected" | awk -F '\t' '{ print "  " $1 ": " $2 }'
@@ -217,6 +226,7 @@ drive() {
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
   doctor "$run/doctor.log" || { echo "verify: doctor.sh failed, see $run/doctor.log" >&2; return 2; }
   for feature in "$@"; do
+    rm -rf "${cache:?}/drive/$feature"
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM

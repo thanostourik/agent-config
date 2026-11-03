@@ -135,11 +135,13 @@ every command from there. Read
 .agents/skills/verify-<app>/features/<feature>.sh, and run
 .agents/skills/verify-<app>/bin/verify <feature> until it passes. The environment is
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
-blocked with its last summary line. Behavior another feature covers is setup here, with no
+blocked with its last summary line. A defect in a helper: fix it when the fix is small and
+cannot break other features, and name it in your result line; otherwise report
+blocked: helper <name>: <defect>. Behavior another feature covers is setup here, with no
 checks of its own. Return one line per feature: passed, product defect: <what>, or
 blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
 header. While iterating, drive only your own features. Edit only your own recipes: no git
-branch, commit or stash, and no edit to helpers or PROJECT.md. Stop every process your
+branch, commit or stash, and no edit to PROJECT.md. Stop every process your
 attempts started. Return only those lines, and one line per trap that cost you a run, for
 PROJECT.md's Gotchas.
 Features: <feature>: <scope>; ...

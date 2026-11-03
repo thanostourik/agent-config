@@ -73,6 +73,8 @@ Answer from the codebase; ask only what you cannot observe. Spend minutes, not a
 - **Entry points:** the files that define routes, screens, commands or endpoints, found
   with one grep. That grep becomes `bin/entrypoints.sh`.
 - **Checks:** the focused test, lint and type-check commands.
+- **Sibling repos:** another repo the app needs at run time, such as a backend. Use the path
+  its docs name, else `../<name>`, and write it into `PROJECT.md`.
 
 If the app does not build or start as-is, fix that or report it before going on.
 
@@ -83,7 +85,8 @@ Choose the isolation level once, following
 `checks-only`. A project with `local-stack/stack` uses it: `launch.sh` runs
 `local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the
 features need, and `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"` and
-removes the stack's lock file under `~/.local/state/local-stacks/`. Ask the user only when `full` is not
+removes the lock files under `~/.local/state/local-stacks/` of that stack and of every stack
+it started for a dependency. Ask the user only when `full` is not
 possible.
 
 ## 3. Write the environment and `PROJECT.md`
@@ -100,6 +103,8 @@ Write and make executable:
   run recorded, it exits 0.
 - `env.sh` (optional): exports the run's values that recipes and helpers need, such as base
   URLs, ports and keys, read from the run's record. The runner sources it before each recipe.
+- `after-feature.sh` (optional): runs after every recipe's `cleanup`, such as closing the
+  feature's browser session, so a finished feature holds nothing until `bin/verify down`.
 - `doctor.sh`: one fast, read-only check that the environment is this run's and healthy:
   processes up, right checkout, ports owned, sign-in works. It never adopts a process outside
   the run's record.
@@ -113,11 +118,14 @@ Write and make executable:
 - Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
   own harness, `pw.sh` runs the Playwright CLI (`playwright cli`) with:
   - a pinned Playwright version whose browser build is installed (`ls ~/.cache/ms-playwright`),
-    called through its installed binary, not `npx` on every call;
+    installed under `.cache/` (`npm install --prefix .cache/pw playwright@<version>`) when the
+    project has none, and called through its installed binary, not `npx` on every call;
   - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
     checkouts never share a browser session, and its output under `.cache/`;
-  - `--raw` to silence page snapshots, and the output of `open` sent to a file;
-  - cleanup closing every session the run opened.
+  - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
+    errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
+  - `after-feature.sh` closing the feature's session, and cleanup closing every session the
+    run opened and removing its `<session>.err` files under `~/.cache/ms-playwright/daemon/`.
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
@@ -128,11 +136,13 @@ Then write `PROJECT.md`, under about 10 KB, with these sections:
   markers, and the success paths isolation makes unreachable.
 - **Environment:** what `launch.sh`, `cleanup.sh` and `doctor.sh` do, how long a first and
   a second `bin/verify up` take.
-- **Sign-in and data:** the test accounts and baseline data a recipe can count on.
+- **Sign-in and data:** the test accounts and baseline data a recipe can count on, each
+  checked with one command against the running environment.
 - **Helpers:** one line per helper with one real call as a recipe writes it, what it checks
   or returns, and its deadline when it waits.
 - **Focused checks:** the test, lint and type-check commands.
-- **Gotchas:** traps that cost a run, one line each with the fix. Start with the driver's.
+- **Gotchas:** traps that hold for several features, one line each with the fix. A trap of
+  one feature stays in that recipe's header. Start with the driver's.
   Playwright CLI: `click` and `fill` do not wait for the element, so wait in `run-code`
   first; a `confirm()` dialog blocks every command until it is handled; a role name matches
   as a substring unless `exact: true`.
@@ -159,10 +169,12 @@ checks in `PROJECT.md`, and go to step 6.
    example every recorder copies, so make it clean.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
    absolute path filled in, up to 8 at once. When the host refuses one, start it when
-   another returns; with no helper agents at all, record the rest yourself. Give
-   each one feature, or 2 or 3 related small ones when there are more than 40 features, so
-   all of them finish in about four rounds. Start a new one as each returns. After 25
-   minutes, start no new recorder and list the features not reached.
+   another returns; with no helper agents at all, record the rest yourself. Size the groups
+   so all features fit in about four rounds of the recorders you can actually run: one
+   feature each when there are few, 2 or 3 related ones otherwise. Start a new one as each
+   returns. Record the `# alone` candidates last, while no other recorder drives. After 25
+   minutes, start no new recorder and list the features not reached; sending a failing
+   feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.
 
 ## 5. Prove it
