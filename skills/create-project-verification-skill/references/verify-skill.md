@@ -156,7 +156,7 @@ wait_for 10 api GET /notes?title=verify-create-note
 ## Recorders
 
 A recorder is a helper agent that writes one or a few new recipes. Start several at once
-when there are several features, up to 8. When the host refuses one, start it again when
+when there are several features, up to 12. When the host refuses one, start it again when
 another returns; with no helper agents at all, record the features yourself. Give each this
 prompt, with the features and their
 one-line scopes, the example recipe and the repository's absolute path filled in:

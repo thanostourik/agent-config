@@ -166,12 +166,16 @@ that recipe's header, not here):
   Playwright CLI: act through `run-code` only. The CLI's `click` and `press` wait 6 to 10 s
   for the network to go quiet and do not wait for the element; a `run-code` click takes
   about a second. After a click that navigates, wait for the new URL or state before the
-  next check. A `confirm()` dialog blocks every command until it is handled; a role name
+  next check. After `goto` or `reload`, wait for an element only the client renders before
+  the first click: a click before the page is interactive does nothing. A `confirm()`
+  dialog blocks every command until it is handled; a role name
   matches as a substring unless `exact: true`.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
-`bin/verify up`, then `bin/verify up` again and time both.
+`bin/verify up --lanes 1`, then `bin/verify up` again and time both. The lane lets recorders
+record a feature they mark `# alone` beside the others; when the build bakes ports into an
+image (such as `NEXT_PUBLIC_*` URLs), each lane builds its own.
 
 For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
 folder and builds once, and `doctor.sh` checks that the folder is the run's and the build is
@@ -210,26 +214,30 @@ checks in `PROJECT.md`, and go to step 6.
    each, with a one-line scope and its entry points. Every entry point belongs to exactly
    one feature. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
-   the test names and the docs lines that state its behavior. Every listed test becomes an
-   `# expects:` line, so recorders never search for behavior. A feature's name is its file name and never a `verify` command
+   the test names and the docs lines that state its behavior. Leave out tests of internals
+   (pure functions, formatting, chart math); every remaining listed test becomes an
+   `# expects:` line, so recorders never search for behavior. When the docs have no heading
+   that matches the feature, harvest its tests only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
    (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean. Then drive the main create path by
    hand once: create the same record twice, and read it as a second tenant or user. Write
    what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
-   any recorder starts, so no recorder pays for the same trap.
+   any recorder starts, so no recorder pays for the same trap. Also write the setup helpers
+   several features need, such as signing in as each role, creating an account with a role,
+   or provisioning a subscription or workspace, and call each once: in trials, four
+   recorders each spent minutes working out the same setup alone.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
    absolute path filled in, up to 12 at once. When the host refuses one, start it when
    another returns; with no helper agents at all, record the rest yourself. Size the groups
-   to 2 or 3 related features each, heaviest groups first; with more groups than recorders,
+   to 1 or 2 related features each, heaviest first, so the slowest recorder sets a short
+   end; with more groups than recorders,
    the rest wait for a free one. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background and start a new one as each returns; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
-   namespace (schema, prefix, account, data folder) before marking it `# alone`. Record
-   with `bin/verify up --lanes 1`, so a feature a recorder marks `# alone` records alongside
-   the others. After 25
+   namespace (schema, prefix, account, data folder) before marking it `# alone`. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.

@@ -240,6 +240,7 @@ run_feature() {
   rm -rf "$cache/drive/.lock-$feature"
   if ((status)) && [[ ! -e "$run/stop" ]] && ! doctor "$run/doctor.log"; then
     echo "$feature" > "$run/stop"
+    cp "$run/doctor.log" "$cache/doctor-failed.log"
   fi
 }
 
@@ -277,7 +278,7 @@ drive() {
   run=$cache/drive/.run-$$
   mkdir -p "$run"
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
-  doctor "$run/doctor.log" || { echo "verify: doctor.sh failed, see $run/doctor.log" >&2; return 2; }
+  doctor "$run/doctor.log" || { cp "$run/doctor.log" "$cache/doctor-failed.log"; echo "verify: doctor.sh failed, see $cache/doctor-failed.log" >&2; return 2; }
   for feature in "$@"; do
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
