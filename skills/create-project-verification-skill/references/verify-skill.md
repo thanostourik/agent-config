@@ -147,16 +147,20 @@ A recorder is a helper agent that writes one or a few new recipes. Start several
 when there are several features, up to 8. When the host refuses one, start it again when
 another returns; with no helper agents at all, record the features yourself. Give each this
 prompt, with the features and their
-one-line scopes and the repository's absolute path filled in:
+one-line scopes, the example recipe and the repository's absolute path filled in:
 
 ```
 You record end-to-end recipes for verify-<app>. The repository root is <absolute path>; run
 every command from there. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
-.agents/skills/verify-<app>/PROJECT.md, and the shortest recipe in
-.agents/skills/verify-<app>/features/. Then, for each feature below, read its source, write
-.agents/skills/verify-<app>/features/<feature>.sh, and run
-.agents/skills/verify-<app>/bin/verify <feature> until it passes. The environment is
+.agents/skills/verify-<app>/PROJECT.md, the example recipe
+.agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list
+.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
+its source, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
+line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
+passes. Last, run your features once together with three others
+(bin/verify <yours> <others>), because every drive runs features in parallel: check only
+data your recipe created. A step label never contains a comma. The environment is
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
 blocked with its last summary line. A defect in a helper: fix it when the fix is small and
 cannot break other features, and name it in your result line; otherwise report
@@ -167,7 +171,7 @@ header. While iterating, drive only your own features. Edit only your own recipe
 branch, commit or stash, and no edit to PROJECT.md. Stop every process your
 attempts started. Return only those lines, and one line per trap that cost you a run, for
 PROJECT.md's Gotchas.
-Features: <feature>: <scope>; entry points: <...>; docs and tests: <files>; ...
+Features: <feature>: <scope>; entry points: <...>; ...
 ```
 
 When they return, read only their lines. Add their traps to `PROJECT.md`'s Gotchas when they

@@ -34,6 +34,7 @@ replace it (delete and generate again) or upgrade it with
   PROJECT.md          this project's facts (step 3)
   bin/verify          copied from <generator>/references/verify, unchanged
   bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
+  bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh
   bin/<driver helpers>
   features/<feature>.sh
@@ -152,8 +153,8 @@ Then write `PROJECT.md`, under about 10 KB, with these sections:
   first; a `confirm()` dialog blocks every command until it is handled; a role name matches
   as a substring unless `exact: true`.
 
-Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`
-and `references/lib.sh` to `bin/`, and write the Claude stub and `.gitignore`. Then run
+Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
+`references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
 `bin/verify up`, then `bin/verify up` again and time both.
 
 For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
@@ -167,20 +168,27 @@ checks in `PROJECT.md`, and go to step 6.
 
 1. Group the output of `bin/entrypoints.sh` into features: one user-facing capability
    each, with a one-line scope and its entry points. Every entry point belongs to exactly
-   one feature. Next to each feature, name the docs sections and test files that describe
-   it (one `grep -l` over docs and tests per feature's words); recorders turn those into
-   `# expects:` lines. A feature's name is its file name and never a `verify` command
+   one feature. For each feature, write its expectation list with
+   `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
+   the test names and the docs lines that state its behavior. Every listed test becomes an
+   `# expects:` line, so recorders never search for behavior. A feature's name is its file name and never a `verify` command
    (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
-   example every recorder copies, so make it clean.
+   example every recorder copies, so make it clean. Then drive the main create path by
+   hand once: create the same record twice, and read it as a second tenant or user. Write
+   what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
+   any recorder starts, so no recorder pays for the same trap.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
    absolute path filled in, up to 8 at once. When the host refuses one, start it when
    another returns; with no helper agents at all, record the rest yourself. Size the groups
-   so all features fit in about four rounds of the recorders you can actually run: one
-   feature each when there are few, 2 or 3 related ones otherwise. Start a new one as each
-   returns, so start them in the background when the host can. Record the `# alone`
-   candidates last, while no other recorder drives. After 25
+   so all features fit in about four rounds of the recorders you can actually run: 2 or 3
+   related features each, heaviest groups first. Start recorders on the host's fast model
+   (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
+   Start them in the background and start a new one as each returns. Give a feature its own
+   namespace (schema, prefix, account, data folder) before marking it `# alone`; when some
+   stay `# alone`, run `bin/verify up --lanes 1` first, so they record alongside the
+   others. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.

@@ -166,6 +166,7 @@ lint() {
     while IFS= read -r problem; do report "$problem"; done < <(check_expects "$file")
     grep -n -E '(^|[^A-Za-z0-9_./-])sleep([[:space:]]|$)' "$file" | sed "s/^/$feature: bare sleep, use wait_for: line /" | grep . && problems=1
     grep -n 'waitForTimeout(' "$file" | sed "s/^/$feature: waitForTimeout, wait for the state instead: line /" | grep . && problems=1
+    grep -n -E '^step "[^"]*, ' "$file" | sed "s/^/$feature: a step label with ', ' breaks '# expects:' lines: line /" | grep . && problems=1
     bash -n "$file" 2> /dev/null || report "not valid bash: $(bash -n "$file" 2>&1 | head -n 1)"
   done
   return $problems
