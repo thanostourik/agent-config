@@ -7,10 +7,11 @@ disable-model-invocation: true
 # Squash merge PR
 
 Run only when the user explicitly invokes this skill. A general request to
-merge a PR does not invoke it. Invoking it authorizes the squash merge,
-updating local main, and deleting this PR's local and remote branches without
-asking again. When the checkout is a linked git worktree, it also authorizes
-removing that worktree.
+merge a PR does not invoke it. Invoking it authorizes, without asking again:
+the squash merge into the PR's base branch, updating the local copy of that
+base branch, pointing open PRs based on this PR's branch at that base, and
+deleting this PR's local and remote branches. When the checkout is a linked
+git worktree, it also authorizes removing that worktree.
 
 Run the script from the PR's branch checkout with this exact command. Add the PR
 number or URL after the script name only if the user gave one. The script does
@@ -28,5 +29,7 @@ If the script exits with an error, report its output (the step it stopped at
 and whether the PR was merged) and stop. Do not retry, work around it, or
 finish the remaining steps by hand.
 
-If it succeeds, report the PR link, the merge result, the main update, and the
-branch cleanup result, and the worktree removal if there was one, from its output.
+If it succeeds, report the PR link, the merge result, the base branch update,
+the branch cleanup result, and the worktree removal if there was one, from its
+output. Also report every follow-up command it printed for the PRs that were
+based on this one. Do not run them: they rewrite other branches.

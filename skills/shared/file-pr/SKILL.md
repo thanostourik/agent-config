@@ -13,6 +13,12 @@ description so it matches the branch as it is now. Review the diff locally
 against the intended base branch (`origin/main` when that is the repository's
 default) to make sure its contents match the goal.
 
+When the branch is a layer of a stack (`gh stack view --json` lists it), its
+base is the layer below. Open missing PRs with `gh stack submit --auto`, never
+with `gh pr create`: it opens them as drafts with the right bases and links
+them into the stack on GitHub. Then write each new PR's title and description
+with `gh pr edit`.
+
 PR titles usually become commit messages, so use the conventional commit-message
 format required by the active instructions, including the type and scope. When
 the work has an issue (from the branch name, the user, or Jira), end the title

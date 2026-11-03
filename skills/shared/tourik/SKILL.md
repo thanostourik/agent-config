@@ -38,9 +38,8 @@ you again, so ending the turn early stops the work.
    - Every intended behavior has proof.
    - Every review finding is fixed, declined with a written reason, or
      recorded as `out of scope` by `review-loop`.
-   - The PR has no conflicts with its base. If it has, rebase onto the base,
-     push with `--force-with-lease`, and redo the proof the rebase could
-     change.
+   - The PR has no conflicts with its base. If it has, rebase with the
+     `modernize` skill and redo the proof the rebase could change.
 
    Then mark the PR ready for review, if the active instructions allow
    restricted actions in this repository. Otherwise leave it a draft.
