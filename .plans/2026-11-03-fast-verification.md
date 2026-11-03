@@ -59,7 +59,10 @@ notes create --title verify-create-note --format json | tee "$EVIDENCE/cli.json"
 
 - Steps share variables because the recipe is one script.
 - `# touches:` names the source files the feature uses, files and not folders.
-- `# alone` makes the runner drive the feature by itself.
+- `# alone` makes the runner drive the feature by itself, `# deadline: <seconds>` gives it
+  more than the default, and `# known failure: <step>` marks a reported product defect, so
+  its failure reads `(known failure)` and needs no new diagnosis.
+- A blank line ends the header. A feature name is never a runner command (`list`, `all`).
 - The driver is whatever the project uses, called from bash: the project's own harness,
   Playwright CLI, `curl`, the CLI itself, tmux, CDP, `adb`, a serial port. So one format
   covers every project type.
@@ -72,7 +75,8 @@ notes create --title verify-create-note --format json | tee "$EVIDENCE/cli.json"
   `launch.sh`, `doctor.sh` and `cleanup.sh`. It stays up across checks in one task, and
   `launch.sh` is idempotent: a second call reuses the environment and restarts only the app.
 - `verify affected`: drives the features whose `touches:` names a file changed against the
-  default branch, or whose recipe or helper changed. It lists the changed files that no
+  default branch, or whose recipe changed, or that call a changed helper directly or through
+  another helper. It lists the changed files that no
   feature names, so the agent can add a feature by name and add the file to its `touches:`.
   Selection is a `grep`: no tokens.
 - `verify <feature>...`, `verify all`: parallel (`--jobs`, default 8), `# alone` features
@@ -118,7 +122,7 @@ Isolation levels, ownership rules (`lifecycle.md`) and companion repos stay as t
 ### What goes
 
 `rec.sh`, `steps.sh`, `drive.sh`, `find.sh`, the Markdown recipe format, `features/README.md`,
-contract maps and `## Contract` sections, `last-reviewed`, the known-failure flag, the
+contract maps and `## Contract` sections, `last-reviewed`, the `--known-failure` run flag, the
 conformer, recorder and fixer brief templates, `maintain-verify.md`, `verify-skill-spec.md`
 and the three maintenance modes.
 
