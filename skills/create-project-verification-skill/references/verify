@@ -98,7 +98,7 @@ features_using() {
     added=0
     for other in "$skill"/bin/*; do
       name=$(basename "$other")
-      [[ -f "$other" && " ${helpers[*]} verify lib.sh " != *" $name "* ]] || continue
+      [[ -f "$other" && " ${helpers[*]} verify lib.sh harvest " != *" $name "* ]] || continue
       for helper in "${helpers[@]}"; do
         names "$helper" "$other" && { helpers+=("$name"); added=1; break; }
       done
@@ -122,7 +122,7 @@ select_affected() {
       "$skill_rel"/features/*.sh)
         feature=$(basename "$file" .sh)
         [[ -f "$skill/features/$feature.sh" ]] && { echo "$feature	its recipe changed" >> "$cache/affected"; hit=1; } ;;
-      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh) continue ;;
+      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest) continue ;;
       "$skill_rel"/bin/*)
         helper=$(basename "$file")
         for feature in $(features_using "$helper"); do
