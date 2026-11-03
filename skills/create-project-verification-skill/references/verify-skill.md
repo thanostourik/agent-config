@@ -56,7 +56,7 @@ and read its output once. Do not poll it or tail its logs.
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment.
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
-- `--jobs N` (default 8) and `--deadline SECONDS` per feature (default 180) go anywhere.
+- `--jobs N` (default: the skill's `jobs` file, else 8) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - `verify list`: every feature with its one-line summary. This is the feature map.
 - `verify lint [feature...]`: the recipe rules the runner enforces.
 - `verify up --lanes N`: also start N extra copies of the environment; `# alone` features
@@ -104,7 +104,8 @@ wait_for 10 api GET /notes?title=verify-create-note
   Several labels are joined by `, `. A behavior the run cannot reach gets
   `-> not driven: <reason>`. `verify lint` refuses a line whose step does not exist. Read
   the feature's tests and docs for these lines before writing steps; they are the recipe's
-  depth.
+  depth. When they state little, take the lines from the source: each validation, error
+  response, permission check and side effect of the feature's handlers is a behavior.
 - Optional header lines: `# alone` when the feature changes state other features read, such
   as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already

@@ -6,13 +6,13 @@
 # verify all                drive every feature
 # verify <feature>...       drive those features
 # verify list | lint [feature...] | uncovered
-# Options: --jobs N (default 8), --deadline SECONDS per feature (default 180).
+# Options: --jobs N (default: the skill's jobs file, else 8), --deadline SECONDS per feature (default 180).
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
 root=$(cd "$skill/../../.." && pwd)
 cache=$skill/.cache
-max_jobs=8 deadline=180 base="" dry="" lanes=""
+max_jobs="" deadline=180 base="" dry="" lanes=""
 
 args=()
 while (($#)); do
@@ -24,6 +24,7 @@ while (($#)); do
   esac
 done
 set -- "${args[@]}"
+max_jobs=${max_jobs:-$(cat "$skill/jobs" 2> /dev/null || echo 8)}
 [[ "$max_jobs$deadline" =~ ^[0-9]+$ && $max_jobs -gt 0 && $deadline -gt 0 ]] || { echo "verify: --jobs and --deadline take positive numbers" >&2; exit 2; }
 command -v timeout > /dev/null || { echo "verify: needs GNU timeout (coreutils)" >&2; exit 2; }
 

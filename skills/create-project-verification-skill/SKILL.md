@@ -83,7 +83,11 @@ If the app does not build or start as-is, fix that or report it before going on.
 
 Choose the isolation level once, following
 [`references/lifecycle.md`](references/lifecycle.md): `full` (default), `shared` or
-`checks-only`. A project with `local-stack/stack` uses it: `launch.sh` runs
+`checks-only`. A run never listens on the project's default ports (such as 3000, 5432,
+8080): the developer's own tools connect there and would write into the run. Take ports
+the run picks, or the stack's spare-port option; when the stack has none, add one to it as
+part of the repo. Recipes read every URL and port from `env.sh`, never `localhost:<default>`.
+A project with `local-stack/stack` uses it: `launch.sh` runs
 `local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the
 features need, and `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"` and
 removes the lock files under `~/.local/state/local-stacks/` of that stack and of every stack
@@ -144,7 +148,8 @@ Write and make executable:
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
-Then write `PROJECT.md`, under about 10 KB, with these sections:
+Then write `PROJECT.md`, about 10 KB, with these sections (a trap of one feature goes in
+that recipe's header, not here):
 
 - **Drivers:** the driver phrase, such as `Playwright CLI and curl`, and why.
 - **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
@@ -215,16 +220,16 @@ checks in `PROJECT.md`, and go to step 6.
    what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
    any recorder starts, so no recorder pays for the same trap.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
-   absolute path filled in, up to 8 at once. When the host refuses one, start it when
+   absolute path filled in, up to 12 at once. When the host refuses one, start it when
    another returns; with no helper agents at all, record the rest yourself. Size the groups
    to 2 or 3 related features each, heaviest groups first; with more groups than recorders,
    the rest wait for a free one. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background and start a new one as each returns; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
-   namespace (schema, prefix, account, data folder) before marking it `# alone`; when some
-   stay `# alone`, run `bin/verify up --lanes 1` first, so they record alongside the
-   others. After 25
+   namespace (schema, prefix, account, data folder) before marking it `# alone`. Record
+   with `bin/verify up --lanes 1`, so a feature a recorder marks `# alone` records alongside
+   the others. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.
@@ -234,8 +239,8 @@ checks in `PROJECT.md`, and go to step 6.
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
 from a fresh environment while the others run in parallel. Then run `bin/verify all` again
 on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
-a recorder with its summary line. Write the `--jobs` value that worked into `PROJECT.md`
-when it is not the default; raise `--jobs` while the machine has idle cores, since a
+a recorder with its summary line. Write the `--jobs` value that worked into the skill's `jobs` file
+when it is not 8; raise `--jobs` while the machine has idle cores, since a
 browser-driven drive is limited by how many features run at once. When `# alone` features remain, write the lane count that keeps
 the full drive shortest into the skill's `lanes` file: about their total time divided by the
 longest parallel feature, as far as memory allows. Then check the lifecycle once:

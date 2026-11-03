@@ -34,6 +34,7 @@ An environment is **owned** when the ownership record in `.cache/` lists it and 
 - Trace where startup and driving can send writes: dependencies, gateways, storage, email, background jobs. Point them at disposable destinations or disable them. Check the effective configuration.
 - Record what exists before the run and how to restore it.
 - Note the success paths that isolation makes unreachable. A disabled dependency's error path does not prove its success path.
+- A run never takes the project's default ports, even when they are free: the developer's own tools, such as a backend started in an IDE, connect to them and would write into the run.
 - When the app hard-codes a port or host that collides with the developer's, override it from outside, never in the app: a property or environment variable at start, or a small proxy in the run's stack.
 - Inspect startup commands for side effects on files, data and processes. After choosing isolation and cleanup, launch once and compare against the recorded original state.
 - If the app watches files and reloads, run it with watching off or from a copy under `.cache/`: recorders save recipes inside the checkout while it runs, and every save would reload the app under the other features. A reload you cannot avoid means asking the user.
