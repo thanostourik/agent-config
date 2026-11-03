@@ -44,7 +44,8 @@ convert() {
       else steps = steps $0 "\n"
       next
     }
-    /^Preconditions:/ { if ($0 ~ /Runs alone/) alone = 1; label = "Preconditions"; pending = 1; next }
+    /[Rr]uns alone/ { alone = 1 }
+    /^Preconditions:/ { label = "Preconditions"; pending = 1; next }
     /^- \*\*/ {
       if (pending) missing = 1
       label = $0; sub(/^- \*\*/, "", label); sub(/\*\*.*/, "", label); sub(/\.$/, "", label)
@@ -88,7 +89,10 @@ rm -f "$skill/features/last-reviewed"
 
 removed=()
 for old in drive.sh steps.sh rec.sh find.sh; do
-  [[ -e "$skill/bin/$old" ]] && { rm "$skill/bin/$old"; removed+=("bin/$old"); }
+  [[ -e "$skill/bin/$old" ]] || continue
+  grep -q -s -w -F "$old" "$skill"/features/*.sh && continue
+  rm "$skill/bin/$old"
+  removed+=("bin/$old")
 done
 for old in ".agents/skills/maintain-verify-$app" ".claude/skills/maintain-verify-$app"; do
   [[ -e "$old" ]] && { rm -r "$old"; removed+=("$old"); }
@@ -109,7 +113,9 @@ mapfile -t empty < <(grep -L -E '^# touches:[[:space:]]*[^[:space:]]' "$skill"/f
 ((${#empty[@]})) && todo+=("Fill '# touches:' from the source of: ${empty[*]}.")
 stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify|\.cache/record|drive/[^ ]*/steps' "$skill"/bin/* "$skill"/PROJECT.md 2> /dev/null | grep -v -E '/bin/(verify|lib\.sh)$' || true)
 [[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")
-[[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh.")
+mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename)
+((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
+[[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
 for script in launch.sh cleanup.sh doctor.sh; do
   [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
 done

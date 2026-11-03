@@ -124,7 +124,8 @@ Write and make executable:
   own harness, `pw.sh` runs the Playwright CLI (`playwright cli`) with:
   - a pinned Playwright version whose browser build is installed (`ls ~/.cache/ms-playwright`),
     installed under `.cache/` (`npm install --prefix .cache/pw playwright@<version>`) when the
-    project has none, and called through its installed binary, not `npx` on every call;
+    project has none, and called as `node <playwright-core>/lib/tools/cli-client/cli.js`,
+    never `npx` or the `.bin` wrapper: about 1.2 s per call instead of 3 s;
   - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
     checkouts never share a browser session (`playwright cli list` shows every session on the
     machine, so cleanup matches its own names exactly), and its output under `.cache/`;
@@ -175,6 +176,13 @@ Build the environment for speed, because every recipe pays for it on every run:
   `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials.
 - A stub or helper that starts a process stops any leftover of the same feature first, so an
   interrupted run never blocks the next one.
+- Lanes share one build: build images or artifacts once, under a lock, and let every lane
+  start from them.
+- Restarting the app, such as for a clock shift, polls readiness every half second and
+  never runs the whole doctor. `cleanup.sh` stops throwaway containers without a grace
+  period (`docker compose down -t 1`).
+- `doctor.sh` retries each probe a few times with a 30 s limit, so a loaded machine never
+  stops a drive with a false failure.
 
 At level `checks-only`, skip launching and recording: write no recipes, put the focused
 checks in `PROJECT.md`, and go to step 6.
