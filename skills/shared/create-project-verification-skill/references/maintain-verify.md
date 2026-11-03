@@ -57,7 +57,7 @@ Start with one command that prints `verify-<app>/SKILL.md`, `features/README.md`
 ## Select what to drive
 
 - **Map only:** go to Ship. No drives.
-- **Changed recipes:** select each feature that the recorders' Files or Split lines name as new, or as having a step that is new or whose action, command, expected result, proof or cleanup changed meaningfully. If the baseline or the driving conventions changed since the starting record, select every feature that change affects. Select the refused features the global maintenance skill listed. Wording, formatting, index repairs, unchanged renames and deletions select nothing. If nothing qualifies, run Cleanup and go to Ship.
+- **Changed recipes:** select each feature that the recorders' Files or Split lines name as new, or as having a step that is new or whose action, command, expected result, proof or cleanup changed meaningfully. If the baseline or the driving conventions changed since the starting record, select every feature that change affects. Select the refused features the global maintenance skill listed. Wording, formatting, index repairs, unchanged renames and deletions select nothing, and so does a removed `Clean up` check that data is gone. If nothing qualifies, run Cleanup and go to Ship.
 - **Full audit:** every feature.
 
 `bin/drive.sh --check [feature...]` launches nothing and names each step and missing Contract line of a recipe that needs conversion. A selected feature it names goes to a recorder to be converted before the drive, added to `convert.txt` first; `drive.sh` refuses to run it otherwise. Unselected recipes stay as they are.
