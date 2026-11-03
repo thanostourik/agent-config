@@ -118,5 +118,4 @@ Only when the user asks for delegates. The steps above stay, with these changes:
 ## Report
 
 When every thread has finished, send one report with one line per thread: its
-verdict, its PR link, and any gap its thread could not close, with the access
-that gap needs.
+verdict and its PR link.
