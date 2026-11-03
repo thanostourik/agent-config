@@ -1,38 +1,55 @@
-# Fast verification, redesigned
+# Verification, redesigned for speed and cost
 
-## Problem
+## Goal
 
-Verification costs hours per task and most of that time is agent work, not the app.
-Timings from the backend-spring pass on 2026-11-02 (23 features):
+The same goal as today's system, for every project of any kind:
 
-| Phase | Time | Who works |
+- Every feature of the project has an end-to-end recipe that drives the real app.
+- During development, only the features a change affects are driven.
+- The map of features stays current as the app changes.
+
+What changes is how fast and how cheap that is:
+
+| Operation | Limit | Target |
 | --- | --- | --- |
-| First launch (cold Maven build) | 10 min | bash |
-| Recording 18 features with recorders | 51 min | agents |
-| Fresh launch + drive of all 23 features | 10 min | bash |
-| Conformer, briefs, contract maps, clash checks, Ship, report | ~20 min | agents |
+| Drive the affected features after a change | 10 min | 3 min |
+| Drive every feature | 30 min | 10 min |
+| Record every feature of a project | 30 min | 20 min |
+| Maintenance pass | 30 min | 15 min |
 
-The deterministic part (launch and drive) already fits the budget. The slow, expensive
-part is the agent machinery around it: a 738-line `rec.sh`, contract maps, peeks, brief
-templates, a conformer, three maintenance modes, every feature run twice (recorded, then
-driven again after a fresh launch), and selection rules that turn any shared change into
-"every feature".
+Tokens are spent only on writing or fixing a recipe, never on running one.
 
-## Goals
+## Why today's system is slow and expensive
 
-- Every feature of any project type has an end-to-end recipe.
-- After a bug fix or a feature, the affected features are driven.
-- Full drive of a project: 30 min at most, target 10.
-- Full record of a project: 30 min at most.
-- An agent spends tokens only on writing or fixing a recipe, never on running one.
+Running the app is not the slow part. Agents do work that bash could do, and they do some
+of it twice:
 
-## Design
+- Every recipe is Markdown that needs a 279-line parser (`steps.sh`) and a 738-line
+  recording tool (`rec.sh`) with peeks, contract maps, brief templates and refusal scans.
+  Agents spend most of their tokens on this machinery, not on the app.
+- Each changed feature runs twice: once while it is recorded, then again after a fresh
+  launch.
+- Selection rules turn any shared change (launch, sign-in, conventions) into "every
+  feature", and every such feature gets a recorder.
+- Maintenance runs a conformer, readers over every recipe, recorders, fixers and a long Ship
+  step, even when only the generator's wording changed.
 
-### A recipe is a script
+One measured example: a 23-feature project took 10 minutes to launch and drive every
+feature with bash, but 70 minutes of agent work around it.
 
-Each feature is one executable bash file, `features/<name>.sh`. It needs no Markdown
-parser: the runner just executes it. It uses a small shared library (`lib.sh`) and the
-project's own helpers in `bin/`.
+## Principles
+
+1. A recipe is an executable script. Running it needs no agent.
+2. One shipped runner does launch, selection, parallel driving, deadlines, evidence and
+   cleanup. It prints one line per feature. Agents read only that.
+3. An agent writes or fixes a recipe. It never orchestrates a run step by step.
+4. A feature runs once per check. The environment stays up across checks in one task.
+5. Every agent job has a time box. Past it, the job reports `blocked` with the reason
+   instead of continuing.
+
+## Recipe format
+
+Each feature is one bash file, `features/<name>.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -48,131 +65,148 @@ step "result opens the note" pw click "getByRole('link', { name: '$RUN_ID-alpha'
 expect "note title" pw_text "getByRole('heading', { level: 1 })" "$RUN_ID-alpha"
 ```
 
-- `step` runs a command with a deadline (default 30 s) and logs it to the evidence folder.
-- `expect` waits until a value matches, with a deadline. No bare `sleep`.
+- `step` runs one command with a deadline (default 30 s) and logs it.
+- `expect` waits until a value matches, with a deadline. A bare `sleep` is refused.
 - `cleanup` always runs, through a trap.
-- On failure, `lib.sh` saves the state through the project's `bin/observe` (a screenshot,
-  the last HTTP response, the terminal output) and exits.
-- Every name a recipe creates starts with `$RUN_ID`, so recipes run in parallel without
-  colliding.
+- On failure, the library saves the app's state through the project's `bin/observe`: a
+  screenshot, the last HTTP response, or the terminal output.
+- Every name a recipe creates starts with `$RUN_ID`, so features run in parallel and never
+  collide. A feature that changes global state declares `# alone`, and runs by itself.
+- `# touches:` lists the source files the feature uses: files, never folders.
 
-The driver is whatever the project uses, called from bash: Playwright CLI, `curl`, the
-CLI itself, tmux, `adb` or Maestro, a serial port. The library does not care which. This
-is how one design covers every project type.
+The driver is whatever the project uses, called from bash. Web: the project's Playwright or
+Cypress, else Playwright CLI. API: `curl`. CLI: the command. TUI: tmux. Electron: CDP on a
+debug port. Mobile: `adb` or Maestro. Firmware: the serial port. The library does not care
+which driver runs, so one format covers every project type. The driver rule (the user's
+explicit choice of driver over host browser tools) stays.
 
-### One runner, no agent
+## The runner
 
-`bin/verify` ships unchanged to every project, about 150 lines:
+`bin/verify` and `bin/lib.sh` ship unchanged to every project. Projects never edit them.
 
-- `verify up`: starts the run's environment through the project's `bin/up`. It is
-  idempotent: a second call reuses the running environment and rebuilds only the app. The
-  environment stays up for the whole task, so nothing is launched twice.
-- `verify [feature...]`: runs the features in parallel (`--jobs`, default 8), each with a
-  whole-feature deadline (default 3 min), and prints one line per feature:
-  `pass`, `fail <step>: <reason> <evidence path>` or `blocked <reason>`.
-- `verify affected`: runs the features whose `touches:` line names a file changed against
-  the base branch. Zero tokens: it is a `grep` of the diff.
-- `verify all`: every feature.
-- `verify down`: removes everything the run created.
+- `verify up`: starts the run's own environment through the project's `bin/up`. A second
+  call reuses it and only rebuilds and restarts the app.
+- `verify affected`: drives the features whose `touches:` names a file changed against the
+  base branch. It is a `grep`, so selection costs no tokens.
+- `verify <feature>...` and `verify all`.
+- Parallel with `--jobs` (default 8), `# alone` features one at a time, a deadline per
+  feature (default 3 min).
+- One summary line per feature: `pass`, `fail <step>: <reason> <evidence>`, or
+  `blocked <reason>`. Evidence goes to `.cache/evidence/<feature>/`.
+- `verify down`: removes everything the run created, checks only what the run owns, and
+  says what remains if it fails.
+- `verify uncovered`: lists the project's entry points (routes, screens, commands) that no
+  feature's `touches:` names, using the entry-point command the generator wrote into the
+  skill. It also lists changed files that no feature touches.
+- `verify lint`: refuses `sleep`, missing `cleanup`, and names without `$RUN_ID`.
 
-The agent reads only that summary. It opens a log only for a failed feature.
+## Isolation and companion repos
 
-### Selection
+Both stay, with the current rules in `lifecycle.md`, shortened:
 
-The recorder writes `touches:` from the files it actually read to write the recipe. Those
-are files, never folders, so a change to one controller selects the features that use that
-controller, not the whole module. The agent may add a feature by name when the diff
-changes behavior that no `touches:` line names (for example, shared security config). It
-says why in one line.
+- Levels `full`, `shared` and `checks-only`, chosen once by the generator.
+- A run owns its environment and never touches the developer's. A project with a local
+  stack gets one-line `bin/up` and `bin/down` around `stack up --app --name "$RUN_ID"`.
+- Companion repos keep the skill outside the app's repo, and `with-verification` finds it
+  from an app checkout. The runner reads the app checkouts from the companion's `apps` file.
 
-Because a full drive is about 10 minutes of bash and costs no tokens, `verify all` is an
-ordinary command, not an escalation. The agent uses it before a PR leaves draft.
+## The three skills
 
-### Recording, with a budget
+### Generator: `create-project-verification-skill`
 
-Recording runs only for a new feature, or when a feature's behavior changed so its recipe
-no longer matches.
+1. Find or choose the isolated environment, and write `bin/up`, `bin/down`, `bin/observe`.
+   Launch once.
+2. List the features with one entry-point command (routes, navigation, commands). Write
+   that command into the skill for `verify uncovered`. Write `features/README.md`, one line
+   per feature.
+3. Record: one recorder per feature, 8 at once. A recorder reads the feature's source and any
+   existing test of it, writes the script and runs `verify <feature>`. It stops after
+   3 runs or 6 minutes and reports `blocked` with the failing step. The main agent starts no
+   new recorder after 25 minutes and lists the features it did not reach.
+4. `verify all` once, as the proof.
+5. Write `verify-<app>/SKILL.md` (under 4 KB), `maintain-verify-<app>/SKILL.md`, and the
+   AGENTS.md section.
 
-- One recorder agent per feature, 8 at once.
-- A recorder reads the feature's source and any test that already covers it. It writes the
-  script, runs `verify <feature>`, and fixes it. At most 3 runs or 6 minutes, then it
-  reports `blocked` with the failing step.
-- There are no contract maps, peeks, brief templates or clash checks. `$RUN_ID` prefixes
-  make clashes impossible.
-- A full record of 25 features: 4 rounds of 6 minutes, about 25 minutes. The main agent
-  starts no new recorder after 25 minutes. It reports the features it did not reach.
+### Verify skill: `verify-<app>`, used during development
 
-A bug fix that keeps a recipe correct needs no recording: the fix is checked by driving the
-recipe. When the fix changes expected behavior, the agent edits the recipe by hand and
-drives it. A recorder is not needed for that.
+1. `verify up` when the code is ready to check.
+2. New behavior: write or edit the recipe by hand, with `touches:`. No recorder. A recorder
+   is needed only for a whole new feature.
+3. `verify affected`. Add a feature by name only when the diff changes behavior no
+   `touches:` names, such as shared security config, with one line saying why.
+4. A failure: read that feature's log, fix the code or the recipe, rerun that feature only.
+5. `verify down`, then report the summary lines and evidence links.
 
-### Isolation stays
+`verify all` is an ordinary command, used before a PR leaves draft.
 
-The run owns its environment and never touches the developer's. When the project has a
-local stack (`create-project-local-stack`), `bin/up` and `bin/down` are one line each:
-`stack up --app --name "$RUN_ID"` and `stack destroy --name "$RUN_ID"`. Without a stack,
-the generator writes `bin/up`, or it offers to create the stack first. The ownership rules in
-`lifecycle.md` stay, shortened.
+### Maintainer
 
-### What the project gets
+`maintain-verify-<app>` keeps a project's map current when the app changed outside verified
+tasks:
 
-```
-.agents/skills/verify-<app>/
-  SKILL.md        # under 4 KB: up, affected, all, fix a failure, add a feature, down
-  bin/verify      # shipped runner, never edited
-  bin/lib.sh      # shipped library, never edited
-  bin/up bin/down bin/observe   # project-specific
-  features/<name>.sh
-  features/README.md            # one line per feature, written by verify --index
-```
+1. `verify up`, then `verify all`.
+2. Each failing feature goes to a fixer, 8 at once, each with the same time box as a
+   recorder. The fixer decides: the recipe drifted (fix it) or the app is wrong (report it
+   as a product defect and leave the recipe failing).
+3. `verify uncovered`: each uncovered entry point goes to a recorder. Changed files that no
+   feature touches are added to the `touches:` of the feature that uses them, or reported.
+4. `verify down`, one commit, one PR, a report of pass, fixed, defect, new, and blocked.
 
-There is no `maintain-verify-<app>` skill. The map is kept current by the task that
-changes the behavior, like tests.
+`maintain-project-verification-skill` upgrades a project to the current generator:
 
-### What goes
+1. Copy the current `bin/verify` and `bin/lib.sh`.
+2. If the recipe format version changed, run `verify convert`, which converts recipes
+   mechanically. The first conversion turns today's Markdown recipes into scripts: the
+   `bash` blocks in order, each labeled block a `step`, the Clean up block `cleanup()`.
+3. Rewrite `verify-<app>/SKILL.md` and `maintain-verify-<app>/SKILL.md` from the current
+   templates, keeping the project's commands, isolation and gotchas.
+4. `verify all` once. Converted features that fail go to fixers.
 
-- `rec.sh`, `steps.sh`, the Markdown recipe format and the `drive.sh --check` refusal scan.
-  A linter in `bin/verify` refuses only `sleep` and recipes without `cleanup`.
-- Contract maps and `## Contract` sections, peeks, `observe.sh`/`find.sh` as recorder tools,
-  `reached.tsv`, `last-reviewed`, the known-failure flag.
-- The conformer, the recorder and fixer brief templates, the three maintenance modes.
-- `maintain-verify.md` and the generated `maintain-verify-<app>` skill.
+There are no modes: no "map only", no "full audit", no conformer, no readers.
 
-### The skills in this repository
+### `with-verification` and the AGENTS.md section
 
-- `create-project-verification-skill`: rewritten. Steps: find or create the isolated
-  environment, write `bin/up`/`bin/down`/`bin/observe`, list the features, record them in
-  parallel within budget, run `verify all`, add the AGENTS.md section.
-- `maintain-project-verification-skill`: copies the new `bin/verify` and `bin/lib.sh` into a
-  project and runs one feature. Nothing else.
-- `with-verification`: unchanged in purpose; its steps become `verify up`, `verify affected`,
-  fix, `verify down`.
-- The AGENTS.md section: run `verify affected` before calling work done, and `verify all`
-  before a PR leaves draft.
+`with-verification` keeps its job: find the verify skill, also in a companion repo, and
+follow it. The AGENTS.md section says: run `verify affected` before calling work done, and
+`verify all` before a PR leaves draft.
 
-### Existing projects
+## What goes
 
-A converter (`bin/verify convert`) turns the old Markdown recipes into scripts: it pulls out
-the `bash` blocks in order, turns each labeled block into a `step`, and the Clean up block
-into `cleanup()`. It is mechanical, so no agent is needed. Features whose conversion fails a
-run go to a recorder.
+- `rec.sh`, `steps.sh`, `drive.sh` and the Markdown recipe format.
+- Contract maps and `## Contract` sections, peeks, `find.sh`, `reached.tsv`,
+  `last-reviewed`, the known-failure flag, fixture-clash checks.
+- The conformer, recorder and fixer brief templates, `brief-common.md`, `maintain-verify.md`
+  and its three modes.
 
-## PRs
+## PRs, all in this repository
 
-1. This repo: `bin/verify`, `lib.sh`, the rewritten generator and spec, the new
-   `with-verification` and AGENTS section. The old files are deleted.
-2. This repo: the converter and the new `maintain-project-verification-skill`.
-3. backend-spring (its own PR): convert its 23 features, measure full record and full drive.
+1. The runner, the library, the recipe format, the generator and the verify skill template,
+   `with-verification` and the AGENTS.md section. The old files are deleted.
+2. The maintainer (both skills) and `verify convert`.
+
+Moving each project to the new system is that project's own task, done with
+`maintain-project-verification-skill` after PR 2.
 
 ## Proof
 
-On a throwaway project of each kind available here (a web app, an API, a CLI), generate the
-skill and time the full record and `verify all`. Then convert backend-spring in a worktree.
-Pass: full record under 30 min, `verify all` under 30 min (target 10), `verify affected`
-after a one-file change drives only the features that file touches.
+Throwaway projects in `.plans/scratch/`: a web app, an HTTP API with a database, and a
+CLI/TUI, each with about 10 features.
+
+- Generate the skill for each. Time the full record and `verify all`, and measure tokens with
+  `usage-report`.
+- Change one file in each and check that `verify affected` drives only the features that
+  file touches.
+- Break one behavior and add one route, then run `maintain-verify-<app>`. Expect one fixer
+  that reports the defect and one recorder for the new route.
+- Run `maintain-project-verification-skill` on a copy of a project with today's Markdown
+  recipes. Expect every recipe converted and `verify all` to run.
+- Drive the runner by hand on those projects: parallel and `# alone` runs, a deadline that
+  fires, cleanup after an interrupt, and lint refusals.
+
+Pass: every operation within the limits in the Goal table.
 
 ## Open decisions
 
-- `touches:` file lists (deterministic, zero tokens) versus agent judgment for selection.
-  Recommended: file lists, with the agent adding named features when it says why.
-- Default deadlines: 30 s per step, 3 min per feature, 8 jobs.
+- Selection: `touches:` file lists, plus a named feature with a one-line reason. The other
+  option is agent judgment over the feature list, which costs tokens on every check.
+- Defaults: 30 s per step, 3 min per feature, 8 jobs, 6 min and 3 runs per recorder.
