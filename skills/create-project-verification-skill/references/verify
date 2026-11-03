@@ -81,6 +81,27 @@ changed_files() {
 
 skill_rel=${skill#"$root"/}
 
+names() { grep -q -E "(^|[^A-Za-z0-9_.-])$(sed 's/[.]/[.]/g' <<< "$1")([^A-Za-z0-9_.-]|$)" "${@:2}"; }
+
+features_using() {
+  local helpers=("$1") added=1 other name feature
+  while ((added)); do
+    added=0
+    for other in "$skill"/bin/*; do
+      name=$(basename "$other")
+      [[ -f "$other" && " ${helpers[*]} verify lib.sh " != *" $name "* ]] || continue
+      for helper in "${helpers[@]}"; do
+        names "$helper" "$other" && { helpers+=("$name"); added=1; break; }
+      done
+    done
+  done
+  for feature in $(all_features); do
+    for helper in "${helpers[@]}"; do
+      names "$helper" "$skill/features/$feature.sh" && { echo "$feature"; break; }
+    done
+  done
+}
+
 select_affected() {
   local file feature helper hit features=() untouched=()
   mapfile -t features < <(all_features)
@@ -94,8 +115,8 @@ select_affected() {
       "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh) continue ;;
       "$skill_rel"/bin/*)
         helper=$(basename "$file")
-        for feature in "${features[@]}"; do
-          grep -q -F "$helper" "$skill/features/$feature.sh" && { echo "$feature	uses $helper" >> "$cache/affected"; hit=1; }
+        for feature in $(features_using "$helper"); do
+          echo "$feature	uses $helper" >> "$cache/affected"; hit=1
         done ;;
       .agents/* | .claude/* | "$skill_rel"/*) continue ;;
       *)
@@ -124,6 +145,8 @@ lint() {
     [[ -f "$file" ]] || { echo "$feature: no features/$feature.sh"; problems=1; continue; }
     report() { echo "$feature: $1"; problems=1; }
     [[ "$(head -n 1 "$file")" == "# "?* ]] || report "line 1 is not a '# <summary>' comment"
+    awk '!/^#/ { bad = /[^[:space:]]/; exit } END { exit bad }' "$file" || report "the '#' header lines must end with a blank line"
+    case $feature in up | down | list | lint | uncovered | affected | all | help) report "'$feature' is a verify command; rename the feature" ;; esac
     grep -q -E '^# touches:[[:space:]]*[^[:space:]]' "$file" || report "no '# touches:' line naming the feature's source files"
     while IFS= read -r path; do
       [[ "$path" == */ || "$path" == *[*?]* ]] && { report "touches '$path': name files, not folders or globs"; continue; }
@@ -139,26 +162,31 @@ lint() {
 
 doctor() {
   [[ -x "$skill/bin/doctor.sh" ]] || return 0
-  "$skill/bin/doctor.sh" > "$cache/doctor.log" 2>&1 < /dev/null
+  "$skill/bin/doctor.sh" > "$1" 2>&1 < /dev/null
 }
 
+header() { sed -n "s/^# $2:[[:space:]]*//p" "$skill/features/$1.sh"; }
+
 run_feature() {
-  local feature=$1 dir=$cache/drive/$1 start=$SECONDS status
+  local feature=$1 dir=$cache/drive/$1 start=$SECONDS status limit
+  limit=$(header "$feature" deadline)
+  limit=${limit:-$deadline}
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
+  echo "$limit" > "$dir/deadline"
   VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
-    timeout -k 30 "$deadline" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null
+    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null
   status=$?
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
-  if ((status)) && [[ ! -e "$cache/drive/stop" ]] && ! doctor; then
-    echo "$feature" > "$cache/drive/stop"
+  if ((status)) && [[ ! -e "$run/stop" ]] && ! doctor "$run/doctor.log"; then
+    echo "$feature" > "$run/stop"
   fi
 }
 
 line_of() {
-  local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds
-  [[ -e "$dir/status" ]] || { echo "$feature: not run (doctor failed after $(cat "$cache/drive/stop" 2> /dev/null), see $cache/doctor.log)"; return 1; }
+  local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds known
+  [[ -e "$dir/status" ]] || { echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $run/doctor.log)"; return 1; }
   status=$(cat "$dir/status") seconds=$(cat "$dir/seconds")
   [[ -e "$dir/step" ]] && step=$(cat "$dir/step")
   [[ -e "$dir/result" ]] && result=$(head -n 1 "$dir/result")
@@ -168,10 +196,12 @@ line_of() {
     echo "$feature: pass (${seconds}s)$tail"
     [[ -z "$tail" ]]
     return
-  elif ((status == 124 || status == 137)); then
+  elif ((status == 124 || status == 137)) && ((seconds >= $(cat "$dir/deadline"))); then
     echo "$feature: timeout after ${seconds}s at \"$step\" ($dir/log)$tail"
   else
-    echo "$feature: fail at \"$step\": $(head -c 300 "$dir/error" 2> /dev/null | head -n 1) (${seconds}s, $dir/log)$tail"
+    known=""
+    header "$feature" "known failure" | grep -q -x -F "$step" && known=" (known failure)"
+    echo "$feature: fail at \"$step\"$known: $(head -c 300 "$dir/error" 2> /dev/null | head -n 1) (${seconds}s, $dir/log)$tail"
   fi
   return 1
 }
@@ -181,22 +211,23 @@ drive() {
   (($#)) || { echo "verify: no features to drive" >&2; return 2; }
   [[ -f "$cache/run-id" ]] || { echo "verify: no environment; run 'bin/verify up' first" >&2; return 2; }
   export VERIFY_RUN_ID=$(cat "$cache/run-id")
-  lint "$@" > "$cache/lint.txt" || { cat "$cache/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; return 2; }
-  doctor || { echo "verify: doctor.sh failed, see $cache/doctor.log" >&2; return 2; }
-  rm -rf "$cache/drive" && mkdir -p "$cache/drive"
+  run=$cache/drive/.run-$$
+  mkdir -p "$run"
+  lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
+  doctor "$run/doctor.log" || { echo "verify: doctor.sh failed, see $run/doctor.log" >&2; return 2; }
   for feature in "$@"; do
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
   for feature in "${together[@]}"; do
     while (($(jobs -rp | wc -l) >= max_jobs)); do wait -n; done
-    [[ -e "$cache/drive/stop" ]] && break
+    [[ -e "$run/stop" ]] && break
     run_feature "$feature" &
     pids+=($!)
   done
   wait
   for feature in "${alone[@]}"; do
-    [[ -e "$cache/drive/stop" ]] && break
+    [[ -e "$run/stop" ]] && break
     run_feature "$feature" &
     pids+=($!)
     wait
@@ -206,6 +237,7 @@ drive() {
   echo "Summary ($((SECONDS - started))s, $# features)"
   for feature in "$@"; do line_of "$feature" || result=1; done
   echo "Evidence: $cache/evidence/<feature>/"
+  [[ -e "$run/stop" ]] || rm -rf "$run"
   return $result
 }
 
@@ -221,7 +253,7 @@ case $command in
     [[ -f "$cache/run-id" ]] || echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"
     export VERIFY_RUN_ID=$(cat "$cache/run-id")
     "$skill/bin/launch.sh" "$@" || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; exit 1; }
-    doctor || { echo "verify: doctor.sh failed after launch, see $cache/doctor.log" >&2; exit 1; }
+    doctor "$cache/doctor.log" || { echo "verify: doctor.sh failed after launch, see $cache/doctor.log" >&2; exit 1; }
     echo "up: $VERIFY_RUN_ID" ;;
   down)
     [[ -f "$cache/run-id" ]] && export VERIFY_RUN_ID=$(cat "$cache/run-id")

@@ -103,6 +103,9 @@ Write and make executable:
   screenshot of the feature's browser session (`$VERIFY_SESSION`), the last HTTP response, or
   the last command output.
 - `entrypoints.sh`: prints the files that define entry points, one repository path per line.
+- Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
+  `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
+  variables it reads.
 - Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
   own harness, `pw.sh` runs `npx playwright cli -s="$VERIFY_SESSION" "$@"` with its output
   under `.cache/`, page snapshots silenced, and cleanup closing its sessions.
@@ -126,13 +129,18 @@ Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `referen
 and `references/lib.sh` to `bin/`, and write the Claude stub and `.gitignore`. Then run
 `bin/verify up`, then `bin/verify up` again and time both.
 
+For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
+folder and builds once, and `doctor.sh` checks that the folder is the run's and the build is
+current.
+
 At level `checks-only`, skip launching and recording: write no recipes, put the focused
 checks in `PROJECT.md`, and go to step 6.
 
 ## 4. Record every feature
 
 1. List the features from the entry points and the docs: one user-facing capability each,
-   with a one-line scope. No behavior falls in two scopes. Keep the list in your reply or in
+   with a one-line scope. No behavior falls in two scopes. A feature's name is its file name
+   and never a `verify` command (`list`, `all`, ...). Keep the list in your reply or in
    `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
@@ -151,14 +159,16 @@ a recorder with its summary line. Write the `--jobs` value that worked into `PRO
 when it is not the default. Then check the lifecycle once:
 
 - `bin/verify lint` and `bin/verify uncovered`. Map an uncovered entry point or say why not.
-- Change one file a feature touches and check that `bin/verify affected --dry` selects it.
-- Interrupt a `bin/verify <feature>` with Ctrl-C, then check that `bin/verify down` leaves
-  nothing of the run.
+- Commit, change one file a feature touches, and check that
+  `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
+  every new recipe counts as changed. Undo the change.
+- Check that `bin/verify down` leaves nothing of the run: no process, port, container or file
+  outside `.cache/evidence/`.
 
 ## 6. Instructions and hand-over
 
 Write one `## Verification` section in the project's `AGENTS.md` (the companion's, in a
-companion repo) from [`references/agents-verification.md`](references/agents-verification.md),
+companion repo; create the file when there is none) from [`references/agents-verification.md`](references/agents-verification.md),
 with `<app>` and the focused check commands filled in. Integrate an existing verification
 section instead of adding a second one. If there is no `CLAUDE.md`, create one holding only
 `@AGENTS.md`; if one exists without that import, put the same section there too. Replace

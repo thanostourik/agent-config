@@ -32,8 +32,8 @@ From the repository root, on a branch as the repo's conventions say:
 With several `verify-*` skills, ask which one and pass its folder. The script copies the
 shipped files, converts Markdown recipes into `features/<feature>.sh` scripts, removes the
 old runner, recorder and `maintain-verify-<app>` skill, keeps the old files it replaced under
-`.cache/upgrade/`, and ends with the list of what is left for you. Commit its result before
-anything else.
+`.cache/upgrade/` (gitignored, so they stay local), and ends with the list of what is left for
+you. It is safe to run again. Commit its result before anything else.
 
 ## 2. Do what it lists
 
@@ -45,8 +45,9 @@ Do only the listed items, in this order:
   are specific to this project, gotchas. Drop the rules the shipped `SKILL.md` already states
   and everything about the old runner, recorders, contract maps and maintenance modes.
 - **`launch.sh` idempotent**: when the run's environment is already up, a second call
-  rebuilds and restarts only the app, and `doctor.sh` accepts the result. Keep its ownership
-  record and recovery of an interrupted launch.
+  rebuilds and restarts only the app, recreates nothing when the source is unchanged, and
+  `doctor.sh` accepts the result. Keep its ownership record and recovery of an interrupted
+  launch.
 - **The project's stack**, checked on every upgrade even when the script does not list it:
   when the repo has an environment `<generator>/references/lifecycle.md` would pick as
   isolated and disposable, such as `local-stack/stack`, and `launch.sh` builds its own
@@ -55,6 +56,8 @@ Do only the listed items, in this order:
   they replace: its own Compose project, port picking, source copies, app processes and their
   guards. Isolation is the stack's job from then on, so a leak found later is fixed in the
   stack. When the stack cannot start something the recipes need, stop and name it.
+- **Helpers that read the old runner's files**, such as an `observe.sh` reading
+  `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
 - **`# touches:`**: start helper agents, each with up to 6 features, with this prompt:
 
   ```
@@ -62,8 +65,9 @@ Do only the listed items, in this order:
   files its behavior lives in: the handlers, controllers, components, services, queries and
   migrations it exercises, as repository paths (<app>/<path> in a companion repo). Read the
   recipe, grep for the routes, commands or screens it drives, and follow them into the
-  source. Files only, never folders; leave out what every feature uses. Write the list on the
-  recipe's '# touches:' line, space-separated, and change nothing else. Run
+  source. Files only, never folders; leave out files every feature only passes through, but
+  keep a file that holds this feature's routes or handlers. Write the list on the recipe's
+  one '# touches:' line, space-separated, and change nothing else. Run
   .agents/skills/verify-<app>/bin/verify lint <features> and return its last line.
   Features: <feature> <feature> ...
   ```

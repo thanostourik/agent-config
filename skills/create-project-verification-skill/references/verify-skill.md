@@ -12,58 +12,59 @@ drivers. The one exception is a step that needs the user watching, such as a man
 ask first, then return to the driver.
 
 This file is shipped by `create-project-verification-skill` and is replaced on upgrade. The
-project's own facts are in `PROJECT.md`: read it once before your first command. Paths below
-are relative to this skill's folder, `.agents/skills/verify-<app>/`. Run every command from
-the repository root.
+project's own facts are in `PROJECT.md`: read it once before your first command. Run every
+command from the repository root. `verify` below is `.agents/skills/verify-<app>/bin/verify`,
+and other paths are relative to `.agents/skills/verify-<app>/`.
 
 ## Check a change
 
 At isolation level `checks-only` there is no live drive: run the focused checks `PROJECT.md`
 names, and report every feature `blocked: no isolation`. Otherwise:
 
-1. When the code is ready, run `bin/verify up`. It reuses the run's environment when it is
+1. When the code is ready, run `verify up`. It reuses the run's environment when it is
    already up and restarts only the app. Keep it up for the whole task.
 2. Bring the recipes in line with the change, as part of the change, like tests. For
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh`
    ([Recipes](#recipes)). A whole new feature can go to a recorder ([Recorders](#recorders)).
-3. Run `bin/verify affected`. It drives the features whose `# touches:` line names a changed
+3. Run `verify affected`. It drives the features whose `# touches:` line names a changed
    file, or whose recipe or helper changed, then prints one summary line per feature.
 4. It also lists changed files no feature names. For each one that changes behavior a
-   feature covers, drive that feature by name (`bin/verify <feature>`) and add the file to
+   feature covers, drive that feature by name (`verify <feature>`) and add the file to
    its `# touches:` line. Skip files that change no behavior: tests, docs, build files.
 5. A failure: the summary line names the step and the failing command. Open the log only
    when that line is not enough. Classify it ([When a drive fails](#when-a-drive-fails)),
    fix it, and rerun only that feature.
-6. At the end of the task, also after a failure, run `bin/verify down`.
+6. At the end of the task, also after a failure, run `verify down`.
 
-Do not drive features the change cannot affect. Run `bin/verify all` only when the user asks,
+Do not drive features the change cannot affect. Run `verify all` only when the user asks,
 after an upgrade of this skill, or when a change touches what every feature uses (launch,
 sign-in, a shared helper) and you cannot name fewer features.
 
-A drive can outlast your command timeout. Start `bin/verify` in the background, wait for it,
+A drive can outlast your command timeout. Start `verify` in the background, wait for it,
 and read its output once. Do not poll it or tail its logs.
 
 ## Commands
 
-- `bin/verify up` / `bin/verify down`: start or reuse, and remove, the run's environment.
-- `bin/verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
-- `bin/verify <feature>...`, `bin/verify all`: drive those features, or every feature.
+- `verify up` / `verify down`: start or reuse, and remove, the run's environment.
+- `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
+- `verify <feature>...`, `verify all`: drive those features, or every feature.
 - `--jobs N` (default 8) and `--deadline SECONDS` per feature (default 180) go anywhere.
-- `bin/verify list`: every feature with its one-line summary. This is the feature map.
-- `bin/verify lint [feature...]`: the recipe rules the runner enforces.
-- `bin/verify uncovered`: entry points no feature's `# touches:` names.
-- In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> bin/verify ...`
+- `verify list`: every feature with its one-line summary. This is the feature map.
+- `verify lint [feature...]`: the recipe rules the runner enforces.
+- `verify uncovered`: entry points no feature's `# touches:` names.
+- In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
   drives another checkout of that app, such as a worktree.
 
 ## Recipes
 
 A feature is one user-facing capability: a screen, a route group, a command, an endpoint
-group, a job. Its recipe is `features/<feature>.sh`, a bash script that `bin/verify` runs
+group, a job. Its recipe is `features/<feature>.sh`, a bash script that `verify` runs
 under `set -euo pipefail` from the repository root, with `bin/` on `PATH`:
 
 ```bash
 # Create a note from the browser and the CLI, and confirm the saved note.
 # touches: web/src/NoteEditor.tsx server/routes/notes.ts cli/create.go
+
 cleanup() { notes delete --title verify-create-note || true; }
 
 step "Open editor"
@@ -76,12 +77,19 @@ pw.sh click "getByRole('button', { name: 'Save note' })"
 wait_for 10 api GET /notes?title=verify-create-note
 ```
 
-- Line 1: `# <what the feature lets a user do>`. Line 2: `# touches:` and the source files the
-  feature's behavior lives in (handlers, components, services, queries, migrations of its
-  tables), as repository paths, `<app>/<path>` in a companion repo. Files, never folders.
-  Leave out what every feature uses, such as the app's entry point.
-- `# alone` on its own line when the feature changes state other features read, such as
-  global settings. It then runs by itself.
+- The header is `#` lines, ended by a blank line. Line 1: `# <what the feature lets a user
+  do>`. Then `# touches:` and the source files the feature's behavior lives in (routes,
+  handlers, components, services, queries, migrations of its tables), as repository paths,
+  `<app>/<path>` in a companion repo. Files, never folders; several `# touches:` lines are
+  fine. Leave out files every feature only passes through, such as bootstrap code or shared
+  config; a file that holds this feature's routes or handlers belongs in, even when other
+  features' are there too.
+- Optional header lines: `# alone` when the feature changes state other features read, such
+  as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
+  needs longer than 180 s; `# known failure: <step label>` for a product defect already
+  reported, so its failure reads `(known failure)` and needs no new diagnosis.
+- The feature name is the file name. It is never a `verify` command: `up`, `down`, `list`,
+  `lint`, `uncovered`, `affected`, `all`, `help`.
 - `step "<label>"` before each user action. Every step ends with a check that exits non-zero
   when the result is wrong: `test`, `jq -e`, `grep -q` on a saved file, the driver's own
   assertion. A command that only prints proves nothing. Under `set -e`, `! command` never
@@ -90,8 +98,10 @@ wait_for 10 api GET /notes?title=verify-create-note
   deadline of the expected time plus a margin. Never `sleep` or `waitForTimeout`.
 - Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
   otherwise. On a failure, `bin/observe.sh` saves the app's state there.
-- Every name the recipe creates starts with `verify-<feature>`, so features running at once
-  never collide. The recipe creates its own data; it never relies on another feature.
+- Every name the recipe creates starts with `verify-<feature>`, or the closest the app's
+  naming rules allow (such as `VERIFY-ITEMS-1`), so features running at once never collide.
+  The recipe creates its own data; it never relies on another feature. When leftovers of an
+  interrupted run would break a check, call `cleanup` once before creating data.
 - `cleanup()` removes what the recipe created. It always runs, after a failure too. `|| true`
   goes only on a delete whose failure cannot matter.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
@@ -118,7 +128,8 @@ You record end-to-end recipes for verify-<app>. From the repository root, read
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
 blocked with its last summary line. Behavior another feature covers is setup here, with no
 checks of its own. Return one line per feature: passed, product defect: <what>, or
-blocked: <reason>. Add one line per trap that cost you a run, for PROJECT.md's Gotchas.
+blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
+header. While iterating, drive only your own features. Add one line per trap that cost you a run, for PROJECT.md's Gotchas.
 Features: <feature>: <scope>; ...
 ```
 
@@ -135,12 +146,13 @@ or a test), and the actual result. Diagnose before fixing. The failure is one of
 - **Environment defect or missing prerequisite:** create what is missing with the project's
   own APIs or setup, inside the run's environment. Missing seed data is not a blocker.
 - **Product defect:** the app contradicts supported expected behavior. Fix the code when it
-  is part of the task. Otherwise report it and leave the recipe failing.
+  is part of the task. Otherwise report it, leave the recipe failing, and add
+  `# known failure: <step label>` to its header. Put that check last, so it hides no other.
 - **Uncertain expectation:** report what you saw and the decision that is missing. Never
   rewrite an expectation just to pass.
 
 When `doctor.sh` fails after a feature, the runner stops starting features. Fix the
-environment, or run `bin/verify down` and `bin/verify up`, then rerun what did not run.
+environment, or run `verify down` and `verify up`, then rerun what did not run.
 
 ## Isolation
 
@@ -154,6 +166,6 @@ At level `shared`, pass `--jobs 1` and write only to fixtures named `verify-<fea
 Start from the summary lines. One line per driven feature: **pass**, **fail** (with the step
 and the failure kind), or **blocked** (with what was tried). Name the changed files you
 skipped and why. Link evidence with Markdown links to absolute paths, and check that each
-linked file exists after `bin/verify down`. Report a failed `bin/verify down` separately: a
+linked file exists after `verify down`. Report a failed `verify down` separately: a
 passing feature does not mean cleanup succeeded. For isolation level `shared`, label the
 report `lower confidence: shared <resources>`.
