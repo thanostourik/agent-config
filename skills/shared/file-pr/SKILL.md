@@ -74,7 +74,8 @@ Good:
 
 **Verification** lists the checks that actually ran. Give each check one line:
 what ran and the result. Add the `Check it yourself` line only when a hand
-check shows something the tests do not. Do not present untested work as tested. When verification finishes later, update the section.
+check shows something the tests do not. Do not present untested work as tested.
+When verification finishes later, update the section.
 
 **Action needed** lists what the merger must do before or after the merge,
 breaking changes included. Leave the section out when there is nothing to do.
