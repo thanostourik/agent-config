@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
-# verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh), plus N extra copies for '# alone' features
+# verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh), plus N extra copies for '# alone' features (default: the skill's lanes file)
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 # verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base
 # verify all                drive every feature
@@ -313,7 +313,12 @@ command=${1:-}
 case $command in
   up)
     [[ -f "$cache/run-id" ]] || echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"
-    [[ -z "$lanes" ]] || echo "$lanes" > "$cache/lanes"
+    previous=$(lane_count)
+    [[ -n "$lanes" || ! -f "$cache/run-id.lanes-set" ]] && echo "${lanes:-$(cat "$skill/lanes" 2> /dev/null || echo 0)}" > "$cache/lanes"
+    : > "$cache/run-id.lanes-set"
+    for ((lane = previous; lane > $(lane_count); lane--)); do
+      on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; exit 1; }
+    done
     count=$(lane_count) failed=0
     if ((count == 0)); then
       on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
@@ -337,7 +342,7 @@ case $command in
       "$skill/bin/cleanup.sh" "$@" || failed=1
     fi
     ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id" "$cache/lanes"
+    rm -f "$cache/run-id" "$cache/lanes" "$cache/run-id.lanes-set"
     echo "down" ;;
   list)
     for feature in $(all_features); do printf '%s: %s\n' "$feature" "$(summary_of "$feature")"; done ;;

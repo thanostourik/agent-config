@@ -60,7 +60,8 @@ and read its output once. Do not poll it or tail its logs.
 - `verify list`: every feature with its one-line summary. This is the feature map.
 - `verify lint [feature...]`: the recipe rules the runner enforces.
 - `verify up --lanes N`: also start N extra copies of the environment; `# alone` features
-  spread across them instead of waiting in one queue.
+  take them from one queue, longest first. Without `--lanes`, the count comes from the
+  skill's `lanes` file.
 - `verify uncovered`: entry points (routes, screens, commands) no feature's `# covers:`
   names, with the count covered.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
@@ -133,6 +134,11 @@ wait_for 10 api GET /notes?title=verify-create-note
 - Never wait for real time. A job interval, retry delay, rate-limit window or expiry that
   takes longer than a few seconds is shortened in the run's environment (`PROJECT.md` says
   how), never waited out. Never turn a behavior off to make a recipe faster or pass.
+- Use a fresh identifier instead of waiting for a window to reset: a rate limit or quota
+  counts per key, account or caller, so take a new one. Check whether a wait is needed
+  before waiting.
+- Make a race impossible instead of racing it: when a job would remove state a step still
+  needs, hold that state through a stub mode or the recipe's own data, not a slower job.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.

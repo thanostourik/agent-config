@@ -161,6 +161,21 @@ For a CLI or a library there is no process to restart: `launch.sh` prepares the 
 folder and builds once, and `doctor.sh` checks that the folder is the run's and the build is
 current.
 
+Build the environment for speed, because every recipe pays for it on every run:
+
+- Key every per-run file and port on `$VERIFY_RUN_ID`, never a fixed path such as
+  `.cache/run/`, so lanes (extra copies of the environment, `bin/verify up --lanes N`) can
+  run side by side.
+- Shorten every timer the features wait on in the run's own configuration: job intervals,
+  retry delays, grace periods, expiries, polling. Write each override and the recipes that
+  rely on it into `PROJECT.md`; before shortening a job for all features, check which
+  recipes set up the state that job consumes.
+- Keep each copy small so lanes fit in memory: cap worker counts and heap sizes (a JVM
+  without `-Xmx` takes a quarter of the machine). Start JVM apps with
+  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials.
+- A stub or helper that starts a process stops any leftover of the same feature first, so an
+  interrupted run never blocks the next one.
+
 At level `checks-only`, skip launching and recording: write no recipes, put the focused
 checks in `PROJECT.md`, and go to step 6.
 
@@ -199,7 +214,9 @@ Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe run
 from a fresh environment while the others run in parallel. Then run `bin/verify all` again
 on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
 a recorder with its summary line. Write the `--jobs` value that worked into `PROJECT.md`
-when it is not the default. Then check the lifecycle once:
+when it is not the default. When `# alone` features remain, write the lane count that keeps
+the full drive shortest into the skill's `lanes` file: about their total time divided by the
+longest parallel feature, as far as memory allows. Then check the lifecycle once:
 
 - `bin/verify lint` and `bin/verify uncovered`. Map an uncovered entry point or say why not.
 - Commit, change one file a feature touches, and check that
