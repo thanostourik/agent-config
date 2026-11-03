@@ -121,7 +121,8 @@ Write and make executable:
     installed under `.cache/` (`npm install --prefix .cache/pw playwright@<version>`) when the
     project has none, and called through its installed binary, not `npx` on every call;
   - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
-    checkouts never share a browser session, and its output under `.cache/`;
+    checkouts never share a browser session (`playwright cli list` shows every session on the
+    machine, so cleanup matches its own names exactly), and its output under `.cache/`;
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
   - `after-feature.sh` closing the feature's session, and cleanup closing every session the
@@ -172,7 +173,8 @@ checks in `PROJECT.md`, and go to step 6.
    another returns; with no helper agents at all, record the rest yourself. Size the groups
    so all features fit in about four rounds of the recorders you can actually run: one
    feature each when there are few, 2 or 3 related ones otherwise. Start a new one as each
-   returns. Record the `# alone` candidates last, while no other recorder drives. After 25
+   returns, so start them in the background when the host can. Record the `# alone`
+   candidates last, while no other recorder drives. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.
@@ -188,7 +190,8 @@ when it is not the default. Then check the lifecycle once:
 - `bin/verify lint` and `bin/verify uncovered`. Map an uncovered entry point or say why not.
 - Commit, change one file a feature touches, and check that
   `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
-  every new recipe counts as changed. Undo the change.
+  every new recipe counts as changed. Undo the change. In a companion, change a copy of the
+  app checkout instead and point `APP_<NAME>` at it.
 - Check that `bin/verify down` leaves nothing of the run outside `.cache/`: no process, port,
   container, browser session or file.
 
