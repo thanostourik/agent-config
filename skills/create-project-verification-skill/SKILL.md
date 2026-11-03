@@ -111,7 +111,11 @@ Write and make executable:
 - `observe.sh <path>`: saves the app's current state for a failed step: the snapshot or
   screenshot of the feature's browser session (`$VERIFY_SESSION`), the last HTTP response, or
   the last command output.
-- `entrypoints.sh`: prints the files that define entry points, one repository path per line.
+- `entrypoints.sh`: prints every entry point, one per line, as `<entry point><TAB><file>`:
+  a route with its method (`POST /api/notes`), a screen's path, a command (`todo add`), a
+  job or message handler. It is a search over the source, such as route annotations or a
+  router file, so it finds new entry points by itself. `bin/verify uncovered` compares it
+  with the recipes' `# covers:` lines.
 - Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
@@ -161,10 +165,12 @@ checks in `PROJECT.md`, and go to step 6.
 
 ## 4. Record every feature
 
-1. List the features from the entry points and the docs: one user-facing capability each,
-   with a one-line scope. No behavior falls in two scopes. A feature's name is its file name
-   and never a `verify` command (`list`, `all`, ...). Keep the list in your reply or in
-   `.cache/features.txt`, not in a file of the skill.
+1. Group the output of `bin/entrypoints.sh` into features: one user-facing capability
+   each, with a one-line scope and its entry points. Every entry point belongs to exactly
+   one feature. Next to each feature, name the docs sections and test files that describe
+   it (one `grep -l` over docs and tests per feature's words); recorders turn those into
+   `# expects:` lines. A feature's name is its file name and never a `verify` command
+   (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean.

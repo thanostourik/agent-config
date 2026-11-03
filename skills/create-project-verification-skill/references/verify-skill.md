@@ -40,6 +40,14 @@ Do not drive features the change cannot affect. Run `verify all` only when the u
 after an upgrade of this skill, or when a change touches what every feature uses (launch,
 sign-in, a shared helper) and you cannot name fewer features.
 
+## Keep the map current
+
+When the user asks to update or maintain verification, or `verify all` has not passed for a
+while: run `verify up`, `verify all` and `verify uncovered`. Send each failing feature and
+each uncovered entry point to recorders ([Recorders](#recorders)): a failing recipe is
+repaired or its product defect reported, an uncovered entry point gets a recipe or joins an
+existing feature's `# covers:`. Then `verify down`, commit, and report what changed.
+
 A drive can outlast your command timeout. Start `verify` in the background, wait for it,
 and read its output once. Do not poll it or tail its logs.
 
@@ -51,7 +59,10 @@ and read its output once. Do not poll it or tail its logs.
 - `--jobs N` (default 8) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - `verify list`: every feature with its one-line summary. This is the feature map.
 - `verify lint [feature...]`: the recipe rules the runner enforces.
-- `verify uncovered`: entry points no feature's `# touches:` names.
+- `verify up --lanes N`: also start N extra copies of the environment; `# alone` features
+  spread across them instead of waiting in one queue.
+- `verify uncovered`: entry points (routes, screens, commands) no feature's `# covers:`
+  names, with the count covered.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
   drives another checkout of that app, such as a worktree.
 
@@ -85,6 +96,14 @@ wait_for 10 api GET /notes?title=verify-create-note
   fine. Leave out files every feature only passes through, such as bootstrap code or shared
   config; a file that holds this feature's routes or handlers belongs in, even when other
   features' are there too.
+- `# covers:` the entry points the recipe drives, comma-separated, written exactly as
+  `bin/entrypoints.sh` prints them (such as `POST /api/notes, /notes/[id]`).
+- `# expects: <behavior> -> <step label>` once for every behavior the docs, the tests or
+  the request state for this feature: what it does, its errors, limits and side effects.
+  Several labels are joined by `, `. A behavior the run cannot reach gets
+  `-> not driven: <reason>`. `verify lint` refuses a line whose step does not exist. Read
+  the feature's tests and docs for these lines before writing steps; they are the recipe's
+  depth.
 - Optional header lines: `# alone` when the feature changes state other features read, such
   as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already
@@ -109,7 +128,11 @@ wait_for 10 api GET /notes?title=verify-create-note
   goes only on a delete whose failure cannot matter.
 - Other features run at the same time on the same environment. Never assume shared state,
   such as a global counter, a job queue or a list of every user's rows, is quiet: check only
-  what this recipe created, or mark the feature `# alone`.
+  what this recipe created. Give the feature its own tenant, account, key or workspace
+  before marking it `# alone`.
+- Never wait for real time. A job interval, retry delay, rate-limit window or expiry that
+  takes longer than a few seconds is shortened in the run's environment (`PROJECT.md` says
+  how), never waited out. Never turn a behavior off to make a recipe faster or pass.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
@@ -144,7 +167,7 @@ header. While iterating, drive only your own features. Edit only your own recipe
 branch, commit or stash, and no edit to PROJECT.md. Stop every process your
 attempts started. Return only those lines, and one line per trap that cost you a run, for
 PROJECT.md's Gotchas.
-Features: <feature>: <scope>; ...
+Features: <feature>: <scope>; entry points: <...>; docs and tests: <files>; ...
 ```
 
 When they return, read only their lines. Add their traps to `PROJECT.md`'s Gotchas when they

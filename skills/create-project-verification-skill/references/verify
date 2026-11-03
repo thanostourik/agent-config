@@ -163,12 +163,33 @@ lint() {
       [[ -e "$(resolve "$path")" ]] || report "touches '$path', which does not exist"
     done < <(touches_of "$feature")
     grep -q '^step ' "$file" || report "no step"
+    while IFS= read -r problem; do report "$problem"; done < <(check_expects "$file")
     grep -n -E '(^|[^A-Za-z0-9_./-])sleep([[:space:]]|$)' "$file" | sed "s/^/$feature: bare sleep, use wait_for: line /" | grep . && problems=1
     grep -n 'waitForTimeout(' "$file" | sed "s/^/$feature: waitForTimeout, wait for the state instead: line /" | grep . && problems=1
     bash -n "$file" 2> /dev/null || report "not valid bash: $(bash -n "$file" 2>&1 | head -n 1)"
   done
   return $problems
 }
+
+check_expects() {
+  awk '
+    /^step "/ { label = $0; sub(/^step "/, "", label); sub(/".*$/, "", label); steps[label] }
+    /^# expects:/ { line = substr($0, 12); expects[++n] = line }
+    END {
+      for (i = 1; i <= n; i++) {
+        line = expects[i]; at = index(line, " -> ")
+        if (!at) { print "expects line has no \" -> \": " line; continue }
+        target = substr(line, at + 4)
+        if (target ~ /^not driven:[[:space:]]*[^[:space:]]/) continue
+        if (target ~ /^not driven/) { print "expects line says not driven without a reason: " line; continue }
+        k = split(target, labels, /, /)
+        for (j = 1; j <= k; j++) if (!(labels[j] in steps)) print "expects line names step \"" labels[j] "\", which the recipe does not have"
+      }
+    }
+  ' "$1"
+}
+
+covers_of() { sed -n 's/^# covers:[[:space:]]*//p' "$skill/features/$1.sh" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'; }
 
 doctor() {
   [[ -x "$skill/bin/doctor.sh" ]] || return 0
@@ -275,6 +296,12 @@ drive() {
   echo
   echo "Summary ($((SECONDS - started))s, $# features)"
   for feature in "$@"; do line_of "$feature" || result=1; done
+  local driven=0 skipped=0
+  for feature in "$@"; do
+    driven=$((driven + $(grep -c '^# expects:' "$skill/features/$feature.sh")))
+    skipped=$((skipped + $(grep -c -E '^# expects:.* -> not driven' "$skill/features/$feature.sh")))
+  done
+  echo "Expectations: $((driven - skipped)) checked by a step, $skipped not driven"
   echo "Evidence: $cache/evidence/<feature>/"
   [[ -e "$run/stop" ]] || rm -rf "$run"
   return $result
@@ -324,9 +351,17 @@ case $command in
   uncovered)
     [[ -x "$skill/bin/entrypoints.sh" ]] || { echo "verify: no bin/entrypoints.sh" >&2; exit 2; }
     "$skill/bin/entrypoints.sh" | sort -u > "$cache/entrypoints"
-    for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$cache/touched"
-    comm -23 "$cache/entrypoints" "$cache/touched" > "$cache/uncovered"
-    if [[ -s "$cache/uncovered" ]]; then echo "Entry points no feature touches:"; sed 's/^/  /' "$cache/uncovered"; else echo "Every entry point has a feature."; fi ;;
+    if grep -q $'\t' "$cache/entrypoints"; then
+      for feature in $(all_features); do covers_of "$feature"; done | sort -u > "$cache/covered"
+      awk -F '\t' 'NR == FNR { covered[$0]; next } !($1 in covered)' "$cache/covered" "$cache/entrypoints" > "$cache/uncovered"
+    else
+      for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$cache/covered"
+      comm -23 "$cache/entrypoints" "$cache/covered" > "$cache/uncovered"
+    fi
+    total=$(wc -l < "$cache/entrypoints") missing=$(wc -l < "$cache/uncovered")
+    echo "Entry points covered: $((total - missing)) of $total"
+    [[ -s "$cache/uncovered" ]] && { echo "Not covered by any feature:"; sed 's/^/  /' "$cache/uncovered"; }
+    exit 0 ;;
   affected)
     while (($#)); do
       case $1 in
