@@ -208,12 +208,26 @@ on_lane() {
   VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") "$@"
 }
 
+held() { [[ -d "$cache/drive/.lock-$1" ]] && kill -0 "$(cat "$cache/drive/.lock-$1/pid" 2> /dev/null)" 2> /dev/null; }
+
+take_lock() {
+  local lock=$cache/drive/.lock-$1 until=$((SECONDS + 2 * deadline))
+  until mkdir "$lock" 2> /dev/null; do
+    if ! held "$1"; then rm -rf "$lock"; continue; fi
+    ((SECONDS < until)) || return 1
+    sleep 1
+  done
+  echo "$BASHPID" > "$lock/pid"
+}
+
 run_feature() {
   local lane=$2
   export VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane")
   local feature=$1 dir=$cache/drive/$1 start=$SECONDS status limit
   limit=$(header "$feature" deadline)
   limit=${limit:-$deadline}
+  mkdir -p "$cache/drive"
+  take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
   echo "$limit" > "$dir/deadline"
@@ -222,6 +236,7 @@ run_feature() {
   status=$?
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
+  rm -rf "$cache/drive/.lock-$feature"
   if ((status)) && [[ ! -e "$run/stop" ]] && ! doctor "$run/doctor.log"; then
     echo "$feature" > "$run/stop"
   fi
@@ -266,7 +281,7 @@ drive() {
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
   ((${#alone[@]})) && mapfile -t alone < <(for feature in "${alone[@]}"; do echo "$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 0) $feature"; done | sort -rn | cut -d' ' -f2)
-  for feature in "$@"; do rm -rf "${cache:?}/drive/$feature"; done
+  for feature in "$@"; do held "$feature" || rm -rf "${cache:?}/drive/$feature"; done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
   run_lane() {
     local lane=$1 feature
