@@ -26,7 +26,6 @@
     "html-communication": { "enabled": true },
     "maintain-project-verification-skill": { "enabled": true },
     "modernize": { "enabled": true },
-    "render-plan": { "enabled": true },
     "review-loop": {
       "enabled": true,
       "defaults": {
@@ -61,9 +60,7 @@
     },
     "with-verification": { "enabled": true }
   },
-  "hooks": {
-    "render-plan": { "enabled": true }
-  },
+  "hooks": {},
   "mcp": {
     "jira": {
       "enabled": true,
