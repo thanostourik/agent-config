@@ -38,19 +38,19 @@ Put only the setting you change in `config.json`. Then run `./sync --apply`.
 
 | I want to | Put this in `config.json` |
 |---|---|
-| Change a skill's model | `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}` |
-| Turn a skill off | `{"skills": {"bro": {"enabled": false}}}` |
-| Change a list | `{"skills": {"review-loop": {"defaults": {"reviewers": ["codex-review", "grok-review"]}}}}` |
-| Add a Jira instance | `{"mcp": {"jira": {"instances": {"work": {"url": "<Jira URL>"}}}}}` |
-| Allow restricted actions in a repo | `{"allow": {"restricted": ["owner/repo"]}}` |
+| Use another model for `codex-review` | `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}` |
+| Remove the `bro` skill from every tool | `{"skills": {"bro": {"enabled": false}}}` |
+| Run Grok in every `review-loop` round, not only once | `{"skills": {"review-loop": {"defaults": {"reviewers": ["codex-review", "grok-review"]}}}}` |
+| Connect a Jira server | `{"mcp": {"jira": {"instances": {"work": {"url": "<Jira URL>"}}}}}` |
+| Let the agent add attribution and mark PRs ready in `owner/repo` | `{"allow": {"restricted": ["owner/repo"]}}` |
 
 What to know:
 
 - **What the file holds:** which skills, agents, hooks, and Jira MCP are on, and each
   skill's model, provider, and effort under `defaults`.
 - **Objects merge key by key.** Setting one skill's model keeps its other settings.
-- **A list replaces the whole shipped list.** In the example above, `review-loop` runs
-  both `codex-review` and `grok-review` in every round, instead of Grok only once.
+- **A list replaces the whole shipped list.** The shipped `reviewers` list is only
+  `codex-review`, so the Grok example names both. Naming only `grok-review` would drop Codex.
 - **Turning something off** removes the copies sync installed. The next
   `./sync --apply` does this.
 - **A model or effort you name in a request still wins** over these settings.
