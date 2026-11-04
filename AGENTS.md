@@ -33,15 +33,13 @@ Two things to keep as they are:
 - `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
   shape: an object of event name to list of hook items, the same object that
   sits under the tool's `hooks` key. Only Claude Code, Codex, and Cursor
-  support hooks. Grok and OpenCode get a skill instead.
+  support hooks.
 - `hooks/shared/<name>.json`: one hook for every tool with hooks, written once
   in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
   `~/.local/bin/`, executable. `squash-merge-pr` needs `git`, a logged-in `gh`, and `jq`.
   `usage-report` reads the Codex and Claude Code session logs and prints what
   each session and its subagents cost in tokens. It needs only Python.
-  `render-plan` needs `npx`, fetches `marked` and `postplan`
-  through `npx` and a one-time Postplan login (`npx postplan auth login`).
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
   password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` only
   while Apache basic auth sits in front of that Jira and deletes the
@@ -128,15 +126,15 @@ Without `harness`, the source folder decides:
 - `skills/shared/x/` goes to the five tools.
 - `hooks/shared/x.json` goes to the three tools with hooks.
 
-A `harness` list replaces that default completely. It does not add to it. For
-example, `render-plan` lives in `skills/shared/` and uses:
+A `harness` list replaces that default completely. It does not add to it. A
+skill in `skills/shared/` that uses:
 
 ```yaml
 metadata:
   harness: "grok, opencode"
 ```
 
-That keeps it out of the Claude Code, Codex, and Cursor skill folders. A
+stays out of the Claude Code, Codex, and Cursor skill folders. A
 skill that should also go to `~/.agents/skills/` must list every destination,
 `agents` included.
 
@@ -226,7 +224,7 @@ A shared hook looks like this:
 {
   "harness": "claude-code, cursor",
   "event": "after-edit",
-  "command": "$HOME/.local/bin/render-plan --hook",
+  "command": "$HOME/.local/bin/example --hook",
   "timeout": 30
 }
 ```
