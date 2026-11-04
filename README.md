@@ -31,28 +31,44 @@ each tool's configuration folder.
 
 ## Configuration
 
-`config.defaults.json` holds the shipped settings. `config.json` (gitignored) overrides
-single settings. Sync reads both, and your value replaces the shipped one.
+`config.defaults.json` holds the shipped settings. To change one, override it in
+`config.json` (gitignored). Sync reads both, and your value replaces the shipped one.
 
-Put only the setting you change in `config.json`. Then run `./sync --apply`.
+1. If `config.json` does not exist, create it containing `{}`.
+2. Find the setting in `config.defaults.json`.
+3. Add that setting to `config.json` with the same nesting and your value. Add nothing else.
+4. Run `./sync --apply`.
 
-| I want to | Put this in `config.json` |
-|---|---|
-| Use another model for `codex-review` | `{"skills": {"codex-review": {"defaults": {"model": "gpt-6.1-sol"}}}}` |
-| Remove the `bro` skill from every tool | `{"skills": {"bro": {"enabled": false}}}` |
-| Run Grok in every `review-loop` round, not only once | `{"skills": {"review-loop": {"defaults": {"reviewers": ["codex-review", "grok-review"]}}}}` |
-| Connect a Jira server | `{"mcp": {"jira": {"instances": {"work": {"url": "<Jira URL>"}}}}}` |
-| Let the agent add attribution and mark PRs ready in `owner/repo` | `{"allow": {"restricted": ["owner/repo"]}}` |
+For example, to change the model of `codex-review`, the default file has:
 
-What to know:
+```json
+{ "skills": { "codex-review": { "defaults": { "model": "gpt-6.1-sol", "effort": "high" } } } }
+```
 
-- **What the file holds:** which skills, agents, hooks, and Jira MCP are on, and each
-  skill's model, provider, and effort under `defaults`.
-- **Objects merge key by key.** Setting one skill's model keeps its other settings.
-- **A list replaces the whole shipped list.** The shipped `reviewers` list is only
-  `codex-review`, so the Grok example names both. Naming only `grok-review` would drop Codex.
-- **Turning something off** removes the copies sync installed. The next
-  `./sync --apply` does this.
+and `config.json` needs only the part you change:
+
+```json
+{ "skills": { "codex-review": { "defaults": { "model": "gpt-6.2" } } } }
+```
+
+The effort stays `high`, because objects merge key by key.
+
+Settings you can change:
+
+| Setting | Path in `config.json` | Value |
+|---|---|---|
+| A skill's `model`, `provider`, or `effort` | `skills.<skill>.defaults.<name>` | text |
+| A skill's other defaults, such as `rounds` | `skills.<skill>.defaults.<name>` | text |
+| A skill's list, such as `reviewers` | `skills.<skill>.defaults.<name>` | list of text |
+| Turn a skill, agent, or hook off | `skills.<name>.enabled`, `agents.<name>.enabled`, `hooks.<name>.enabled` | `false` |
+| Jira servers | `mcp.jira.instances.<key>.url` | the Jira URL |
+| Repos that allow restricted actions | `allow.restricted` | list of `owner` or `owner/repo` |
+
+Rules:
+
+- **A list replaces the whole shipped list.** It does not add to it. To add `grok-review`
+  to `review-loop`'s `reviewers`, write both: `["codex-review", "grok-review"]`.
+- **Turning something off** removes the copies sync installed, at the next `./sync --apply`.
 - **A model or effort you name in a request still wins** over these settings.
 - **Jira URLs** go only in `config.json`, never in git.
 
