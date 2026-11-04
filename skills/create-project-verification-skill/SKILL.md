@@ -155,7 +155,10 @@ Write and make executable:
   - a sign-in helper that saves each account's storage state once per run and loads it in
     one call, signing each account into a browser session of its own: a second account in
     the same session is signed in as the first through the sign-in provider's cookie;
-  - creating or deleting an account also removes that account's cached state and token.
+  - creating or deleting an account also removes that account's cached state and token;
+  - a cached file (token, storage state) written through a temporary file of its own
+    (`mktemp` in the same folder) and `mv`: features sign in at once, and a shared
+    temporary name makes one feature's `mv` fail.
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
@@ -253,9 +256,7 @@ checks in `PROJECT.md`, and go to step 6.
    Call each once the way a recipe calls it, after deleting its cached state (such as saved
    sign-ins), so its slow path runs too: in trials, four recorders each spent minutes
    working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
-   failed four recipes on the first fresh drive. Start the recorders of features that need
-   none of these helpers as soon as the first recipe passes, and the rest once the helpers
-   work.
+   failed four recipes on the first fresh drive.
 3. Start recorders with the short prompt in the skill's Recorders section: one feature each,
    every feature at once, heaviest first. Its line in `.cache/features.txt` lists its entry
    points' source files, so the recorder reads them instead of searching, and the short
