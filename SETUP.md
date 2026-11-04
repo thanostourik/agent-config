@@ -5,6 +5,11 @@ after that. Add a section when something new needs steps beyond `./sync`.
 
 ## Jira MCP
 
+Needs a Linux desktop session with systemd and these commands installed: `bw`
+(Bitwarden CLI, already logged in with `bw login`), `uvx`, `zenity`, `python3`,
+`flock`, `timeout`, `systemd-run`, and `systemctl`. `mcp-atlassian-start` stops
+with a message naming any that is missing.
+
 1. If `config.json` is missing, create it containing `{}`.
 2. Ask for each Jira URL unless the user already gave it. Add each instance
    only to `config.json`, as
@@ -21,6 +26,8 @@ after that. Add a section when something new needs steps beyond `./sync`.
    `"gate": false` and run `./sync --apply` again.
 
 ## Stacked PRs
+
+Needs `gh` installed and logged in (`gh auth login`).
 
 1. Once: `gh extension install github/gh-stack`
 2. Check it: `gh stack --version`
