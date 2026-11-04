@@ -141,17 +141,12 @@ These skills let an agent run the real app and prove its change works before it 
 work done. They install to Claude Code, Codex, Grok, and Cursor, not OpenCode.
 
 **Set up a project.** These are manual. Run them from the project's root, each in a new
-session. When you run both, run them in this order:
+session:
 
 | Skill | What it does |
 |---|---|
 | `create-project-local-stack` | Writes `local-stack/`: one command that starts everything the app needs, isolated from other copies, with fakes for shared services. Developers run it next to their IDE; agents run many at once to check their work. |
 | `create-project-verification-skill` | Writes the project's own `verify-<app>` and `maintain-verify-<app>` skills, a feature map, and an `AGENTS.md` section. When `local-stack/` exists, the skills start the app through it. Add `quick` to write and drive only one feature per surface. |
-
-Without a local stack, `create-project-verification-skill` uses another isolated
-environment the project already has. When there is none, it asks you to start the app.
-If you add the local stack later, `/maintain-project-verification-skill` switches the
-skills over to it.
 
 If the project already has verification skills, `create-project-verification-skill`
 stops and asks whether to replace or upgrade them.
