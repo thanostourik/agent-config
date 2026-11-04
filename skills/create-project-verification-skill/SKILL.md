@@ -258,8 +258,11 @@ checks in `PROJECT.md`, and go to step 6.
    every feature at once, heaviest first. Its line in `.cache/features.txt` lists its entry
    points' source files, so the recorder reads them instead of searching, and the short
    prompt lets you start twenty recorders in seconds instead of minutes. Drives need no limit on recorders: a feature's run waits while the machine is out of
-   memory or CPU. When the host refuses a recorder, start it when another returns; with no
-   helper agents at all, record the rest yourself. In trials, the last recorders to return
+   memory or CPU. The host's limit does apply (Claude Code runs at most 20 helper agents at
+   once): write the features to start into `.cache/queue.txt`, read each start's answer, and
+   delete a feature from the queue only when its recorder started. Start the next queued
+   feature as each recorder returns, until the queue is empty. With no helper agents at
+   all, record the rest yourself. In trials, the last recorders to return
    each had two features and took 13 to 14 minutes. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background; never block on a

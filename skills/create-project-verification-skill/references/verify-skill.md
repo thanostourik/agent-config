@@ -204,7 +204,8 @@ times once and remove what is plainly avoidable; spend no further runs on speed.
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
-already up: never run verify up, down or all. Stop a feature after 5 runs, and report it
+already up and shared: never run verify up, down or all, launch.sh, cleanup.sh or anything
+that stops containers or closes browser sessions other than your own feature's. Stop a feature after 5 runs, and report it
 blocked with its last summary line. A defect in a helper: fix it when the fix is small and
 cannot break other features, by writing a copy and moving it over the helper with mv (other
 drives are running it, and bash reads a script while it runs), and name it in your result
