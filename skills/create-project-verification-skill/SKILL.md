@@ -239,13 +239,13 @@ checks in `PROJECT.md`, and go to step 6.
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background and start a new one as each returns; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
-   namespace (schema, prefix, account, data folder) before marking it `# alone`. A recorder
-   that has not returned 15 minutes after it started is dead: stop it, take its recipes as
-   they are, and drive and fix them yourself. Watch the clock while you wait; never wait
-   only for a notice. After 25
+   namespace (schema, prefix, account, data folder) before marking it `# alone`. A
+   recorder's result is the file it writes last, `.cache/results/<first feature>.txt`, not
+   the host's completion notice: notices can be lost. A result file that appears is a
+   returned recorder, with or without a notice. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
-4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.
+4. Read only their result files. Fold their traps into `PROJECT.md`'s Gotchas.
 
 ## 5. Prove it
 

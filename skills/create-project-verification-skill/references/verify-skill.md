@@ -185,12 +185,15 @@ checks of its own. Return one line per feature: passed, product defect: <what>, 
 blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
 header. While iterating, drive only your own features. Edit only your own recipes: no git
 branch, commit or stash, and no edit to PROJECT.md. Stop every process your
-attempts started. Return only those lines, and one line per trap that cost you a run, for
-PROJECT.md's Gotchas.
+attempts started. As your last action, write those lines, and one line per trap that cost
+you a run for PROJECT.md's Gotchas, to
+.agents/skills/verify-<app>/.cache/results/<your first feature>.txt (through a temporary file
+and mv), then return the same lines.
 Features: <feature>: <scope>; entry points: <...>; ...
 ```
 
-When they return, read only their lines. Add their traps to `PROJECT.md`'s Gotchas when they
+When a result file appears, with or without the host's completion notice, read only its
+lines. Add their traps to `PROJECT.md`'s Gotchas when they
 hold for other features.
 
 ## When a drive fails
