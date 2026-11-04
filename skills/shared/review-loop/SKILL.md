@@ -1,13 +1,14 @@
 ---
 name: review-loop
-description: Use when the user asks for a review loop, or to have your own branch reviewed, fixed, and proven before handing it over.
+description: Use when the user asks for a review loop, or to have your own branch, or a PR you took over with takeover, reviewed, fixed, and proven before handing it over.
 ---
 
 # Review loop
 
-You wrote the change on this branch. Independent reviewers review it in
-rounds. You check what they find, fix the real problems, and prove the result
-works. A fresh reviewer then checks that proof against the intent.
+You wrote the change on this branch, or took over its PR with `takeover`.
+Independent reviewers review it in rounds. You check what they find, fix the
+real problems, and prove the result works. A fresh reviewer then checks that
+proof against the intent.
 
 ## Setup
 
