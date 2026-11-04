@@ -401,6 +401,10 @@ case $command in
     done
     echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")" ;;
   down)
+    if others_running ""; then
+      echo "verify: features are still running ($(for lock in "$cache"/drive/.lock-*; do held "${lock##*/.lock-}" && printf '%s ' "${lock##*/.lock-}"; done)); run 'down' again once they finish" >&2
+      exit 2
+    fi
     count=$(lane_count) failed=0
     if [[ -f "$cache/run-id" ]]; then
       for ((lane = count; lane >= 0; lane--)); do on_lane "$lane" "$skill/bin/cleanup.sh" "$@" || failed=1; done

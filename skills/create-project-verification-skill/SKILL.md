@@ -183,7 +183,9 @@ that recipe's header, not here):
   next check. After `goto` or `reload`, wait for an element only the client renders before
   the first click: a click before the page is interactive does nothing. A `confirm()`
   dialog blocks every command until it is handled; a role name
-  matches as a substring unless `exact: true`.
+  matches as a substring unless `exact: true`. The `run-code` function runs in a bare
+  sandbox: Node and browser globals such as `URL`, `require` and `console` are not there,
+  so parse URLs and log inside `page.evaluate`, or return the value.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
