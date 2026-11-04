@@ -31,46 +31,43 @@ each tool's configuration folder.
 
 ## Configuration
 
-`config.defaults.json` holds the shipped settings. To change one, override it in
-`config.json` (gitignored). Sync reads both, and your value replaces the shipped one.
+The shipped settings are in `config.defaults.json`. Do not edit that file. Put your
+changes in `config.json` next to it (gitignored), then run `./sync --apply`.
 
-1. If `config.json` does not exist, create it containing `{}`.
-2. Find the setting in `config.defaults.json`.
-3. Add that setting to `config.json` with the same nesting and your value. Add nothing else.
-4. Run `./sync --apply`.
+`config.json` has the same shape as `config.defaults.json`, but holds only the keys you
+change. Every key you leave out keeps its shipped value.
 
-For example, to change the model of `codex-review`, the default file has:
-
-```json
-{ "skills": { "codex-review": { "defaults": { "model": "gpt-6.1-sol", "effort": "high" } } } }
-```
-
-and `config.json` needs only the part you change:
+**Change a skill default.** Find the skill's `defaults` in `config.defaults.json` and
+give one key a new value. This works for every default: `model`, `provider`, `effort`,
+`rounds`, and the rest.
 
 ```json
-{ "skills": { "codex-review": { "defaults": { "model": "<other model id>" } } } }
+{ "skills": { "codex-review": { "defaults": { "model": "<model id>" } } } }
 ```
 
-The effort stays `high`, because objects merge key by key.
+Only `model` changes. `effort` keeps its shipped value.
 
-Settings you can change:
+**Change a list.** A list replaces the whole shipped list; it does not add to it. The
+shipped `reviewers` of `review-loop` is `["codex-review"]`. To add Grok, write both:
 
-| Setting | Path in `config.json` | Value |
-|---|---|---|
-| A skill's `model`, `provider`, or `effort` | `skills.<skill>.defaults.<name>` | text |
-| A skill's other defaults, such as `rounds` | `skills.<skill>.defaults.<name>` | text |
-| A skill's list, such as `reviewers` | `skills.<skill>.defaults.<name>` | list of text |
-| Turn a skill, agent, or hook off | `skills.<name>.enabled`, `agents.<name>.enabled`, `hooks.<name>.enabled` | `false` |
-| Jira servers | `mcp.jira.instances.<key>.url` | the Jira URL |
-| Repos that allow restricted actions | `allow.restricted` | list of `owner` or `owner/repo` |
+```json
+{ "skills": { "review-loop": { "defaults": { "reviewers": ["codex-review", "grok-review"] } } } }
+```
 
-Rules:
+Writing only `["grok-review"]` would drop Codex.
 
-- **A list replaces the whole shipped list.** It does not add to it. To add `grok-review`
-  to `review-loop`'s `reviewers`, write both: `["codex-review", "grok-review"]`.
-- **Turning something off** removes the copies sync installed, at the next `./sync --apply`.
-- **A model or effort you name in a request still wins** over these settings.
-- **Jira URLs** go only in `config.json`, never in git.
+**Turn something off.** Set `enabled` to `false` under `skills`, `agents`, or `hooks`.
+The key is the skill's folder name, or the agent's or hook's file name without the
+extension. The next `./sync --apply` removes it from every tool.
+
+```json
+{ "skills": { "bro": { "enabled": false } } }
+```
+
+**Jira and restricted repositories** are set in `config.json` too. See
+[SETUP.md](SETUP.md#jira-mcp) and [Restricted repositories](#restricted-repositories).
+
+A model or effort you name in a request always wins over these settings.
 
 ## Restricted repositories
 
@@ -93,13 +90,13 @@ To allow a repository, add its GitHub owner (all of the owner's repos) or one
 `config.defaults.json` ships an empty list, so by default no repository allows them.
 The agent reads the repository's name with `gh repo view --json nameWithOwner`. A
 repository that is not on GitHub never allows them. After editing the list, run
-`./sync --apply`: it writes the list into the instructions and the `file-pr` skill.
+`./sync --apply`: it writes the list into the installed instructions.
 
 ## Skills
 
 Every skill installs to every tool unless its `harness` field says otherwise. The agent
-starts most of them by itself when the situation fits. Skills marked *manual* run only
-when you name them:
+starts most of them by itself when the situation fits. Manual skills run only when you
+name them:
 
 - Claude Code, Cursor, Grok: type `/skill-name`, for example `/squash-merge-pr`.
 - Codex: type `$skill-name`, for example `$squash-merge-pr`.
@@ -140,48 +137,42 @@ when you name them:
 
 ### Verification
 
-Verification skills let an agent drive the real app and prove its work before it calls
-the work done. These four skills come from this repository. Each project then gets its own
-`verify-<app>` skills. They install to Claude Code, Codex, Grok, and Cursor, not OpenCode.
+These skills let an agent run the real app and prove its change works before it calls the
+work done. They install to Claude Code, Codex, Grok, and Cursor, not OpenCode.
 
-| Skill | When | What it does |
-|---|---|---|
-| `create-project-local-stack` | Once per project, before the verification skills. | Generates `local-stack/` in the project: one command that starts everything the app needs, isolated per stack, with fakes for shared services. |
-| `create-project-verification-skill` | Once per project. | Writes the project's `verify-<app>` and `maintain-verify-<app>` skills, the feature map and an `AGENTS.md` section. |
-| `maintain-project-verification-skill` | After this repo's generator changed and you ran `./sync --apply`. | Brings the project's skills up to date. |
-| `with-verification` | Any task, in any repository. | Add "with verify" to a request. The agent finds the project's `verify-<app>` skill and runs it before calling the work done. See below. |
+**Set up a project.** These are manual. Run each once, from the project's root, in a new
+session:
 
-Run the two `*-project-verification-skill` skills from the project's root, in a new
-session. Both are manual: the agent never starts them on its own. Add a mode after the
-name, for example `/create-project-verification-skill quick`.
-
-| Skill | Modes |
+| Skill | What it does |
 |---|---|
-| `create-project-verification-skill` | none: write all features, then fully audit<br>`quick`: write and drive one feature per surface, nothing more |
-| `maintain-project-verification-skill` | none: update the map, drive the features with new and changed steps<br>`map only`: no drives<br>`full audit`: drive every feature |
+| `create-project-verification-skill` | Writes the project's own `verify-<app>` and `maintain-verify-<app>` skills, a feature map, and an `AGENTS.md` section. Add `quick` to write and drive only one feature per surface. |
+| `create-project-local-stack` | Writes `local-stack/`: one command that starts everything the app needs, isolated from other copies, with fakes for shared services. Developers run it next to their IDE; agents run many at once to check their work. |
 
-`quick` maps and proves only one feature per surface. The next
-`/maintain-verify-<app>` finds the other features in the source, adds them and drives
-them. If a project already has these skills, `create` stops and asks whether to replace
-or upgrade them. Where a project cannot create a disposable environment, `create` asks
-you what to do instead of guessing.
+If the project already has verification skills, `create-project-verification-skill`
+stops and asks whether to replace or upgrade them. When the project cannot start a
+throwaway environment, it asks you what to do instead of guessing.
 
-**After generation**, the project's own skills are the daily tools:
+**Use it every day.** After setup, the project has its own skills:
 
-| Skill | Use |
+| Skill | What it does |
 |---|---|
-| `verify-<app>` | Agents use it on their own before calling work done. You can also ask for it by name. |
-| `/maintain-verify-<app>` | Keeps the feature map honest. Adds features missing from the map and drives the features with new and changed steps. Add `map only` or `full audit`. |
+| `verify-<app>` | Agents run it on their own before they call work done. You can also ask for it by name. |
+| `/maintain-verify-<app>` | Keeps the feature map up to date: adds features missing from it and drives the ones whose steps changed. Add `map only` to skip driving, or `full audit` to drive every feature. After a `quick` setup, its first run adds and drives the remaining features. |
+| `with-verification` | Add "with verify" to any request, in any repository. The agent finds the project's `verify-<app>` skill and runs it before it calls the work done. |
 
-**`with-verification` and restricted repositories.** A restricted repository (see
-[above](#restricted-repositories)) must not contain agent files. So its verification
-skills live in a **companion repo**: a separate git repo next to the app checkouts that
-holds only the agent files. `with-verification` is installed globally, so it works from
-any repository. It finds the companion that lists the current checkout, drives that
-companion's `verify-<app>` skill against your diff, and reports. If the repository has its
-own `verify-<app>` skill, it uses that one instead. Two runs share one companion, so it
-takes a lock first. If the change alters the feature map, it asks whether to only report
-or to update the map in the companion through a draft PR.
+**Keep up with this repository.** When the generator here changes, run `./sync --apply`,
+then `/maintain-project-verification-skill` in each project. It updates the project's
+skills and map, and drives the features with new or changed steps. Add `map only` to skip
+driving, or `full audit` to drive every feature.
+
+**Restricted repositories.** A [restricted repository](#restricted-repositories) must not
+hold agent files, so its verification skills live in a **companion repo**: a separate git
+repo next to the app checkouts that holds only agent files, plus an `apps` file listing
+those checkouts. To set one up, run `create-project-verification-skill` inside the
+companion repo instead of the app repo. `with-verification` is installed globally, so it works from the
+restricted repository itself: it finds the companion that lists the current checkout and
+runs that companion's `verify-<app>` against your change. If the repository has its own
+`verify-<app>`, it uses that one instead.
 
 ## Scripts
 
