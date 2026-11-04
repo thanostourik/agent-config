@@ -140,7 +140,9 @@ Write and make executable:
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
   - `after-feature.sh` closing the feature's session, and cleanup closing every session the
-    run opened and removing its `<session>.err` files under `~/.cache/ms-playwright/daemon/`;
+    run opened and removing its `<session>.err` files from every folder under
+    `~/.cache/ms-playwright/daemon/` (the folder is named after the caller's working
+    directory, so one run writes to several);
     the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
   - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
     found in minutes;
