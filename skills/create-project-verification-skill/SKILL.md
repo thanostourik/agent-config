@@ -240,15 +240,18 @@ checks in `PROJECT.md`, and go to step 6.
    Call each once the way a recipe calls it, after deleting its cached state (such as saved
    sign-ins), so its slow path runs too: in trials, four recorders each spent minutes
    working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
-   failed four recipes on the first fresh drive.
+   failed four recipes on the first fresh drive. Start the recorders of features that need
+   none of these helpers as soon as the first recipe passes, and the rest once the helpers
+   work.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
-   absolute path filled in, one feature each, heaviest first, up to 12 at once. When the host
-   refuses one, start it when another returns; with no helper agents at all, record the rest
-   yourself. In trials, the last recorders to return each had two features and took 13 to 14
-   minutes; with one feature each, the light features run last and end sooner. With more features than recorders, the rest
-   wait for a free one. Start recorders on the host's fast model
+   absolute path filled in: one feature each, every feature at once, heaviest first. Each
+   feature's line lists its entry points' source files, so the recorder reads them instead of
+   searching. Drives need no limit on recorders: a feature's run waits while the machine is out of
+   memory or CPU. When the host refuses a recorder, start it when another returns; with no
+   helper agents at all, record the rest yourself. In trials, the last recorders to return
+   each had two features and took 13 to 14 minutes. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
-   Start them in the background and start a new one as each returns; never block on a
+   Start them in the background; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
    namespace (schema, prefix, account, data folder) before marking it `# alone`. A
    recorder's result is the file it writes last, `.cache/results/<first feature>.txt`, not
@@ -263,9 +266,9 @@ checks in `PROJECT.md`, and go to step 6.
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
 from a fresh environment while the others run in parallel. Then run `bin/verify all` again
 on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
-a recorder with its summary line. Write the `--jobs` value that worked into the skill's `jobs` file
-when it is not 8; raise `--jobs` while the machine has idle cores, since a
-browser-driven drive is limited by how many features run at once. When `# alone` features remain, write the lane count that keeps
+a recorder with its summary line. The runner starts as many features at once as the machine has cores and holds the next
+one back while memory or CPU runs short; write a `jobs` file only when the project needs a
+lower limit, such as a service with few connections. When `# alone` features remain, write the lane count that keeps
 the full drive shortest into the skill's `lanes` file: about their total time divided by the
 longest parallel feature, as far as memory allows. Then check the lifecycle once:
 

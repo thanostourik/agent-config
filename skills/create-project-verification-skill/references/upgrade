@@ -67,7 +67,7 @@ convert() {
       sub(/[.] .*$/, ".", summary)
       print "# " (summary != "" ? summary : title)
       print "# touches:"
-      if (alone) print "# alone"
+      if (alone) print "# alone: the old recipe ran it alone"
       printf "%s", known
       if (clean != "") printf "\ncleanup() {\n%s}\n", clean
       printf "%s", steps
@@ -118,6 +118,8 @@ mapfile -t empty < <(grep -L -E '^# touches:[[:space:]]*[^[:space:]]' "$skill"/f
 ((${#empty[@]})) && todo+=("Fill '# touches:' from the source of: ${empty[*]}.")
 stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify|\.cache/record|drive/[^ ]*/steps' "$skill"/bin/* "$skill"/PROJECT.md 2> /dev/null | grep -v -E '/bin/(verify|lib\.sh)$' || true)
 [[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")
+mapfile -t bare < <(grep -l -E '^# alone[[:space:]]*$' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
+((${#bare[@]})) && todo+=("Give each '# alone' its reason ('# alone: <the shared state it changes>'), or give the feature its own namespace and drop the line, in: ${bare[*]}.")
 mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename)
 ((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")

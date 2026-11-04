@@ -6,13 +6,13 @@
 # verify all                drive every feature
 # verify <feature>...       drive those features
 # verify list | lint [feature...] | uncovered
-# Options: --jobs N (default: the skill's jobs file, else 8), --deadline SECONDS per feature (default 180).
+# Options: --jobs N (default: the skill's jobs file, else the machine's cores; a run waits while memory or CPU is short), --deadline SECONDS per feature (default 180).
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
 root=$(cd "$skill/../../.." && pwd)
 cache=$skill/.cache
-max_jobs="" deadline=180 base="" dry="" lanes=""
+max_jobs="" deadline=180 budget=45 base="" dry="" lanes=""
 
 args=()
 while (($#)); do
@@ -24,7 +24,7 @@ while (($#)); do
   esac
 done
 set -- "${args[@]}"
-max_jobs=${max_jobs:-$(cat "$skill/jobs" 2> /dev/null || echo 8)}
+max_jobs=${max_jobs:-$(cat "$skill/jobs" 2> /dev/null || getconf _NPROCESSORS_ONLN 2> /dev/null || echo 8)}
 [[ "$max_jobs$deadline" =~ ^[0-9]+$ && $max_jobs -gt 0 && $deadline -gt 0 ]] || { echo "verify: --jobs and --deadline take positive numbers" >&2; exit 2; }
 command -v timeout > /dev/null || { echo "verify: needs GNU timeout (coreutils)" >&2; exit 2; }
 
@@ -163,6 +163,7 @@ lint() {
       [[ "$path" == */ || "$path" == *[*?]* ]] && { report "touches '$path': name files, not folders or globs"; continue; }
       [[ -e "$(resolve "$path")" ]] || report "touches '$path', which does not exist"
     done < <(touches_of "$feature")
+    grep -q -E '^# alone[[:space:]]*$' "$file" && report "'# alone' needs its reason: '# alone: <the shared state it changes>'"
     grep -q '^step ' "$file" || report "no step"
     grep -n '^step ' "$file" | grep -v -E '^[0-9]+:step "[^"]*" "[^"]+"' | sed "s/^\([0-9]*\):.*/$feature: step on line \1 has no sentence of what it proves (step \"<label>\" \"<action and expected result>\")/" | grep . && problems=1
     if [[ -f "$cache/expect/$feature.txt" ]]; then
@@ -219,6 +220,29 @@ on_lane() {
 
 held() { [[ -d "$cache/drive/.lock-$1" ]] && kill -0 "$(cat "$cache/drive/.lock-$1/pid" 2> /dev/null)" 2> /dev/null; }
 
+machine_has_room() {
+  local available pressure
+  available=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2> /dev/null)
+  [[ -z "$available" ]] || ((available >= 3072)) || return 1
+  [[ -r /proc/pressure/cpu ]] || return 0
+  pressure=$(awk '/^some/ { split($2, a, "="); print int(a[2]) }' /proc/pressure/cpu)
+  ((pressure < 40))
+}
+
+others_running() {
+  local lock
+  for lock in "$cache"/drive/.lock-*; do
+    [[ "$lock" == "$cache/drive/.lock-$1" ]] && continue
+    held "${lock##*/.lock-}" && return 0
+  done
+  return 1
+}
+
+wait_for_room() {
+  local until=$((SECONDS + deadline))
+  while ((SECONDS < until)) && others_running "$1" && ! machine_has_room; do sleep 1; done
+}
+
 take_lock() {
   local lock=$cache/drive/.lock-$1 until=$((SECONDS + 2 * deadline))
   until mkdir "$lock" 2> /dev/null; do
@@ -237,6 +261,7 @@ run_feature() {
   limit=${limit:-$deadline}
   mkdir -p "$cache/drive"
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
+  wait_for_room "$feature"
   start=$SECONDS
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
@@ -264,7 +289,9 @@ line_of() {
   grep -q -x cleanup-failed "$dir/result" 2> /dev/null && tail="; clean up failed"
   [[ -s "$dir/intent" ]] && intent=" ($(head -c 160 "$dir/intent"))"
   if ((status == 0)) && [[ "$result" == pass ]]; then
-    echo "$feature: pass (${seconds}s)$tail"
+    local slow=""
+    ((seconds > budget)) && slow=", slow: over ${budget}s, split or speed it up"
+    echo "$feature: pass (${seconds}s$slow)$tail"
     [[ -z "$tail" ]]
     return
   elif ((status == 124 || status == 137)) && ((seconds >= $(cat "$dir/deadline"))); then

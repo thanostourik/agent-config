@@ -61,7 +61,7 @@ and read its output once. Do not poll it or tail its logs.
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment.
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
-- `--jobs N` (default: the skill's `jobs` file, else 8) and `--deadline SECONDS` per feature (default 180) go anywhere.
+- `--jobs N` (default: the skill's `jobs` file, else the machine's cores; a feature's run waits while memory or CPU is short) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - `verify list`: every feature with its one-line summary. This is the feature map.
 - `verify lint [feature...]`: the recipe rules the runner enforces.
 - `verify up --lanes N`: also start N extra copies of the environment; `# alone` features
@@ -117,8 +117,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   the feature's tests and docs for these lines before writing steps; they are the recipe's
   depth. When they state little, take the lines from the source: each validation, error
   response, permission check and side effect of the feature's handlers is a behavior.
-- Optional header lines: `# alone` when the feature changes state other features read, such
-  as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
+- Optional header lines: `# alone: <the shared state it changes>` when the feature changes
+  state other features read, such as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already
   reported, so its failure reads `(known failure)` and needs no new diagnosis.
 - The feature name is the file name. It is never a `verify` command: `up`, `down`, `list`,
@@ -163,17 +163,19 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
-- At most about 15 steps, and under about a minute on a quiet machine. A bigger or slower
-  feature is two features: the slowest feature sets the end of every full drive.
+- At most about 15 steps, and a pass in 45 s or less: the runner marks a slower pass
+  `slow`. A bigger or slower feature is two features: the slowest feature sets the end of
+  every full drive. A feature's run waits while the machine is out of memory or CPU, so
+  the time a pass shows is its own.
 - Use stable handles: roles and accessible names, data attributes, routes, prompt strings.
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
 
 ## Recorders
 
-A recorder is a helper agent that writes one or a few new recipes. Start several at once
-when there are several features, up to 12. When the host refuses one, start it again when
-another returns; with no helper agents at all, record the features yourself. Give each this
+A recorder is a helper agent that writes one or a few new recipes. Start one per feature,
+all at once: a feature's run waits while the machine is out of memory or CPU. When the host
+refuses one, start it again when another returns; with no helper agents at all, record the features yourself. Give each this
 prompt, with the features and their
 one-line scopes, the example recipe and the repository's absolute path filled in:
 
@@ -184,9 +186,9 @@ every command from there. Read
 .agents/skills/verify-<app>/PROJECT.md, the example recipe
 .agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list
 .agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
-its source, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
+the files listed with it, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
 line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
-passes. Last, run your features once together with three others that already have a
+passes without the mark slow. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
@@ -204,7 +206,7 @@ attempts started. As your last action, write those lines, and one line per trap 
 you a run for PROJECT.md's Gotchas, to
 .agents/skills/verify-<app>/.cache/results/<your first feature>.txt (through a temporary file
 and mv), then return the same lines.
-Features: <feature>: <scope>; entry points: <...>; ...
+Features: <feature>: <scope>; entry points: <...>; files: <the entry points' source files>; ...
 ```
 
 When a result file appears, with or without the host's completion notice, read only its
