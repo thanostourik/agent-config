@@ -160,9 +160,10 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   item and stop waiting when the job removes it.
 - Make a race impossible instead of racing it: when a job would remove state a step still
   needs, hold that state through a stub mode or the recipe's own data, not a slower job.
-- After a save, reload the page or read the record back, and check every field the step
-  entered, not only the success message: a field the app forgets to save shows only after
-  a reload.
+- A save step fills every field the form offers (each input, select, toggle and list
+  entry), not only the required ones, with values unlike the defaults. Then reload the page
+  or read the record back and check each field, not only the success message: a field the
+  app forgets to save shows only after a reload, and only when the step set it.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
