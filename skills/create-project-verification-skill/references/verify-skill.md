@@ -112,8 +112,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   `web/test/editor.test.ts: opens blank` or `README.md: ## Notes`; a behavior taken from the
   source code cites its file. Several labels are joined by `, `. A behavior the run cannot
   reach gets `-> not driven: <reason>`. `verify lint` refuses a line whose step does not
-  exist, and, while `.cache/expect/<feature>.txt` exists, a recipe that cites none of
-  its listed tests or headings. Read
+  exist, and, while `.cache/expect/<feature>.txt` exists, a recipe that leaves any of its
+  listed tests or headings uncited. Read
   the feature's tests and docs for these lines before writing steps; they are the recipe's
   depth. When they state little, take the lines from the source: each validation, error
   response, permission check and side effect of the feature's handlers is a behavior.
