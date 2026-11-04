@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # harvest <words> <file>...: list the behaviors a feature's tests and docs state, for its '# expects:' lines.
-# <words> is an extended regex such as 'archive|retention', matched case-insensitively; '.' takes everything.
-# Test files give their test names (pytest, unittest, JUnit, Jest/Vitest/Mocha, Go, RSpec, PHPUnit).
+# <words> is an extended regex such as 'archive|retention', matched case-insensitively against docs headings.
+# Test files give every test name they hold (pytest, unittest, JUnit, Jest/Vitest/Mocha, Go, RSpec, PHPUnit).
 # Markdown files give the lines under every heading that matches <words>. Shipped by create-project-verification-skill.
 set -euo pipefail
 words=${1:?usage: harvest <words> <file>...}
@@ -9,7 +9,7 @@ shift
 for file in "$@"; do
   case $file in
     *.md | *.markdown | *.rst | *.txt)
-      [[ "$words" == . ]] && { echo "harvest: give words for docs; '.' takes only test files" >&2; continue; }
+      [[ "$words" == . ]] && { echo "harvest: give the feature's words; '.' would take every heading of $file" >&2; continue; }
       awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
         /^#+ / {
           level = length($1)
@@ -22,8 +22,8 @@ for file in "$@"; do
       ' "$file"
       ;;
     *)
-      awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
-        function emit(name) { gsub(/_/, " ", name); if (tolower(name) ~ words) print "- " file ": " name; pending = "" }
+      awk -v file="$file" '
+        function emit(name) { gsub(/_/, " ", name); print "- " file ": " name; pending = "" }
         match($0, /@DisplayName\("[^"]*"\)/) { pending = substr($0, RSTART + 13, RLENGTH - 15); next }
         match($0, /def test_[A-Za-z0-9_]+/) { emit(substr($0, RSTART + 9, RLENGTH - 9)); next }
         match($0, /func Test[A-Za-z0-9_]+/) { emit(substr($0, RSTART + 9, RLENGTH - 9)); next }

@@ -90,8 +90,9 @@ part of the repo. Recipes read every URL and port from `env.sh`, never `localhos
 A project with `local-stack/stack` uses it: `launch.sh` runs
 `local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the
 features need, and `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"` and
-removes the lock files under `~/.local/state/local-stacks/` of that stack and of every stack
-it started for a dependency. Ask the user only when `full` is not
+removes both registry files, `<stack>-<run id>.json` and `<stack>-<run id>.lock` under
+`~/.local/state/local-stacks/`, of that stack and of every stack it started for a
+dependency, then checks that neither remains. Ask the user only when `full` is not
 possible.
 
 ## 3. Write the environment and `PROJECT.md`
@@ -160,6 +161,9 @@ that recipe's header, not here):
   a second `bin/verify up` take.
 - **Sign-in and data:** the test accounts and baseline data a recipe can count on, each
   checked with one command against the running environment.
+- **Stubs:** for each stub or fake service in the run, what it returns and stores and what it
+  cannot do (such as an ML stub that stores nothing, or a collector that returns no data),
+  each checked with one call. Recorders read this instead of finding it out in failed runs.
 - **Helpers:** one line per helper with one real call as a recipe writes it, what it checks
   or returns, and its deadline when it waits.
 - **Focused checks:** the test, lint and type-check commands.
@@ -216,12 +220,14 @@ checks in `PROJECT.md`, and go to step 6.
    each, with a one-line scope and its entry points. Every entry point belongs to exactly
    one feature. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
-   the test names and the docs headings with the lines under them. Leave out tests of
-   internals (pure functions, formatting, chart math). Every remaining test and heading in
+   every test name in the test files, and the docs headings that match the words, with the
+   lines under them. Give each feature only its own test files. Then delete the other feature's
+   tests from a test file two features share, and tests of internals (pure functions,
+   formatting, chart math). Every remaining test and heading in
    the file is a source the recipe must cite in an `# expects:` line, and `bin/verify lint`
    refuses the recipe until it does, so recorders never search for behavior and never
-   skip it. When the docs have no heading
-   that matches the feature, harvest its tests only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
+   skip it. When the docs have no heading that matches the feature, the file holds its tests
+   only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
    (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
@@ -230,15 +236,17 @@ checks in `PROJECT.md`, and go to step 6.
    what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
    any recorder starts, so no recorder pays for the same trap. Also write the setup helpers
    several features need, such as signing in as each role, creating an account with a role,
-   provisioning a subscription or workspace, adding a member, or reading the run's mail, and
-   call each once: in trials, four
-   recorders each spent minutes working out the same setup alone.
+   provisioning a subscription or workspace, adding a member, or reading the run's mail.
+   Call each once the way a recipe calls it, after deleting its cached state (such as saved
+   sign-ins), so its slow path runs too: in trials, four recorders each spent minutes
+   working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
+   failed four recipes on the first fresh drive.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
-   absolute path filled in, up to 12 at once. When the host refuses one, start it when
-   another returns; with no helper agents at all, record the rest yourself. Size the groups
-   to 1 or 2 related features each, heaviest first, so the slowest recorder sets a short
-   end; with more groups than recorders,
-   the rest wait for a free one. Start recorders on the host's fast model
+   absolute path filled in, one feature each, heaviest first, up to 12 at once. When the host
+   refuses one, start it when another returns; with no helper agents at all, record the rest
+   yourself. In trials, the last recorders to return each had two features and took 13 to 14
+   minutes; with one feature each, the light features run last and end sooner. With more features than recorders, the rest
+   wait for a free one. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background and start a new one as each returns; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
