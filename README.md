@@ -48,7 +48,7 @@ For example, to change the model of `codex-review`, the default file has:
 and `config.json` needs only the part you change:
 
 ```json
-{ "skills": { "codex-review": { "defaults": { "model": "gpt-6.2" } } } }
+{ "skills": { "codex-review": { "defaults": { "model": "<other model id>" } } } }
 ```
 
 The effort stays `high`, because objects merge key by key.
