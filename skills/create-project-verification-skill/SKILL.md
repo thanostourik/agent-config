@@ -84,7 +84,7 @@ If the app does not build or start as-is, fix that or report it before going on.
 Choose the isolation level once, following
 [`references/lifecycle.md`](references/lifecycle.md): `full` (default), `shared` or
 `checks-only`. A run never listens on the project's default ports (such as 3000, 5432,
-8080): the developer's own tools connect there and would write into the run. Take ports
+8080), even when they are free; check the stack's port choice before the first `up`: the developer's own tools connect there and would write into the run. Take ports
 the run picks, or the stack's spare-port option; when the stack has none, add one to it as
 part of the repo. Recipes read every URL and port from `env.sh`, never `localhost:<default>`.
 A project with `local-stack/stack` uses it: `launch.sh` runs
@@ -228,7 +228,8 @@ checks in `PROJECT.md`, and go to step 6.
    what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
    any recorder starts, so no recorder pays for the same trap. Also write the setup helpers
    several features need, such as signing in as each role, creating an account with a role,
-   or provisioning a subscription or workspace, and call each once: in trials, four
+   provisioning a subscription or workspace, adding a member, or reading the run's mail, and
+   call each once: in trials, four
    recorders each spent minutes working out the same setup alone.
 3. Start recorders with the prompt in the skill's Recorders section, with the repository's
    absolute path filled in, up to 12 at once. When the host refuses one, start it when

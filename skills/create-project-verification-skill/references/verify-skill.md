@@ -126,7 +126,9 @@ wait_for 10 api GET /notes?title=verify-create-note
   never delete `ingestion-sources`' data.
   The recipe creates its own data; it never relies on another feature. When leftovers of an
   interrupted run would break a check, call `cleanup` once before creating data.
-- `cleanup()` removes what the recipe created. It always runs, after a failure too. `|| true`
+- `cleanup()` removes what the recipe created, found by its `verify-<feature>-` prefix or
+  by ids the recipe saved, never "everything this account can list": an admin account lists
+  every feature's data. It always runs, after a failure too. `|| true`
   goes only on a delete whose failure cannot matter.
 - Other features run at the same time on the same environment. Never assume shared state,
   such as a global counter, a job queue or a list of every user's rows, is quiet: check only
@@ -171,8 +173,8 @@ every command from there. Read
 .agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
 its source, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
 line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
-passes. Last, run your features once together with three others (all recorded ones when
-fewer exist)
+passes. Last, run your features once together with three others that already have a
+result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
 already up: never run verify up, down or all. Stop a feature after 5 runs, and report it

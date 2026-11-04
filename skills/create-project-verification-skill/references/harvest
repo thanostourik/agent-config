@@ -9,6 +9,7 @@ shift
 for file in "$@"; do
   case $file in
     *.md | *.markdown | *.rst | *.txt)
+      [[ "$words" == . ]] && { echo "harvest: give words for docs; '.' takes only test files" >&2; continue; }
       awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
         /^#+ / {
           level = length($1)
