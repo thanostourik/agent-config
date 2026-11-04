@@ -31,6 +31,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 4. It also lists changed files no feature names. For each one that changes behavior a
    feature covers, drive that feature by name (`verify <feature>`) and add the file to
    its `# touches:` line. Skip files that change no behavior: tests, docs, build files.
+   Then read `verify list` against your diff and drive every other feature the change can
+   affect: the file match misses a feature that depends on a file listed only under
+   another feature, such as a shared service or component.
 5. A failure: the summary line names the step and the failing command. Open the log only
    when that line is not enough. Classify it ([When a drive fails](#when-a-drive-fails)),
    fix it, and rerun only that feature.
@@ -43,7 +46,9 @@ sign-in, a shared helper) and you cannot name fewer features.
 ## Keep the map current
 
 When the user asks to update or maintain verification, or `verify all` has not passed for a
-while: run `verify up`, `verify all` and `verify uncovered`. Send each failing feature and
+while: run `verify up`, `verify all` and `verify uncovered`, and rerun `bin/harvest` into
+`.cache/expect/` for each feature whose tests or docs changed, so `verify lint` names the
+behaviors its recipe no longer cites. Send each failing feature and
 each uncovered entry point to recorders ([Recorders](#recorders)): a failing recipe is
 repaired or its product defect reported, an uncovered entry point gets a recipe or joins an
 existing feature's `# covers:`. Then `verify down`, commit, and report what changed.
@@ -75,19 +80,21 @@ under `set -euo pipefail` from the repository root, with `bin/` on `PATH` and, w
 exists, `bin/env.sh` sourced first for the run's values (base URLs, ports, keys):
 
 ```bash
-# Create a note from the browser and the CLI, and confirm the saved note.
-# touches: web/src/NoteEditor.tsx server/routes/notes.ts cli/create.go
+# Create a note from the browser, and confirm it is saved.
+# touches: web/src/NoteEditor.tsx server/routes/notes.ts
+# covers: /notes/new, POST /api/notes
+# expects: a new note opens an empty editor (web/test/editor.test.ts: opens blank) -> Open editor
+# expects: a saved note is stored with its title (README.md: ## Notes) -> Save note
+# expects: a blank title is refused (web/test/editor.test.ts: rejects blank title) -> not driven: the form blocks the submit natively
 
-cleanup() { notes delete --title verify-create-note || true; }
+cleanup() { notes delete --prefix verify-create-note- || true; }
 
-step "Open editor"
-pw.sh click "getByRole('button', { name: 'New note' })"
-pw.sh run-code "async page => { await page.getByRole('form', { name: 'Note editor' }).waitFor(); }"
+step "Open editor" "Choose New note; an empty Note editor form opens."
+pw.sh run-code "async page => { await page.getByRole('button', { name: 'New note' }).click(); await page.getByRole('form', { name: 'Note editor' }).waitFor(); }"
 
-step "Save note"
-pw.sh fill "getByRole('textbox', { name: 'Title' })" verify-create-note
-pw.sh click "getByRole('button', { name: 'Save note' })"
-wait_for 10 api GET /notes?title=verify-create-note
+step "Save note" "Enter a title and choose Save note; the note is stored with that title."
+pw.sh run-code "async page => { await page.getByRole('textbox', { name: 'Title' }).fill('verify-create-note-1'); await page.getByRole('button', { name: 'Save note' }).click(); }"
+wait_for 10 api GET /notes?title=verify-create-note-1
 ```
 
 - The header is `#` lines, ended by a blank line. Line 1: `# <what the feature lets a user
@@ -99,10 +106,14 @@ wait_for 10 api GET /notes?title=verify-create-note
   features' are there too.
 - `# covers:` the entry points the recipe drives, comma-separated, written exactly as
   `bin/entrypoints.sh` prints them (such as `POST /api/notes, /notes/[id]`).
-- `# expects: <behavior> -> <step label>` once for every behavior the docs, the tests or
-  the request state for this feature: what it does, its errors, limits and side effects.
-  Several labels are joined by `, `. A behavior the run cannot reach gets
-  `-> not driven: <reason>`. `verify lint` refuses a line whose step does not exist. Read
+- `# expects: <behavior> (<source>) -> <step label>` once for every behavior the docs, the
+  tests or the request state for this feature: what it does, its errors, limits and side
+  effects. `<source>` is the line from `.cache/expect/<feature>.txt` without its `- `, such as
+  `web/test/editor.test.ts: opens blank` or `README.md: ## Notes`; a behavior taken from the
+  source code cites its file. Several labels are joined by `, `. A behavior the run cannot
+  reach gets `-> not driven: <reason>`. `verify lint` refuses a line whose step does not
+  exist, and, while `.cache/expect/<feature>.txt` exists, a recipe that cites none of
+  its listed tests or headings. Read
   the feature's tests and docs for these lines before writing steps; they are the recipe's
   depth. When they state little, take the lines from the source: each validation, error
   response, permission check and side effect of the feature's handlers is a behavior.
@@ -112,7 +123,9 @@ wait_for 10 api GET /notes?title=verify-create-note
   reported, so its failure reads `(known failure)` and needs no new diagnosis.
 - The feature name is the file name. It is never a `verify` command: `up`, `down`, `list`,
   `lint`, `uncovered`, `affected`, `all`, `help`.
-- `step "<label>"` before each user action. Every step ends with a check that exits non-zero
+- `step "<label>" "<what it proves>"` before each user action: the second argument is one
+  sentence with the action and its expected result. A failing step's summary line repeats
+  it, so whoever repairs the recipe knows what the step was meant to prove. Every step ends with a check that exits non-zero
   when the result is wrong: `test`, `jq -e`, `grep -q` on a saved file, the driver's own
   assertion. A command that only prints proves nothing. Under `set -e`, `! command` never
   fails: use `test` or `if`.

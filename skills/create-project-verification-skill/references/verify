@@ -164,6 +164,12 @@ lint() {
       [[ -e "$(resolve "$path")" ]] || report "touches '$path', which does not exist"
     done < <(touches_of "$feature")
     grep -q '^step ' "$file" || report "no step"
+    grep -n '^step ' "$file" | grep -v -E '^[0-9]+:step "[^"]*" "[^"]+"' | sed "s/^\([0-9]*\):.*/$feature: step on line \1 has no sentence of what it proves (step \"<label>\" \"<action and expected result>\")/" | grep . && problems=1
+    if [[ -f "$cache/expect/$feature.txt" ]]; then
+      while IFS= read -r source; do
+        grep -q -F -- "$source" <(grep '^# expects:' "$file") || report "expects no line citing ($source) from .cache/expect/$feature.txt"
+      done < <(sed -n 's/^- \([^ ][^:]*: [^ ].*\)$/\1/p' "$cache/expect/$feature.txt")
+    fi
     while IFS= read -r problem; do report "$problem"; done < <(check_expects "$file")
     grep -n -E '(^|[^A-Za-z0-9_./-])sleep([[:space:]]|$)' "$file" | sed "s/^/$feature: bare sleep, use wait_for: line /" | grep . && problems=1
     grep -n 'waitForTimeout(' "$file" | sed "s/^/$feature: waitForTimeout, wait for the state instead: line /" | grep . && problems=1
@@ -254,8 +260,9 @@ line_of() {
   status=$(cat "$dir/status") seconds=$(cat "$dir/seconds")
   [[ -e "$dir/step" ]] && step=$(cat "$dir/step")
   [[ -e "$dir/result" ]] && result=$(head -n 1 "$dir/result")
-  local tail=""
+  local tail="" intent=""
   grep -q -x cleanup-failed "$dir/result" 2> /dev/null && tail="; clean up failed"
+  [[ -s "$dir/intent" ]] && intent=" ($(head -c 160 "$dir/intent"))"
   if ((status == 0)) && [[ "$result" == pass ]]; then
     echo "$feature: pass (${seconds}s)$tail"
     [[ -z "$tail" ]]
@@ -268,7 +275,7 @@ line_of() {
     local command said
     command=$(head -n 1 "$dir/error" 2> /dev/null | cut -c 1-120)
     said=$(sed '/^== Clean up/,$d' "$dir/log" | grep -v -e '^== ' -e '^[[:space:]]*$' | tail -n 1 | cut -c 1-200)
-    echo "$feature: fail at \"$step\"$known: ${command:-?} -> ${said:-no output} (${seconds}s, $dir/log)$tail"
+    echo "$feature: fail at \"$step\"$intent$known: ${command:-?} -> ${said:-no output} (${seconds}s, $dir/log)$tail"
   fi
   return 1
 }

@@ -9,7 +9,8 @@ verify_step=Start
 step() {
   verify_step=$1
   printf '%s\n' "$1" > "$VERIFY_DIR/step"
-  printf '\n== %s (%ss)\n' "$1" "$SECONDS"
+  printf '%s\n' "${2:-}" > "$VERIFY_DIR/intent"
+  printf '\n== %s: %s (%ss)\n' "$1" "${2:-}" "$SECONDS"
 }
 
 wait_for() {

@@ -216,9 +216,11 @@ checks in `PROJECT.md`, and go to step 6.
    each, with a one-line scope and its entry points. Every entry point belongs to exactly
    one feature. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
-   the test names and the docs lines that state its behavior. Leave out tests of internals
-   (pure functions, formatting, chart math); every remaining listed test becomes an
-   `# expects:` line, so recorders never search for behavior. When the docs have no heading
+   the test names and the docs headings with the lines under them. Leave out tests of
+   internals (pure functions, formatting, chart math). Every remaining test and heading in
+   the file is a source the recipe must cite in an `# expects:` line, and `bin/verify lint`
+   refuses the recipe until it does, so recorders never search for behavior and never
+   skip it. When the docs have no heading
    that matches the feature, harvest its tests only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
    (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
