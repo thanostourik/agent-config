@@ -144,6 +144,14 @@ Write and make executable:
     the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
   - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
     found in minutes;
+  - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
+    uncached address of the page's own origin:
+    `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
+    After each call the CLI waits up to 5 s for the page's requests to finish, and Chrome
+    never reports some as finished, such as cross-origin API calls and Next.js page-data
+    fetches; a navigation ends that wait. In trials it cut such calls from 6 s to 0.6 s.
+    Recipes then wait for the result they check (a response, a row, a message), never on
+    the CLI;
   - a sign-in helper that saves each account's storage state once per run and loads it in
     one call, signing each account into a browser session of its own: a second account in
     the same session is signed in as the first through the sign-in provider's cookie;
@@ -199,8 +207,10 @@ Build the environment for speed, because every recipe pays for it on every run:
   rely on it into `PROJECT.md`; before shortening a job for all features, check which
   recipes set up the state that job consumes.
 - Keep each copy small so lanes fit in memory: cap worker counts and heap sizes (a JVM
-  without `-Xmx` takes a quarter of the machine). Start JVM apps with
-  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials.
+  without `-Xmx` takes a quarter of the machine). Start the project's own JVM apps with
+  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Leave
+  third-party services such as Keycloak on their own settings: Keycloak's start script picks
+  a collector that clashes with `UseSerialGC` and does not start.
 - A stub or helper that starts a process stops any leftover of the same feature first, so an
   interrupted run never blocks the next one.
 - Lanes share one build: build images or artifacts once, under a lock, and let every lane
@@ -228,7 +238,8 @@ checks in `PROJECT.md`, and go to step 6.
    refuses the recipe until it does, so recorders never search for behavior and never
    skip it. When the docs have no heading that matches the feature, the file holds its tests
    only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
-   (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill.
+   (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill, one line per feature:
+   `<feature>: <scope>; entry points: <...>; files: <the entry points' source files>`.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
    of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean. Then drive the main create path by
@@ -243,10 +254,10 @@ checks in `PROJECT.md`, and go to step 6.
    failed four recipes on the first fresh drive. Start the recorders of features that need
    none of these helpers as soon as the first recipe passes, and the rest once the helpers
    work.
-3. Start recorders with the prompt in the skill's Recorders section, with the repository's
-   absolute path filled in: one feature each, every feature at once, heaviest first. Each
-   feature's line lists its entry points' source files, so the recorder reads them instead of
-   searching. Drives need no limit on recorders: a feature's run waits while the machine is out of
+3. Start recorders with the short prompt in the skill's Recorders section: one feature each,
+   every feature at once, heaviest first. Its line in `.cache/features.txt` lists its entry
+   points' source files, so the recorder reads them instead of searching, and the short
+   prompt lets you start twenty recorders in seconds instead of minutes. Drives need no limit on recorders: a feature's run waits while the machine is out of
    memory or CPU. When the host refuses a recorder, start it when another returns; with no
    helper agents at all, record the rest yourself. In trials, the last recorders to return
    each had two features and took 13 to 14 minutes. Start recorders on the host's fast model

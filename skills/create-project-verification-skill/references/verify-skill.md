@@ -160,6 +160,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   item and stop waiting when the job removes it.
 - Make a race impossible instead of racing it: when a job would remove state a step still
   needs, hold that state through a stub mode or the recipe's own data, not a slower job.
+- After a save, reload the page or read the record back, and check every field the step
+  entered, not only the success message: a field the app forgets to save shows only after
+  a reload.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
@@ -175,9 +178,17 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 
 A recorder is a helper agent that writes one or a few new recipes. Start one per feature,
 all at once: a feature's run waits while the machine is out of memory or CPU. When the host
-refuses one, start it again when another returns; with no helper agents at all, record the features yourself. Give each this
-prompt, with the features and their
-one-line scopes, the example recipe and the repository's absolute path filled in:
+refuses one, start it again when another returns; with no helper agents at all, record the
+features yourself. Give each this short prompt, with the paths and features filled in:
+
+```
+You are a recorder for verify-<app>. Follow the recorder prompt in the Recorders section of
+<absolute path>/.agents/skills/verify-<app>/SKILL.md, with the repository root
+<absolute path>, the example recipe features/<example>.sh, and these features from
+.agents/skills/verify-<app>/.cache/features.txt: <feature> ...
+```
+
+The recorder prompt, which the short prompt points to:
 
 ```
 You record end-to-end recipes for verify-<app>. The repository root is <absolute path>; run
@@ -188,7 +199,8 @@ every command from there. Read
 .agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
 the files listed with it, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
 line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
-passes without the mark slow. Last, run your features once together with three others that already have a
+passes. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
+times once and remove what is plainly avoidable; spend no further runs on speed. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
@@ -207,6 +219,7 @@ you a run for PROJECT.md's Gotchas, to
 .agents/skills/verify-<app>/.cache/results/<your first feature>.txt (through a temporary file
 and mv), then return the same lines.
 Features: <feature>: <scope>; entry points: <...>; files: <the entry points' source files>; ...
+(with the short prompt: each named feature's line in .agents/skills/verify-<app>/.cache/features.txt)
 ```
 
 When a result file appears, with or without the host's completion notice, read only its
