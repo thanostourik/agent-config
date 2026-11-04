@@ -1,7 +1,16 @@
 # agent-config
 
-My personal instructions, skills, hooks, and agent definitions for Claude Code, Codex,
-Grok, Cursor, and OpenCode, kept in one place.
+My personal instructions, skills, and settings for Claude Code, Codex, Grok, Cursor,
+and OpenCode, kept in one place. I edit the files here, then `./sync` copies them into
+each tool's configuration folder.
+
+## Contents
+
+- [Use](#use)
+- [Project verification skills](#project-verification-skills)
+- [Other skills](#other-skills)
+- [Scripts](#scripts)
+- [Setup and ownership rules](#setup-and-ownership-rules)
 
 ## Use
 
@@ -56,6 +65,69 @@ After generation, the project's own skills are the daily tools:
 drives them. If a project already has these skills, `create` stops and asks
 whether to replace or upgrade them. Where a project cannot create a
 disposable environment, `create` asks you what to do instead of guessing.
+
+## Other skills
+
+Each skill installs to every tool unless its `harness` field says otherwise. The agent
+picks most of them by itself from the situation. Skills marked *manual* run only when
+you name them.
+
+### Pull requests
+
+| Skill | What it does |
+|---|---|
+| `file-pr` | Opens a draft PR, or updates the existing one, with a title and description that match the branch. |
+| `modernize` | Rebases a branch onto its base (by default the PR's base branch) and pushes it. |
+| `takeover` | Takes over a colleague's PR and works on it until it is ready for you to merge. It never merges. |
+| `squash-merge-pr` | *Manual.* Squash-merges the PR and cleans up its branches and worktree. |
+| `tourik` | "Tourik mode": you are not watching, the agent owns the work until the PR is ready. It never merges. |
+
+### Reviews
+
+| Skill | What it does |
+|---|---|
+| `claude-review`, `codex-review`, `grok-review`, `cursor-grok-review` | One independent review of a change by Claude, Codex, or Grok (Grok also through Cursor). Model and effort come from `config.defaults.json`. |
+| `review-loop` | Reviews your branch in rounds. The agent fixes real findings and proves the result works, then a fresh reviewer checks that proof. |
+| `triple-review` | Three reviewers at once (general, simplicity, over-engineering), then one short report. |
+| `depatch` | Read-only. Checks whether code reads like patches piled on patches and sketches how it would look if written once. |
+
+### Planning and writing
+
+| Skill | What it does |
+|---|---|
+| `grill-me` | Interviews you about a plan or decision in rounds of numbered questions, each with a recommended answer. |
+| `html-communication` | Presents plans, reports, comparisons, or UI mockups as one readable HTML file. |
+| `bro` | *Manual.* Restates the last message in plain language, without jargon. |
+
+### Coordination and tickets
+
+| Skill | What it does |
+|---|---|
+| `t3-fan-out` | Starts one T3 thread and worktree per task, waits for all of them, and reports once. |
+| `create-jira-issue` | Creates (or drafts) Jira issues through the Jira MCP, after asking which project. |
+
+### Local stack and verification
+
+| Skill | What it does |
+|---|---|
+| `create-project-local-stack` | Generates `local-stack/` in a project: one command that starts everything the app needs, isolated per stack, with fakes for shared services. |
+| `with-verification` | Add "with verify" to a task and the agent drives the project's `verify-<app>` skill before calling the work done. |
+
+The two skills that create and maintain `verify-<app>` are under
+[Project verification skills](#project-verification-skills).
+
+## Scripts
+
+`bin/` scripts install to `~/.local/bin/`.
+
+| Script | What it does |
+|---|---|
+| `squash-merge-pr` | Does every git and `gh` step of the squash merge. Needs `git`, a logged-in `gh`, and `jq`. |
+| `usage-report` | Prints what Codex and Claude Code sessions and their subagents cost in tokens. Needs only Python. |
+| `mcp-atlassian-start` | Starts the Jira MCP server with the login read from Bitwarden. |
+| `jira-gate-proxy` | Helps `mcp-atlassian-start --gate` reach a Jira behind Apache basic auth. |
+
+## Setup and ownership rules
 
 Jira MCP URLs also go in `config.json` (never in git). Some tools need machine
 setup beyond copying files. Paste this into a new agent session:
