@@ -144,7 +144,9 @@ Write and make executable:
   - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
     found in minutes;
   - a sign-in helper that saves each account's storage state once per run and loads it in
-    one call.
+    one call, signing each account into a browser session of its own: a second account in
+    the same session is signed in as the first through the sign-in provider's cookie;
+  - creating or deleting an account also removes that account's cached state and token.
   For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
   the last response for `observe.sh`.
 
@@ -237,7 +239,10 @@ checks in `PROJECT.md`, and go to step 6.
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background and start a new one as each returns; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
-   namespace (schema, prefix, account, data folder) before marking it `# alone`. After 25
+   namespace (schema, prefix, account, data folder) before marking it `# alone`. A recorder
+   that has not returned 15 minutes after it started is dead: stop it, take its recipes as
+   they are, and drive and fix them yourself. Watch the clock while you wait; never wait
+   only for a notice. After 25
    minutes, start no new recorder and list the features not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result lines. Fold their traps into `PROJECT.md`'s Gotchas.

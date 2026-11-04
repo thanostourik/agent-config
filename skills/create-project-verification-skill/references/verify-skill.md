@@ -148,7 +148,8 @@ wait_for 10 api GET /notes?title=verify-create-note
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
-- At most about 15 steps. A bigger feature is two features.
+- At most about 15 steps, and under about a minute on a quiet machine. A bigger or slower
+  feature is two features: the slowest feature sets the end of every full drive.
 - Use stable handles: roles and accessible names, data attributes, routes, prompt strings.
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
