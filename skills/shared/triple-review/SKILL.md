@@ -20,10 +20,8 @@ give the user one short report.
 
 ## Reviewers
 
-Start the three reviewers in parallel with T3 Code's `delegate_task` tool: one
-call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
-selected provider, model, and effort for each reviewer; otherwise use these
-defaults:
+Start three independent reviewers in parallel. Use the user's selected
+provider, model, and effort for each reviewer; otherwise use these defaults:
 
 - General: `{{defaults.general_provider}}`, `{{defaults.general_model}}`,
   `{{defaults.general_effort}}`.
@@ -32,12 +30,21 @@ defaults:
 - Over-engineering: `{{defaults.over_engineering_provider}}`,
   `{{defaults.over_engineering_model}}`, `{{defaults.over_engineering_effort}}`.
 
-Before starting, call `orchestrator_capabilities` and check every selected
-provider, model, and effort. Use the provider as `providerInstanceId` and map
-the effort to that model's option in `options` (`reasoningEffort`, `effort`,
-or the option id the catalog gives). If `delegate_task` is missing or a
-selected combination is unavailable, tell the user and stop. Do not silently
-use another provider, model, or effort instead.
+When T3 Code's `delegate_task` is available, use it: one call per reviewer,
+with `mode: "async"` and `role: "review"`. Before starting, call
+`orchestrator_capabilities` and check every selected provider, model, and
+effort. Use the provider as `providerInstanceId` and map the effort to that
+model's option in `options` (`reasoningEffort`, `effort`, or the option id the
+catalog gives).
+
+When `delegate_task` is unavailable, use the harness's native subagent tool:
+one fresh subagent per reviewer. Before starting, check that it can run every
+selected provider, model, and effort. An inherited setting is sufficient when
+it matches the selected value.
+
+If neither tool is available, or the chosen tool cannot run a selected
+combination, tell the user which capability is missing and stop. Do not
+silently use another provider, model, or effort instead.
 
 Each reviewer's task gets the target, the intent, and one question:
 
@@ -59,8 +66,8 @@ Tell every reviewer:
 Do not tell a reviewer about the other two. Their answers stay independent.
 
 Wait until all three finish. If a reviewer fails or ends without a verdict,
-start it once more with a new `delegate_task` call. If it fails again, say so in
-the report.
+start it once more as a fresh reviewer through the same tool. If it fails
+again, say so in the report.
 
 ## Report
 
@@ -83,7 +90,8 @@ until the user tells you to.
 ## Re-review
 
 When the user says they made fixes and asks for another review, start the
-same three reviewers again with new `delegate_task` calls. Do not message the
-earlier reviewers' threads. This time the target is only the changes since the
-commit you wrote down last time. Give the reviewers the earlier findings too.
+same three reviewers again as fresh delegates or native subagents, using the
+selection rules above. Do not message the earlier reviewers. This time the
+target is only the changes since the commit you wrote down last time. Give
+the reviewers the earlier findings too.
 The report says which earlier findings are now fixed.
