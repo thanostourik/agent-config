@@ -176,14 +176,27 @@ then `/maintain-project-verification-skill` in each project. It updates the proj
 skills and map, and drives the features with new or changed steps. Add `map only` to skip
 driving, or `full audit` to drive every feature.
 
-**Restricted repositories.** A [restricted repository](#restricted-repositories) must not
-hold agent files, so its verification skills live in a **companion repo**: a separate git
-repo next to the app checkouts that holds only agent files, plus an `apps` file listing
-those checkouts. To set one up, run `create-project-verification-skill` inside the
-companion repo instead of the app repo. `with-verification` is installed globally, so it works from the
-restricted repository itself: it finds the companion that lists the current checkout and
-runs that companion's `verify-<app>` against your change. If the repository has its own
-`verify-<app>`, it uses that one instead.
+#### Companion QA repository
+
+A [restricted repository](#restricted-repositories) must not hold agent files. Keep
+its verification skills in a separate **companion QA repository** beside the app
+checkouts:
+
+1. Create a Git repository beside the app checkout, for example `my-app-qa/` beside
+   `my-app/`.
+2. Open an agent session in `my-app-qa/` and run
+   `/create-project-verification-skill`. Provide each app checkout's path when asked.
+   Add `quick` to record and drive only one feature per surface initially.
+3. The generator creates the verification skills and
+   `.agents/skills/verify-<app>/apps`, which lists each app name and checkout path
+   relative to the QA repository root, for example `my-app ../my-app`. Agent files
+   stay in the QA repository.
+4. In the app repository, append **"with verify"** to a coding request. The globally
+   installed `with-verification` skill finds the companion and verifies the checkout
+   being changed, including worktrees. If the app repository has its own
+   `verify-<app>`, it uses that one instead.
+5. Run `/maintain-verify-<app>` from the QA repository to keep its feature map current.
+   After a `quick` setup, its first run adds and drives the remaining features.
 
 ## Scripts
 
