@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
-# verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh), plus N extra copies for '# alone' features (default: the skill's lanes file)
+# verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 # verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base
 # verify all                drive every feature
 # verify <feature>...       drive those features
 # verify list | lint [feature...] | uncovered
-# Options: --jobs N (default: the skill's jobs file, else the machine's cores; a run waits while memory or CPU is short), --deadline SECONDS per feature (default 180).
+# verify room               wait until the machine has room for one more browser session or process
+# Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
+# Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
+# (default 40, or ~/.config/verify/reserve) stays free and the CPU is not saturated, with at least one feature running.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
@@ -224,14 +227,53 @@ on_lane() {
 
 held() { [[ -d "$cache/drive/.lock-$1" ]] && kill -0 "$(cat "$cache/drive/.lock-$1/pid" 2> /dev/null)" 2> /dev/null; }
 
-machine_has_room() {
-  local available total pressure
-  available=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2> /dev/null)
-  total=$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo 2> /dev/null)
-  [[ -z "$available" ]] || ((available >= 6144 && available * 5 >= total)) || return 1
-  [[ -r /proc/pressure/cpu ]] || return 0
-  pressure=$(awk '/^some/ { split($2, a, "="); print int(a[2]) }' /proc/pressure/cpu)
-  ((pressure < 40))
+room_pool=${XDG_RUNTIME_DIR:-/tmp/verify-$UID}/verify-room
+browser_mb=500
+
+reserve_percent() {
+  local percent=${VERIFY_RESERVE:-$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/verify/reserve" 2> /dev/null)}
+  [[ "$percent" =~ ^[0-9]+$ ]] && ((percent < 100)) && echo "$percent" || echo 40
+}
+
+meminfo() { awk -v key="$1:" '$1 == key { print int($2 / 1024) }' /proc/meminfo; }
+
+can_queue() { [[ -r /proc/meminfo ]] && command -v flock > /dev/null; }
+
+reserve_mb() { echo $(($(meminfo MemTotal) * $(reserve_percent) / 100)); }
+
+# Runs under the pool's lock. A slot started in the last 20 s has not shown up in MemAvailable yet, so each counts a browser's worth.
+admit() {
+  local holder=$1 entry started pid recent=0 running=0 pressure
+  for entry in "$room_pool"/wait-*; do
+    [[ -f "$entry" ]] && ! kill -0 "${entry##*/wait-}" 2> /dev/null && rm -f "$entry"
+  done
+  for entry in "$room_pool"/slot-*; do
+    read -r started pid 2> /dev/null < "$entry" || continue
+    if kill -0 "$pid" 2> /dev/null; then
+      running=$((running + 1))
+    elif ((started < EPOCHSECONDS - 20)); then
+      rm -f "$entry"
+      continue
+    fi
+    ((started >= EPOCHSECONDS - 20)) && recent=$((recent + 1))
+  done
+  if ((running + recent)); then
+    (($(meminfo MemAvailable) - (recent + 1) * browser_mb >= $(reserve_mb))) || return 1
+    if [[ -r /proc/pressure/cpu ]]; then
+      pressure=$(awk '/^some/ { split($2, a, "="); print int(a[2]) }' /proc/pressure/cpu)
+      ((pressure < 25)) || return 1
+    fi
+  fi
+  echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
+}
+
+take_room() {
+  local holder=$1
+  can_queue || return 0
+  mkdir -p "$room_pool"
+  : > "$room_pool/wait-$holder"
+  until (flock 9 && admit "$holder") 9> "$room_pool/.lock"; do sleep 1; done
+  rm -f "$room_pool/wait-$holder"
 }
 
 others_running() {
@@ -241,11 +283,6 @@ others_running() {
     held "${lock##*/.lock-}" && return 0
   done
   return 1
-}
-
-wait_for_room() {
-  local until=$((SECONDS + deadline))
-  while ((SECONDS < until)) && others_running "$1" && ! machine_has_room; do sleep 1; done
 }
 
 take_lock() {
@@ -266,14 +303,18 @@ run_feature() {
   limit=${limit:-$deadline}
   mkdir -p "$cache/drive"
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
-  wait_for_room "$feature"
+  start=$SECONDS
+  take_room "$BASHPID"
+  local waited=$((SECONDS - start))
   start=$SECONDS
   rm -rf "$dir" "$cache/evidence/$feature"
   mkdir -p "$dir" "$cache/evidence/$feature"
   echo "$limit" > "$dir/deadline"
+  echo "$waited" > "$dir/waited"
   VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
     timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null
   status=$?
+  rm -f "$room_pool/slot-$BASHPID"
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
   line_of "$feature" > "$run/line-$feature"
@@ -325,7 +366,11 @@ drive() {
   for feature in "$@"; do
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
-  ((${#alone[@]})) && mapfile -t alone < <(for feature in "${alone[@]}"; do echo "$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 0) $feature"; done | sort -rn | cut -d' ' -f2)
+  local alone_seconds=0 lane_jobs=0
+  if ((${#alone[@]})); then
+    mapfile -t alone < <(for feature in "${alone[@]}"; do echo "$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 30) $feature"; done | sort -rn | tee "$run/alone" | cut -d' ' -f2)
+    alone_seconds=$(awk '{ total += $1 } END { print total }' "$run/alone")
+  fi
   for feature in "$@"; do held "$feature" || rm -rf "${cache:?}/drive/$feature"; done
   trap 'for pid in "${pids[@]}"; do pkill -TERM -P "$pid"; done; wait; exit 130' INT TERM
   run_lane() {
@@ -336,10 +381,39 @@ drive() {
       run_feature "$feature" "$lane"
     done
   }
+  start_lane() {
+    local lane=$1 began=$SECONDS
+    if on_lane "$lane" "$skill/bin/launch.sh" > "$cache/launch-$lane.log" 2>&1 < /dev/null && on_lane "$lane" doctor "$cache/doctor-$lane.log"; then
+      echo $((SECONDS - began)) > "$cache/lane-seconds"
+      run_lane "$lane"
+    else
+      echo "$lane" > "$run/lane-failed-$lane"
+      on_lane "$lane" "$skill/bin/cleanup.sh" > /dev/null 2>&1 < /dev/null
+      (flock 8 && (($(lane_count) == lane)) && echo $((lane - 1)) > "$cache/lanes") 8> "$cache/.lanes-lock"
+    fi
+  }
+  # A lane pays off only when the '# alone' work is well over the time a copy takes to start, and only while the copy fits beside the reserve.
+  add_lanes() {
+    local most launch stack want lane
+    can_queue && stack=$(cat "$cache/stack-mb" 2> /dev/null) || return 0
+    most=$(cat "$skill/lanes" 2> /dev/null || echo 0)
+    launch=$(cat "$cache/lane-seconds" 2> /dev/null || echo 120)
+    want=$((alone_seconds / (2 * launch)))
+    ((want > most)) && want=$most
+    ((want > ${#alone[@]} - 1)) && want=$((${#alone[@]} - 1))
+    for ((lane = count + 1; lane <= want; lane++)); do
+      (($(meminfo MemAvailable) - (lane - count) * stack >= $(reserve_mb))) || break
+      (flock 8 && (($(lane_count) == lane - 1)) && echo "$lane" > "$cache/lanes") 8> "$cache/.lanes-lock" || break
+      start_lane "$lane" &
+      pids+=($!)
+      lane_jobs=$((lane_jobs + 1))
+    done
+  }
   for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
+  add_lanes
   local together_pids=()
   for feature in "${together[@]}"; do
-    while (($(jobs -rp | wc -l) >= max_jobs + count)); do wait -n; done
+    while (($(jobs -rp | wc -l) >= max_jobs + count + lane_jobs)); do wait -n; done
     [[ -e "$run/stop" ]] && break
     run_feature "$feature" 0 &
     pids+=($!) together_pids+=($!)
@@ -349,8 +423,13 @@ drive() {
   pids+=($!)
   wait
   trap - INT TERM
+  local waited=0
+  for feature in "$@"; do waited=$((waited + $(cat "$cache/drive/$feature/waited" 2> /dev/null || echo 0))); done
   echo
-  echo "Summary ($((SECONDS - started))s, $# features)"
+  echo "Summary ($((SECONDS - started))s, $# features$( ((waited)) && echo ", ${waited}s of feature runs waiting for room on the machine"))"
+  for lane in "$run"/lane-failed-*; do
+    [[ -f "$lane" ]] && echo "lane $(cat "$lane") did not start; its features ran on the main copy (see $cache/launch-$(cat "$lane").log)"
+  done
   for feature in "$@"; do
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
@@ -383,14 +462,16 @@ command=${1:-}
 
 case $command in
   up)
-    [[ -f "$cache/run-id" ]] || echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"
+    fresh=""
+    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; fresh=1; }
     previous=$(lane_count)
-    [[ -n "$lanes" || ! -f "$cache/run-id.lanes-set" ]] && echo "${lanes:-$(cat "$skill/lanes" 2> /dev/null || echo 0)}" > "$cache/lanes"
-    : > "$cache/run-id.lanes-set"
+    echo "${lanes:-$previous}" > "$cache/lanes"
     for ((lane = previous; lane > $(lane_count); lane--)); do
       on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; exit 1; }
     done
     count=$(lane_count) failed=0
+    [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
+    began=$SECONDS
     if ((count == 0)); then
       on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
     else
@@ -404,6 +485,11 @@ case $command in
     for ((lane = 0; lane <= count; lane++)); do
       on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; exit 1; }
     done
+    if [[ -n "$fresh" && -n "${before:-}" ]]; then
+      used=$(((before - $(meminfo MemAvailable)) / (count + 1)))
+      ((used > 0)) && echo "$used" > "$cache/stack-mb"
+      echo $((SECONDS - began)) > "$cache/lane-seconds"
+    fi
     echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")" ;;
   down)
     if others_running ""; then
@@ -417,8 +503,10 @@ case $command in
       "$skill/bin/cleanup.sh" "$@" || failed=1
     fi
     ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id" "$cache/lanes" "$cache/run-id.lanes-set"
+    rm -f "$cache/run-id" "$cache/lanes"
     echo "down" ;;
+  room)
+    take_room "$$" ;;
   list)
     for feature in $(all_features); do printf '%s: %s\n' "$feature" "$(summary_of "$feature")"; done ;;
   lint)
@@ -452,7 +540,7 @@ case $command in
   all)
     drive $(all_features) ;;
   "" | -h | help)
-    sed -n '2,9s/^# \{0,1\}//p' "$0" ;;
+    sed -n '2,12s/^# \{0,1\}//p' "$0" ;;
   *)
     for feature in "$command" "$@"; do
       [[ -f "$skill/features/$feature.sh" ]] || { echo "verify: no features/$feature.sh (verify list shows the features)" >&2; exit 2; }

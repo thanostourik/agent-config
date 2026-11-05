@@ -61,12 +61,19 @@ and read its output once. Do not poll it or tail its logs.
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment.
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
-- `--jobs N` (default: the skill's `jobs` file, else the machine's cores; a feature's run waits while memory or CPU is short) and `--deadline SECONDS` per feature (default 180) go anywhere.
+- `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and `--deadline SECONDS` per feature (default 180) go anywhere.
+- Every `verify` on the machine, from every project and thread, shares one queue: a
+  feature's run starts only while 40% of memory stays free and the CPU is not saturated,
+  and one always runs. The user sets another share with `VERIFY_RESERVE=<percent>` or the
+  file `~/.config/verify/reserve`. A summary line with `waiting for room` says how long
+  feature runs waited; a pass's time is its own.
+- `verify room`: wait until the machine has room for one more browser session or process.
 - `verify list`: every feature with its one-line summary. This is the feature map.
 - `verify lint [feature...]`: the recipe rules the runner enforces.
-- `verify up --lanes N`: also start N extra copies of the environment; `# alone` features
-  take them from one queue, longest first. Without `--lanes`, the count comes from the
-  skill's `lanes` file.
+- Lanes are extra copies of the environment for `# alone` features, which take them from
+  one queue, longest first. A drive starts lanes itself, up to the skill's `lanes` file,
+  when its `# alone` features take at least twice as long as a copy takes to start and the
+  copy fits beside the reserve. `verify up --lanes N` keeps exactly N.
 - `verify uncovered`: entry points (routes, screens, commands) no feature's `# covers:`
   names, with the count covered.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
@@ -173,8 +180,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   but never in place of the user action being proved.
 - At most about 15 steps, and a pass in 45 s or less: the runner marks a slower pass
   `slow`. A bigger or slower feature is two features: the slowest feature sets the end of
-  every full drive. A feature's run waits while the machine is out of memory or CPU, so
-  the time a pass shows is its own.
+  every full drive. A feature's run waits in the machine's queue before its clock starts,
+  so the time a pass shows is its own.
 - Use stable handles: roles and accessible names, data attributes, routes, prompt strings.
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
@@ -182,7 +189,7 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 ## Recorders
 
 A recorder is a helper agent that writes the recipes of one area: 3 to 6 features that
-share a screen or setup. Start one per area, all at once: a feature's run waits while the machine is out of memory or CPU. When the host
+share a screen or setup. Start one per area, all at once: their feature runs wait in the machine's queue. When the host
 refuses one, start it again when another returns; with no helper agents at all, record the
 features yourself. Give each this short prompt, with the paths and features filled in:
 

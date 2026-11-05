@@ -146,9 +146,9 @@ Write and make executable:
     the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
   - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
     found in minutes;
-  - before it opens a new browser session, a wait (up to a minute) until a fifth of the
-    machine's memory is free (`MemAvailable` in `/proc/meminfo`), as the runner does
-    before each feature: a browser session takes about 200 MB, and recorders open many;
+  - before it opens a new browser session outside a feature's run (`$VERIFY_FEATURE`
+    unset, such as a recorder exploring by hand), `bin/verify room`, which waits in the
+    machine-wide queue the runner keeps for every feature run;
   - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
     uncached address of the page's own origin:
     `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
@@ -197,10 +197,12 @@ that recipe's header, not here):
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
-`bin/verify up --lanes 1` in the background and do step 4.1 while it builds; then run
-`bin/verify up` again and time both. The lane lets recorders
-record a feature they mark `# alone` beside the others; when the build bakes ports into an
-image (such as `NEXT_PUBLIC_*` URLs), each lane builds its own.
+`bin/verify up` in the background and do step 4.1 while it builds; then run
+`bin/verify up` again and time both. The first `up` records how much memory and time one
+copy of the environment takes, which the runner needs to decide on lanes later. Record on
+one copy: a feature marked `# alone` waits its turn there, and an extra copy would take
+memory the recorders' browsers need. When the build bakes ports into an image (such as
+`NEXT_PUBLIC_*` URLs), each lane builds its own.
 
 For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
 folder and builds once, and `doctor.sh` checks that the folder is the run's and the build is
@@ -282,18 +284,18 @@ checks in `PROJECT.md`, and go to step 6.
    its entry points' source files, so the recorder reads them instead of searching, and the
    short prompt lets you start twenty recorders in seconds instead of minutes. A recorder
    writes all its area's recipes first, then drives and fixes them together, so an area of
-   five features takes about as long as one feature. Drives need no limit on recorders: a feature's run waits while the machine is out of
-   memory or CPU. The host's helper limit (Claude Code runs 19 or 20 helper agents at once,
+   five features takes about as long as one feature. Recorders need no limit of their own:
+   a recorder spends most of its time on the model, which costs this machine little, and
+   every feature run and browser session waits in one queue for the whole machine, which
+   keeps the user's reserve of memory free (see the skill's Commands section). The host's helper limit (Claude Code runs 19 or 20 helper agents at once,
    Codex 3) does not limit recorders either: start the areas beyond it as headless sessions
    of your own CLI, from the repository root, in the background, each with the same short
    prompt, its output in `.cache/recorders/<area>.log`:
    `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
    `codex exec -m <model> --full-auto "<short prompt>"`. In trials 30 headless sessions
-   started at once with no rate limit. Memory is the limit: every recorder's drives open
-   browsers, and in one trial 55 recorders at once ran a 62 GB machine out of memory and
-   the system killed the session. After `up`, read the free memory and run at most one
-   recorder per GB above 12 GB; queue the areas beyond that and start one as each
-   recorder returns. Use headless sessions only when your own session
+   started at once with no rate limit. Each headless session is a process of its own, so
+   run `bin/verify room` before starting each one: it returns once the machine has room.
+   Use headless sessions only when your own session
    runs commands without asking; otherwise queue the areas past the limit and start one
    as each recorder returns. With no helper agents and no CLI, record the rest yourself. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
@@ -312,11 +314,14 @@ checks in `PROJECT.md`, and go to step 6.
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
 from a fresh environment while the others run in parallel. Then run `bin/verify all` again
 on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
-a recorder with its summary line. The runner starts as many features at once as the machine has cores and holds the next
-one back while memory or CPU runs short; write a `jobs` file only when the project needs a
-lower limit, such as a service with few connections. When `# alone` features remain, write the lane count that keeps
-the full drive shortest into the skill's `lanes` file: about their total time divided by the
-longest parallel feature, as far as memory allows. Then check the lifecycle once:
+a recorder with its summary line. The runner starts up to as many features at once as the
+machine has cores, each only when the machine-wide queue has room; write a `jobs` file only
+when the project needs a lower limit, such as a service with few connections. When `# alone`
+features remain, write into the skill's `lanes` file the most extra copies a drive may
+start: about their total time divided by the longest parallel feature. A drive starts a
+copy only when its `# alone` features take at least twice as long as a copy takes to
+start, and only while the copy fits beside the reserve; a recorder's drive of a few
+features never starts one. Then check the lifecycle once:
 
 - `bin/verify lint` and `bin/verify uncovered`. Map an uncovered entry point or say why not.
 - Commit, change one file a feature touches, and check that
