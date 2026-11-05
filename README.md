@@ -75,8 +75,8 @@ only in repositories where you allow them. These are the restricted actions:
 - adding its attribution lines ("Filed by ... through ...") to PR descriptions;
 - marking a PR ready for review when the work is finished and verified.
 
-Everywhere else the agent leaves no trace: no attribution, and the PR stays a draft for
-you to publish.
+Repositories outside the allow list are restricted: the agent omits attribution and
+leaves PRs as drafts for you to publish.
 
 To allow a repository, add its GitHub owner (all of the owner's repos) or one
 `owner/repo` to `allow.restricted` in `config.json`. Entries are not case-sensitive:
@@ -89,6 +89,9 @@ To allow a repository, add its GitHub owner (all of the owner's repos) or one
 The agent reads the repository's name with `gh repo view --json nameWithOwner`. A
 repository that is not on GitHub never allows them. After editing the list, run
 `./sync --apply`: it writes the list into the installed instructions.
+
+To use verification skills while keeping agent files outside an app repository, see
+[Companion QA repository](#companion-qa-repository).
 
 ## Skills
 
@@ -178,8 +181,9 @@ driving, or `full audit` to drive every feature.
 
 #### Companion QA repository
 
-A [restricted repository](#restricted-repositories) must not hold agent files. Keep
-its verification skills in a separate **companion QA repository** beside the app
+When a [restricted repository](#restricted-repositories) also needs verification,
+and its agent files must stay outside the app repository, use a **companion QA
+repository**. It holds the verification skills and feature map beside the app
 checkouts:
 
 1. Create a Git repository beside the app checkout, for example `my-app-qa/` beside
