@@ -150,7 +150,8 @@ select_affected() {
 }
 
 lint() {
-  local feature file path problems=0
+  local feature file path problems=0 other names
+  mapfile -t names < <(all_features)
   for feature in "$@"; do
     file=$skill/features/$feature.sh
     [[ -f "$file" ]] || { echo "$feature: no features/$feature.sh"; problems=1; continue; }
@@ -158,6 +159,9 @@ lint() {
     [[ "$(head -n 1 "$file")" == "# "?* ]] || report "line 1 is not a '# <summary>' comment"
     awk '!/^#/ { bad = /[^[:space:]]/; exit } END { exit bad }' "$file" || report "the '#' header lines must end with a blank line"
     case $feature in up | down | list | lint | uncovered | affected | all | help) report "'$feature' is a verify command; rename the feature" ;; esac
+    for other in "${names[@]}"; do
+      [[ "$other" == "$feature"-* ]] && report "its name starts '$other': cleanup by 'verify-$feature-' would delete that feature's data; rename one"
+    done
     grep -q -E '^# touches:[[:space:]]*[^[:space:]]' "$file" || report "no '# touches:' line naming the feature's source files"
     while IFS= read -r path; do
       [[ "$path" == */ || "$path" == *[*?]* ]] && { report "touches '$path': name files, not folders or globs"; continue; }

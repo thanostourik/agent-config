@@ -194,7 +194,8 @@ that recipe's header, not here):
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
-`bin/verify up --lanes 1`, then `bin/verify up` again and time both. The lane lets recorders
+`bin/verify up --lanes 1` in the background and do step 4.1 while it builds; then run
+`bin/verify up` again and time both. The lane lets recorders
 record a feature they mark `# alone` beside the others; when the build bakes ports into an
 image (such as `NEXT_PUBLIC_*` URLs), each lane builds its own.
 
@@ -240,9 +241,13 @@ checks in `PROJECT.md`, and go to step 6.
    about 8 to 15 steps, so most apps have two features per entry point or more: in trials,
    one feature per area gave a fifth of the steps of a skill split by user goal, and
    missed what those steps would have checked. Every entry point belongs to at least one
-   feature. Then group the features into areas of 3 to 6 that share a screen or setup, in
+   feature. Then group the features into areas that share a screen or setup, in
    `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
-   area. For each feature, write its expectation list with
+   area. Size areas to equal work, so every recorder ends at about the same time: in trials
+   a recorder spent about 3 minutes per ordinary feature and twice that on one with many
+   states (filters, periods, empty and error states). Divide the features over at most as
+   many areas as the host runs helper agents at once, heavy features in smaller areas, and
+   no area above 6 features. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
    every test name in the test files, and the docs headings that match the words, with the
    lines under them. Give each feature only its own test files. Then delete the other feature's

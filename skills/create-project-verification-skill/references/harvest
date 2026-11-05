@@ -11,13 +11,13 @@ for file in "$@"; do
     *.md | *.markdown | *.rst | *.txt)
       [[ "$words" == . ]] && { echo "harvest: give the feature's words; '.' would take every heading of $file" >&2; continue; }
       awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
+        /^[[:space:]]*```/ { fenced = !fenced; next }
+        fenced { next }
         /^#+ / {
           level = length($1)
           if (inside && level <= depth) inside = 0
-          if (!inside && tolower($0) ~ words) { inside = 1; depth = level; print "- " file ": ## " substr($0, level + 2); next }
+          if (!inside && level > 1 && tolower($0) ~ words) { inside = 1; depth = level; print "- " file ": ## " substr($0, level + 2); next }
         }
-        /^[[:space:]]*```/ { fenced = !fenced; next }
-        fenced { next }
         inside && /[^[:space:]]/ { line = $0; sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", line); print "- " file ":   " line }
       ' "$file"
       ;;

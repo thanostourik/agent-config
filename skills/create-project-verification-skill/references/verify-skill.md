@@ -137,8 +137,10 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   otherwise. On a failure, `bin/observe.sh` saves the app's state there.
 - Every name the recipe creates starts with `verify-<feature>-`, dash included, or the
   closest the app's naming rules allow (such as `VERIFY-ITEMS-1`), so features running at
-  once never collide. Cleanup matches that whole prefix, dash included: `ingestion` must
-  never delete `ingestion-sources`' data.
+  once never collide. Cleanup matches that whole prefix, dash included. A feature name never
+  starts another feature's name followed by a dash (`ingestion` and `ingestion-sources`):
+  `verify-ingestion-` also matches `verify-ingestion-sources-1`, so one cleanup would
+  delete the other's data. `verify lint` refuses such a pair.
   The recipe creates its own data; it never relies on another feature. When leftovers of an
   interrupted run would break a check, call `cleanup` once before creating data.
 - `cleanup()` removes what the recipe created, found by its `verify-<feature>-` prefix or
@@ -204,7 +206,7 @@ features and list every behavior they state, as the Recipes section says. Write 
 recipes, .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
 behavior, before driving any. Then drive them together,
 .agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
-together between drives until each passes: one drive of all your features costs about what
+together between drives, with small edits rather than rewriting a recipe, until each passes: one drive of all your features costs about what
 one feature costs. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
 times once and remove what is plainly avoidable; spend no further runs on speed. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
