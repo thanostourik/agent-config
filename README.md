@@ -7,6 +7,7 @@ each tool's configuration folder.
 ## Contents
 
 - [Use](#use)
+  - [Instructions](#instructions)
 - [Configuration](#configuration)
 - [Restricted repositories](#restricted-repositories)
 - [Skills](#skills)
@@ -29,6 +30,14 @@ each tool's configuration folder.
 ./sync --home /tmp/test --apply       # install into another folder, for testing
 ```
 
+### Instructions
+
+`instructions/common.md` holds the preferences for every tool. `instructions/<tool>.md`
+adds preferences for one tool and may be empty. Sync joins the two, common part first,
+and installs the result as that tool's global instructions file: `~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.grok/AGENTS.md`, `~/.config/opencode/AGENTS.md`, and
+`~/.cursor/rules/agent-config.mdc`.
+
 ## Configuration
 
 The shipped settings are in `config.defaults.json`. Do not edit that file. Put your
@@ -37,31 +46,19 @@ changes in `config.json` next to it (gitignored), then run `./sync --apply`.
 `config.json` has the same shape as `config.defaults.json`, but holds only the keys you
 change. Every key you leave out keeps its shipped value.
 
-**Change a skill default.** Find the skill's `defaults` in `config.defaults.json` and
-give one key a new value. This works for every default: `model`, `provider`, `effort`,
-`rounds`, and the rest.
-
-```json
-{ "skills": { "codex-review": { "defaults": { "model": "<model id>" } } } }
-```
-
-Only `model` changes. `effort` keeps its shipped value.
-
-**Change a list.** A list replaces the whole shipped list; it does not add to it. The
-shipped `reviewers` of `review-loop` is `["codex-review"]`. To add Grok, write both:
-
-```json
-{ "skills": { "review-loop": { "defaults": { "reviewers": ["codex-review", "grok-review"] } } } }
-```
-
-Writing only `["grok-review"]` would drop Codex.
-
 **Turn something off.** Set `enabled` to `false` under `skills`, `agents`, or `hooks`.
 The key is the skill's folder name, or the agent's or hook's file name without the
 extension. The next `./sync --apply` removes it from every tool.
 
 ```json
 { "skills": { "bro": { "enabled": false } } }
+```
+
+**Change a skill default.** Copy any key from a skill's `defaults` in
+`config.defaults.json` and give it a new value. A list replaces the shipped list.
+
+```json
+{ "skills": { "codex-review": { "defaults": { "model": "<model id>" } } } }
 ```
 
 **Jira and restricted repositories** are set in `config.json` too. See
