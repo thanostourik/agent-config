@@ -267,12 +267,12 @@ admit() {
   echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
 }
 
-# Every verify on the machine shares this copy's lock: an '# alone' feature holds it alone, the others share it.
+# Every verify on the machine shares this copy's lock: an '# alone' feature holds it alone; other features and doctor share it.
 hold_copy() {
   command -v flock > /dev/null || return 0
   local wanted=$cache/drive/.copy-$VERIFY_RUN_ID.wanted
   exec 7> "$cache/drive/.copy-$VERIFY_RUN_ID"
-  if grep -q '^# alone' "$skill/features/$1.sh"; then
+  if [[ "$1" == alone ]]; then
     echo "$BASHPID" > "$wanted"
     flock -x 7
     rm -f "$wanted"
@@ -319,7 +319,7 @@ run_feature() {
   mkdir -p "$cache/drive"
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
   start=$SECONDS
-  hold_copy "$feature"
+  hold_copy "$(grep -q '^# alone' "$skill/features/$feature.sh" && echo alone)"
   take_room "$BASHPID"
   local waited=$((SECONDS - start))
   start=$SECONDS
@@ -331,7 +331,6 @@ run_feature() {
     timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 7>&-
   status=$?
   rm -f "$room_pool/slot-$BASHPID"
-  exec 7>&-
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
   line_of "$feature" > "$run/line-$feature"
@@ -341,6 +340,7 @@ run_feature() {
     echo "$feature" > "$run/stop"
     cp "$run/doctor.log" "$cache/doctor-failed.log"
   fi
+  exec 7>&-
 }
 
 line_of() {
@@ -379,7 +379,9 @@ drive() {
   run=$cache/drive/.run-$$
   mkdir -p "$run"
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
-  doctor "$run/doctor.log" || { cp "$run/doctor.log" "$cache/doctor-failed.log"; echo "verify: doctor.sh failed, see $cache/doctor-failed.log" >&2; return 2; }
+  hold_copy shared
+  doctor "$run/doctor.log" || { exec 7>&-; cp "$run/doctor.log" "$cache/doctor-failed.log"; echo "verify: doctor.sh failed, see $cache/doctor-failed.log" >&2; return 2; }
+  exec 7>&-
   for feature in "$@"; do
     if grep -q '^# alone' "$skill/features/$feature.sh"; then alone+=("$feature"); else together+=("$feature"); fi
   done
@@ -480,8 +482,7 @@ command=${1:-}
 
 case $command in
   up)
-    fresh=""
-    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; fresh=1; }
+    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; }
     previous=$(lane_count)
     echo "${lanes:-$previous}" > "$cache/lanes"
     for ((lane = previous; lane > $(lane_count); lane--)); do
@@ -503,10 +504,11 @@ case $command in
     for ((lane = 0; lane <= count; lane++)); do
       on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; exit 1; }
     done
-    if [[ -n "$fresh" && -n "${before:-}" ]]; then
+    if [[ -f "$cache/run-id.unmeasured" && -n "${before:-}" ]]; then
       used=$(((before - $(meminfo MemAvailable)) / (count + 1)))
       ((used > 0)) && echo "$used" > "$cache/stack-mb"
       echo $((SECONDS - began)) > "$cache/lane-seconds"
+      rm -f "$cache/run-id.unmeasured"
     fi
     echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")" ;;
   down)
@@ -521,7 +523,7 @@ case $command in
       "$skill/bin/cleanup.sh" "$@" || failed=1
     fi
     ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id" "$cache/lanes"
+    rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes"
     echo "down" ;;
   room)
     take_room "$$" ;;
