@@ -225,9 +225,10 @@ Build the environment for speed, because every recipe pays for it on every run:
   without `-Xmx` takes a quarter of the machine). Start the project's own JVM apps with
   `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Give
   every service of the run a memory limit, third-party ones included: a container limit
-  (`mem_limit`) about twice what it uses after a full drive, read with `docker stats`. A
-  runtime that sizes its heap from the container, such as a JVM, then stays inside it; in
-  trials an uncapped Keycloak grew to 8 GB in one drive. Change only the limit of a
+  (`mem_limit`) about one and a half times what it uses right after a full drive, read with
+  `docker stats`, never sized from an idle stack. A runtime that sizes its heap from the
+  container, such as a JVM, then stays inside it; in trials an uncapped Keycloak grew to
+  8 GB in one drive, and a limit of twice its idle use got it killed for memory. Change only the limit of a
   third-party service, never its startup flags: Keycloak's start script picks a collector
   that clashes with `UseSerialGC` and does not start. When the services come from the
   project's local stack, the limit goes into that stack (`create-project-local-stack`),
