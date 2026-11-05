@@ -197,7 +197,8 @@ The recorder prompt, which the short prompt points to:
 
 ```
 You record end-to-end recipes for verify-<app>. The repository root is <absolute path>; run
-every command from there. Read
+every command from there, and read nothing outside it except the generator's files it
+names: another checkout's recipes are not this project's. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
 .agents/skills/verify-<app>/PROJECT.md, the example recipe
 .agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list

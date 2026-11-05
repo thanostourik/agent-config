@@ -245,9 +245,9 @@ checks in `PROJECT.md`, and go to step 6.
    `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
    area. Size areas to equal work, so every recorder ends at about the same time: in trials
    a recorder spent about 3 minutes per ordinary feature and twice that on one with many
-   states (filters, periods, empty and error states). Divide the features over at most as
-   many areas as the host runs helper agents at once, heavy features in smaller areas, and
-   no area above 6 features. For each feature, write its expectation list with
+   states (filters, periods, empty and error states). Make areas of 2 or 3 features, a
+   heavy feature alone: recording ends when the longest area ends, and the number of
+   recorders is not limited (step 4.3). For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
    every test name in the test files, and the docs headings that match the words, with the
    lines under them. Give each feature only its own test files. Then delete the other feature's
@@ -277,11 +277,15 @@ checks in `PROJECT.md`, and go to step 6.
    short prompt lets you start twenty recorders in seconds instead of minutes. A recorder
    writes all its area's recipes first, then drives and fixes them together, so an area of
    five features takes about as long as one feature. Drives need no limit on recorders: a feature's run waits while the machine is out of
-   memory or CPU. The host's limit does apply (Claude Code runs at most 20 helper agents at
-   once): write the areas to start into `.cache/queue.txt`, read each start's answer, and
-   delete an area from the queue only when its recorder started. Start the next queued
-   area as each recorder returns, until the queue is empty. With no helper agents at
-   all, record the rest yourself. Start recorders on the host's fast model
+   memory or CPU. The host's helper limit (Claude Code runs 19 or 20 helper agents at once,
+   Codex 3) does not limit recorders either: start the areas beyond it as headless sessions
+   of your own CLI, from the repository root, in the background, each with the same short
+   prompt, its output in `.cache/recorders/<area>.log`:
+   `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
+   `codex exec -m <model> --full-auto "<short prompt>"`. In trials 30 headless sessions
+   started at once with no rate limit. Use headless sessions only when your own session
+   runs commands without asking; otherwise queue the areas past the limit and start one
+   as each recorder returns. With no helper agents and no CLI, record the rest yourself. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
