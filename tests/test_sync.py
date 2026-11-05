@@ -33,8 +33,7 @@ class SyncTest(unittest.TestCase):
         for path in (self.repo / "instructions").glob("*.md"):
             path.write_text("")
         (self.repo / "config.defaults.json").write_text("{}")
-        for folder in ("skills/shared", "skills/grok", "skills/opencode", "agents/claude-code",
-                       "hooks", "bin"):
+        for folder in ("skills", "agents/claude-code", "hooks", "bin"):
             shutil.rmtree(self.repo / folder, ignore_errors=True)
 
     def run_sync(self, *args, expected=0):
@@ -104,17 +103,17 @@ class SyncTest(unittest.TestCase):
         self.assertTrue(backups[0].is_symlink())
 
     def test_skills_agents_and_profile_isolation(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
         script = skill / "run.sh"
         script.write_text("#!/bin/sh\nexit 0\n")
         script.chmod(0o755)
-        grok_skill = self.repo / "skills/grok/commit"
+        grok_skill = self.repo / "skills/commit"
         grok_skill.mkdir(parents=True)
-        (grok_skill / "SKILL.md").write_text("Grok skill")
-        (self.repo / "skills/codex/empty").mkdir(parents=True)
-        (self.repo / "skills/codex/empty/SKILL.md").write_text("")
+        (grok_skill / "SKILL.md").write_text('---\nmetadata:\n  harness: "grok"\n---\nGrok skill')
+        (self.repo / "skills/empty").mkdir(parents=True)
+        (self.repo / "skills/empty/SKILL.md").write_text("")
         (self.repo / "agents/claude-code").mkdir(parents=True)
         (self.repo / "agents/claude-code/runner.md").write_text("Agent instructions")
         (self.repo / "agents/codex").mkdir(parents=True)
@@ -219,8 +218,8 @@ class SyncTest(unittest.TestCase):
         self.assertFalse((self.home / ".codex/hooks.json").exists())
         self.assertFalse((self.home / ".cursor/hooks.json").exists())
 
-    def test_skill_metadata_overrides_folder_and_copies_resources(self):
-        skill = self.repo / "skills/shared/example"
+    def test_skill_metadata_selects_destinations_and_copies_resources(self):
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         contents = ('---\nname: example\nmetadata:\n  author: someone\n'
                     '  harness: "grok, agents"\n---\nExample skill\n')
@@ -240,7 +239,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--check")
 
     def test_skill_metadata_ignores_other_fields_and_body_examples(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text(
             '---\nname: example\nmetadata:\n  author: someone\n'
@@ -252,7 +251,7 @@ class SyncTest(unittest.TestCase):
 
     def test_invalid_skill_routing_blocks_all_writes(self):
         (self.repo / "instructions/common.md").write_text("New instructions")
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         for field in ('  harness: [grok, opencode]', '  harness: grok',
                       '  harness: ""', '  harness: "grok, unknown"',
@@ -263,15 +262,6 @@ class SyncTest(unittest.TestCase):
                 (skill / "SKILL.md").write_text(f"---\nmetadata:\n{field}\n---\nSkill\n")
                 self.run_sync("--apply", expected=2)
                 self.assertFalse(self.home.exists())
-
-    def test_duplicate_skill_destinations_block_all_writes(self):
-        for tool in ("grok", "opencode"):
-            skill = self.repo / "skills" / tool / "example"
-            skill.mkdir(parents=True)
-            (skill / "SKILL.md").write_text(
-                '---\nmetadata:\n  harness: "grok"\n---\nSkill\n')
-        self.run_sync("--apply", expected=2)
-        self.assertFalse(self.home.exists())
 
     def test_scripts_install_executable_into_local_bin(self):
         (self.repo / "bin").mkdir()
@@ -295,7 +285,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--check")
 
     def add_skill(self, *files, harness=None):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True, exist_ok=True)
         metadata = f'metadata:\n  harness: "{harness}"\n' if harness else ""
         (skill / "SKILL.md").write_text(f"---\nname: example\n{metadata}---\nExample skill\n")
@@ -423,10 +413,10 @@ class SyncTest(unittest.TestCase):
         (self.repo / "config.json").write_text(json.dumps(data))
 
     def test_disabled_skill_and_hook_are_skipped(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
-        kept = self.repo / "skills/shared/kept"
+        kept = self.repo / "skills/kept"
         kept.mkdir(parents=True)
         (kept / "SKILL.md").write_text("Kept skill")
         self.write_hook("shared", "render", {"event": "after-edit", "command": "render"})
@@ -451,10 +441,10 @@ class SyncTest(unittest.TestCase):
         self.assertTrue((self.home / ".codex/agents/other.toml").is_file())
 
     def test_disable_removes_only_sync_installed_copies(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
-        kept = self.repo / "skills/shared/kept"
+        kept = self.repo / "skills/kept"
         kept.mkdir(parents=True)
         (kept / "SKILL.md").write_text("Kept skill")
         self.write_hook("shared", "render", {"event": "after-edit", "command": "render"})
@@ -484,7 +474,7 @@ class SyncTest(unittest.TestCase):
         self.assertFalse(list(self.backups.glob("*/.claude/skills")))
 
     def test_missing_config_leaves_everything_enabled(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("Example skill")
         self.assertFalse((self.repo / "config.json").exists())
@@ -505,7 +495,7 @@ class SyncTest(unittest.TestCase):
         self.assertFalse(self.home.exists())
 
     def test_skill_defaults_render_strings_and_lists_and_overrides_replace_lists(self):
-        skill = self.repo / "skills/shared/example"
+        skill = self.repo / "skills/example"
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text(
             "Model {{defaults.model}}; reviewers {{defaults.reviewers}}.")
@@ -525,7 +515,7 @@ class SyncTest(unittest.TestCase):
     def test_default_config_lists_installable_skills_and_hooks(self):
         source = Path(__file__).resolve().parents[1]
         defaults = json.loads((source / "config.defaults.json").read_text())
-        skills = {path.parent.name for path in (source / "skills").glob("*/*/SKILL.md")
+        skills = {path.parent.name for path in (source / "skills").glob("*/SKILL.md")
                   if path.read_text().strip()}
         hooks = {path.stem for path in (source / "hooks").glob("*/*.json")}
         self.assertEqual(set(defaults["skills"]), skills)
@@ -713,7 +703,7 @@ class SyncTest(unittest.TestCase):
         self.jira_config({"work": {"url": "https://jira.example.com"}})
         self.run_sync("--apply")
         before = self.state.read_text()
-        (self.repo / "skills/shared/example/SKILL.md").write_text("Updated skill")
+        (self.repo / "skills/example/SKILL.md").write_text("Updated skill")
         self.jira_config({"work": {"url": "https://new.example.com"}})
         self.run_sync("--apply")
         after = self.state.read_text()

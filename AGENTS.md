@@ -26,9 +26,8 @@ Two things to keep as they are:
 - `instructions/<tool>.md`: extra preferences for one tool. Sync joins the
   common file and the tool file into one installed file. The common part comes
   first.
-- `skills/<tool>/<name>/`: a skill for one tool.
-- `skills/shared/<name>/`: a skill installed to every tool, unless its
-  `harness` field says otherwise. See "The harness field" below.
+- `skills/<name>/`: a skill installed to every tool unless its `harness`
+  field selects destinations. See "Skill destinations" below.
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
   shape: an object of event name to list of hook items, the same object that
@@ -101,54 +100,26 @@ Two things to keep as they are:
 - `tests/test_sync.py`: tests for the install script.
 
 If a skill or agent folder does not exist or is empty, sync skips it. Create
-`skills/<tool>/` or `agents/<tool>/` only when you have a file to put in it.
+`skills/<name>/` or `agents/<tool>/` only when you have a file to put in it.
 When you add a skill, agent, or hook, add it to `config.defaults.json`
 so the menu stays complete. Never put a Jira URL in that file.
 
-## The harness field
+## Skill destinations
 
-`harness` lists where sync installs a skill or a shared hook. Each name is an
-install destination from the "Where sync installs each file" table, not a
-source folder. The names are `claude-code`, `codex`, `grok`, `opencode`,
-`cursor`, and `agents`.
-
-`agents` is not a tool. It is the folder `~/.agents/skills/`, which several
-tools read in addition to their own skills folder. A skill goes there only
-when its `harness` names `agents`; no source folder puts it there. A tool that
-reads `~/.agents/skills/` finds a skill installed there even when its own name
-is missing from the list. `shared` is not a harness name: it is only the source
-folder `skills/shared/` or `hooks/shared/`.
-
-Without `harness`, the source folder decides:
-
-- `skills/<tool>/x/` goes only to that tool. For example, `skills/grok/x/`
-  goes to `~/.grok/skills/x/`.
-- `skills/shared/x/` goes to the five tools.
-- `hooks/shared/x.json` goes to the three tools with hooks.
-
-A `harness` list replaces that default completely. It does not add to it. A
-skill in `skills/shared/` that uses:
+Keep each skill in `skills/<name>/`. Without `metadata.harness`, it installs
+into all five tools' skill folders. To select destinations, use this exact
+format in the opening `SKILL.md` frontmatter:
 
 ```yaml
 metadata:
   harness: "grok, opencode"
 ```
 
-stays out of the Claude Code, Codex, and Cursor skill folders. A
-skill that should also go to `~/.agents/skills/` must list every destination,
-`agents` included.
-
-For a skill, the field sits in the opening `SKILL.md` frontmatter. Use exactly
-two spaces before `harness`, double quotes, and one line of comma-separated
-names. Sync reads this restricted format without a YAML dependency. Other
-metadata fields are ignored and stay in the installed copies. For a shared
-hook, `harness` is a JSON string of the same shape, and only `claude-code`,
-`codex`, and `cursor` are allowed.
-
-These stop sync before any write: an unknown or repeated name, other syntax,
-a hook `harness` that names a tool without hooks, and two source skills that
-target the same installed folder. Per-tool hooks (`hooks/<tool>/`) and agent
-definitions have no `harness` field. They go only to their own tool.
+Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `agents`.
+The list replaces the default. `agents` means `~/.agents/skills/`, which some
+tools also read; it is included only when listed explicitly. Use two spaces,
+double quotes, and one comma-separated line. Invalid or repeated names and
+unsupported syntax stop sync before any write.
 
 ## Configurable skill defaults
 
@@ -229,7 +200,10 @@ A shared hook looks like this:
 }
 ```
 
-`harness` is optional. See "The harness field" above. `event` must be a key
+Without `harness`, a shared hook installs to Claude Code, Codex, and Cursor.
+When present, it selects only the listed tools from those three; unknown or
+repeated names stop sync before any write. Per-tool hooks and agent definitions
+use their tool directory and have no `harness` field. `event` must be a key
 of the `HOOK_EVENTS` table in `sync`, which maps it to each tool's event name
 and item shape. Today that table
 holds only `after-edit`. Add a row when a hook needs another event. `timeout`

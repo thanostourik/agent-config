@@ -11,6 +11,7 @@ each tool's configuration folder.
 - [Configuration](#configuration)
 - [Restricted repositories](#restricted-repositories)
 - [Skills](#skills)
+  - [Skill destinations](#skill-destinations)
   - [Pull requests](#pull-requests)
   - [Reviews](#reviews)
   - [Planning and writing](#planning-and-writing)
@@ -97,6 +98,20 @@ name them:
 
 - Claude Code, Cursor, Grok: type `/skill-name`, for example `/squash-merge-pr`.
 - Codex: type `$skill-name`, for example `$squash-merge-pr`.
+
+### Skill destinations
+
+Store skills in `skills/<name>/`. No `harness` means all five tools. To select
+only certain destinations, put this in the opening `SKILL.md` frontmatter:
+
+```yaml
+metadata:
+  harness: "codex, cursor"
+```
+
+Names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `agents`.
+`agents` installs to `~/.agents/skills/`, which some tools also read; include
+it explicitly when wanted. The list replaces the default destinations.
 
 ### Pull requests
 
