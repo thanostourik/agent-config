@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 10
+
+- **Memory limits:** give every long-running service in `compose.yaml` a `mem_limit` of about one and a half times what it uses during a busy run, at least `256m`, as `stack-spec.md` describes; change only the limit of a stock image, never its startup flags. **Check:** 1 and the busy run, then every service is healthy and none was killed for memory (`docker inspect -f '{{.State.OOMKilled}}'` prints `false`).
+
 ## Version 9
 
 - **Script:** copy `local-stack/stack` again. A mode may now ask a dependency stack for modes and environment values with `"dependencies"`, and `${LOCAL_STACK_CHECKOUT}` names the checkout's root. A stack that needs another repo's stack to start differently, such as with a feature on or a file from this checkout, adds a switch for it in both stacks instead of a manual step. **Check:** 6 with each mode that has `dependencies`; when none has, `up` once to confirm the script still starts the stack.
