@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 12
+
+- **Memory limits:** give every long-running service in `compose.yaml` a `mem_limit` of about one and a half times what it uses during a busy run, at least `256m`, as `stack-spec.md` describes; change only the limit of a stock image, never its startup flags. **Check:** 1 and the busy run, then every service is healthy and none was killed for memory (`docker inspect -f '{{.State.OOMKilled}}'` prints `false`).
+
 ## Version 11
 
 - **Script:** copy `local-stack/stack` again. A mode with a `"stack"` key now names the other repo by its path in its git remote, and `up` finds its clone next to this repo's main clone, or in the folder saved once with `up --use <switch>=<folder>`. Replace each `"stack": "<VARIABLE>"` in `stack.json` with that repo's path, such as `"stack": "my-org/catalog"`, and remove the variable everywhere it is mentioned: README, `AGENTS.md`, and the repo's own skills or scripts that read it. Something that needs the other clone's folder reads it from `status`, which prints each dependency's checkout. In the README, add `--use` to the commands and rewrite `## Needs` as `stack-spec.md` says. **Check:** 1, 2 and 6 with the variable unset in your shell; step 2 runs in a worktree outside the repo, which proves the clone is found from a worktree too. Leave your clones where they are; the skill's own proof covers `--use`. Finish with 7.
