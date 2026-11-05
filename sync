@@ -41,14 +41,13 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parent
 # Per-tool destinations relative to the home directory. Source layout:
 #   instructions/<tool>.md  -> instructions (common.md is prepended)
-#   skills/<tool>/<name>/   -> skills
+#   skills/<name>/          -> every tool unless harness says otherwise
 #   agents/<tool>/<name>.*  -> agent definitions
 #   hooks/<tool>/<name>.json -> one hook in the tool's native shape: event -> items
 #   hooks/shared/<name>.json -> one hook in the neutral shape below, for every
 #                               tool with hooks unless "harness" says otherwise
 # Enabled hooks are merged per tool into one file, or for Claude Code into
 # the "hooks" key of settings.json.
-#   skills/shared/<name>/   -> every tool's skills unless harness says otherwise
 # bin/ installs to ~/.local/bin; hooks and skills call those scripts by name.
 # With a Jira instance configured, a login autostart entry unlocks the vault.
 TOOLS = {
@@ -514,12 +513,6 @@ def prune(home, target):
                 return
 
 
-def default_skill_harnesses(default):
-    if default == SHARED:
-        return list(TOOLS)
-    return [default]
-
-
 def valid_skill_default(value):
     if isinstance(value, list):
         return all(valid_skill_default_text(item) for item in value)
@@ -569,11 +562,11 @@ def render_skill_markdown(skill, config):
             for file, contents in markdown.items()}
 
 
-def skill_harnesses(entry, default):
+def skill_harnesses(entry):
     """Read our single-line metadata.harness string, not general YAML."""
     lines = entry.read_text().splitlines()
     if not lines or lines[0] != "---":
-        return default_skill_harnesses(default)
+        return list(TOOLS)
     try:
         end = lines.index("---", 1)
     except ValueError:
@@ -601,7 +594,7 @@ def skill_harnesses(entry, default):
                 f"{entry}: harness names must be one of {', '.join(SKILL_DESTINATIONS)}")
         if len(set(harnesses)) != len(harnesses):
             raise ValueError(f"{entry}: duplicate harness names")
-    return harnesses if harnesses is not None else default_skill_harnesses(default)
+    return harnesses if harnesses is not None else list(TOOLS)
 
 
 def hook_harnesses(path, data):
@@ -706,7 +699,6 @@ def desired_files(config, home, hooks_by_tool):
     """Return the files the repository wants installed, and which are executable."""
     files = {}
     executable = set()
-    skill_sources = {}
     skill_names = set()
     common = (ROOT / "instructions/common.md").read_text().strip()
 
@@ -726,30 +718,23 @@ def desired_files(config, home, hooks_by_tool):
                         and is_enabled(config, "agents", agent.stem)):
                     files[home / destinations["agents"] / agent.name] = agent.read_bytes()
 
-    for tool in (*TOOLS, SHARED):
-        skills_dir = ROOT / "skills" / tool
-        if not skills_dir.is_dir():
+    for entry in sorted((ROOT / "skills").glob("*/SKILL.md")):
+        skill = entry.parent
+        if not entry.is_file() or not entry.read_text().strip():
             continue
-        for skill in sorted(skills_dir.iterdir()):
-            entry = skill / "SKILL.md"
-            if not entry.is_file() or not entry.read_text().strip():
-                continue
-            skill_names.add(skill.name)
-            markdown = render_skill_markdown(skill, config)
-            for harness in skill_harnesses(entry, tool):
-                destination = home / SKILL_DESTINATIONS[harness] / skill.name
-                if destination in skill_sources:
-                    raise ValueError(f"Duplicate skill destination {destination}: "
-                                     f"{skill_sources[destination]} and {skill}")
-                skill_sources[destination] = skill
-                if not is_enabled(config, "skills", skill.name):
-                    continue
-                for file in sorted(skill.rglob("*")):
-                    if file.is_file():
-                        target = destination / file.relative_to(skill)
-                        files[target] = markdown[file] if file in markdown else file.read_bytes()
-                        if file.stat().st_mode & 0o111:
-                            executable.add(target)
+        skill_names.add(skill.name)
+        markdown = render_skill_markdown(skill, config)
+        harnesses = skill_harnesses(entry)
+        if not is_enabled(config, "skills", skill.name):
+            continue
+        for harness in harnesses:
+            destination = home / SKILL_DESTINATIONS[harness] / skill.name
+            for file in sorted(skill.rglob("*")):
+                if file.is_file():
+                    target = destination / file.relative_to(skill)
+                    files[target] = markdown[file] if file in markdown else file.read_bytes()
+                    if file.stat().st_mode & 0o111:
+                        executable.add(target)
 
     unknown = {name for name, entry in (config.get("skills") or {}).items()
                if entry.get("defaults") and name not in skill_names}
