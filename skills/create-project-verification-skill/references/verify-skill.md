@@ -115,8 +115,10 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   exist, and, while `.cache/expect/<feature>.txt` exists, a recipe that leaves any of its
   listed tests or headings uncited. Read
   the feature's tests and docs for these lines before writing steps; they are the recipe's
-  depth. When they state little, take the lines from the source: each validation, error
-  response, permission check and side effect of the feature's handlers is a behavior.
+  depth. Then take the rest from the source, always: each field and its validation message,
+  each error response, each permission rule (who may, and who is refused), each empty,
+  loading and limit state, and each side effect (row, mail, file, event) in the feature's
+  files is a behavior with its own `# expects:` line.
 - Optional header lines: `# alone: <the shared state it changes>` when the feature changes
   state other features read, such as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already
@@ -177,8 +179,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 
 ## Recorders
 
-A recorder is a helper agent that writes one or a few new recipes. Start one per feature,
-all at once: a feature's run waits while the machine is out of memory or CPU. When the host
+A recorder is a helper agent that writes the recipes of one area: 3 to 6 features that
+share a screen or setup. Start one per area, all at once: a feature's run waits while the machine is out of memory or CPU. When the host
 refuses one, start it again when another returns; with no helper agents at all, record the
 features yourself. Give each this short prompt, with the paths and features filled in:
 
@@ -197,10 +199,13 @@ every command from there. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
 .agents/skills/verify-<app>/PROJECT.md, the example recipe
 .agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list
-.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then, for each feature below, read
-the files listed with it, write .agents/skills/verify-<app>/features/<feature>.sh with one '# expects:'
-line per listed behavior, and run .agents/skills/verify-<app>/bin/verify <feature> until it
-passes. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
+.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then read the files listed with your
+features and list every behavior they state, as the Recipes section says. Write all your
+recipes, .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
+behavior, before driving any. Then drive them together,
+.agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
+together between drives until each passes: one drive of all your features costs about what
+one feature costs. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
 times once and remove what is plainly avoidable; spend no further runs on speed. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only

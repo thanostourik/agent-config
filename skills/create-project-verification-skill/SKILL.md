@@ -233,9 +233,16 @@ checks in `PROJECT.md`, and go to step 6.
 
 ## 4. Record every feature
 
-1. Group the output of `bin/entrypoints.sh` into features: one user-facing capability
-   each, with a one-line scope and its entry points. Every entry point belongs to exactly
-   one feature. For each feature, write its expectation list with
+1. Group the output of `bin/entrypoints.sh` into features: one user goal each, the size
+   of one end-to-end test file, with a one-line scope and its entry points. A screen with
+   several actions is several features: its create, edit, delete, search, settings, roles,
+   and error and empty states each make one when they have several steps. A feature has
+   about 8 to 15 steps, so most apps have two features per entry point or more: in trials,
+   one feature per area gave a fifth of the steps of a skill split by user goal, and
+   missed what those steps would have checked. Every entry point belongs to at least one
+   feature. Then group the features into areas of 3 to 6 that share a screen or setup, in
+   `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
+   area. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
    every test name in the test files, and the docs headings that match the words, with the
    lines under them. Give each feature only its own test files. Then delete the other feature's
@@ -259,16 +266,17 @@ checks in `PROJECT.md`, and go to step 6.
    sign-ins), so its slow path runs too: in trials, four recorders each spent minutes
    working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
    failed four recipes on the first fresh drive.
-3. Start recorders with the short prompt in the skill's Recorders section: one feature each,
-   every feature at once, heaviest first. Its line in `.cache/features.txt` lists its entry
-   points' source files, so the recorder reads them instead of searching, and the short
-   prompt lets you start twenty recorders in seconds instead of minutes. Drives need no limit on recorders: a feature's run waits while the machine is out of
+3. Start recorders with the short prompt in the skill's Recorders section: one area each,
+   every area at once, heaviest first. Each feature's line in `.cache/features.txt` lists
+   its entry points' source files, so the recorder reads them instead of searching, and the
+   short prompt lets you start twenty recorders in seconds instead of minutes. A recorder
+   writes all its area's recipes first, then drives and fixes them together, so an area of
+   five features takes about as long as one feature. Drives need no limit on recorders: a feature's run waits while the machine is out of
    memory or CPU. The host's limit does apply (Claude Code runs at most 20 helper agents at
-   once): write the features to start into `.cache/queue.txt`, read each start's answer, and
-   delete a feature from the queue only when its recorder started. Start the next queued
-   feature as each recorder returns, until the queue is empty. With no helper agents at
-   all, record the rest yourself. In trials, the last recorders to return
-   each had two features and took 13 to 14 minutes. Start recorders on the host's fast model
+   once): write the areas to start into `.cache/queue.txt`, read each start's answer, and
+   delete an area from the queue only when its recorder started. Start the next queued
+   area as each recorder returns, until the queue is empty. With no helper agents at
+   all, record the rest yourself. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
    Start them in the background; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
