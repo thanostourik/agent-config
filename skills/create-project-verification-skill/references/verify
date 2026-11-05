@@ -225,9 +225,10 @@ on_lane() {
 held() { [[ -d "$cache/drive/.lock-$1" ]] && kill -0 "$(cat "$cache/drive/.lock-$1/pid" 2> /dev/null)" 2> /dev/null; }
 
 machine_has_room() {
-  local available pressure
+  local available total pressure
   available=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2> /dev/null)
-  [[ -z "$available" ]] || ((available >= 3072)) || return 1
+  total=$(awk '/^MemTotal:/ { print int($2 / 1024) }' /proc/meminfo 2> /dev/null)
+  [[ -z "$available" ]] || ((available >= 6144 && available * 5 >= total)) || return 1
   [[ -r /proc/pressure/cpu ]] || return 0
   pressure=$(awk '/^some/ { split($2, a, "="); print int(a[2]) }' /proc/pressure/cpu)
   ((pressure < 40))

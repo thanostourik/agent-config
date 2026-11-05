@@ -146,6 +146,9 @@ Write and make executable:
     the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
   - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
     found in minutes;
+  - before it opens a new browser session, a wait (up to a minute) until a fifth of the
+    machine's memory is free (`MemAvailable` in `/proc/meminfo`), as the runner does
+    before each feature: a browser session takes about 200 MB, and recorders open many;
   - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
     uncached address of the page's own origin:
     `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
@@ -283,7 +286,11 @@ checks in `PROJECT.md`, and go to step 6.
    prompt, its output in `.cache/recorders/<area>.log`:
    `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
    `codex exec -m <model> --full-auto "<short prompt>"`. In trials 30 headless sessions
-   started at once with no rate limit. Use headless sessions only when your own session
+   started at once with no rate limit. Memory is the limit: every recorder's drives open
+   browsers, and in one trial 55 recorders at once ran a 62 GB machine out of memory and
+   the system killed the session. After `up`, read the free memory and run at most one
+   recorder per GB above 12 GB; queue the areas beyond that and start one as each
+   recorder returns. Use headless sessions only when your own session
    runs commands without asking; otherwise queue the areas past the limit and start one
    as each recorder returns. With no helper agents and no CLI, record the rest yourself. Start recorders on the host's fast model
    (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
