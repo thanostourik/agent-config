@@ -202,10 +202,18 @@ names: another checkout's recipes are not this project's. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
 .agents/skills/verify-<app>/PROJECT.md, the example recipe
 .agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list
-.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then read the files listed with your
-features and list every behavior they state, as the Recipes section says. Write all your
-recipes, .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
-behavior, before driving any. Then drive them together,
+.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then read every file of your area
+and first write its inventory, .agents/skills/verify-<app>/.cache/behaviors/<area>.txt: one
+line per behavior the source states, never merged: each field and its validation message,
+each button and what it does, each state (empty, loading, filtered, paging, editing,
+error), each error response the screen handles, each permission rule, each side effect.
+Split the inventory into features of 8 to 15 steps, one behavior per step where it can be
+driven on its own; the features named for you are a start, add the ones the inventory
+needs, named <area>-<goal>. Write all your recipes,
+.agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
+inventory line, before driving any. A behavior whose data cannot be made through the app,
+its API or a documented helper within a few minutes is marked not driven with that
+reason. Then drive them together,
 .agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
 together between drives, with small edits rather than rewriting a recipe, until each passes: one drive of all your features costs about what
 one feature costs. When the pass is marked slow, read the slowest calls in its pw-calls.log or step

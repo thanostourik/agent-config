@@ -248,9 +248,12 @@ checks in `PROJECT.md`, and go to step 6.
    `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
    area. Size areas to equal work, so every recorder ends at about the same time: in trials
    a recorder spent about 3 minutes per ordinary feature and twice that on one with many
-   states (filters, periods, empty and error states). Make areas of 2 or 3 features, a
-   heavy feature alone: recording ends when the longest area ends, and the number of
-   recorders is not limited (step 4.3). For each feature, write its expectation list with
+   states (filters, periods, empty and error states). Make one area per screen or closely
+   tied group of screens, at most as many areas as recorders can run at once (step 4.3).
+   The recorder lists every behavior of its area from the source first and splits that
+   list into features itself, so name only the features you can see from the entry
+   points: in trials a recorder turned one screen into 7 features and 69 to 79 passing
+   steps in 10 minutes, where a recorder given two named features wrote 13 steps. For each feature, write its expectation list with
    `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
    every test name in the test files, and the docs headings that match the words, with the
    lines under them. Give each feature only its own test files. Then delete the other feature's
