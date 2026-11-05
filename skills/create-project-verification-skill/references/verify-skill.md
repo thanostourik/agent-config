@@ -63,7 +63,7 @@ and read its output once. Do not poll it or tail its logs.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue: a
-  feature's run starts only while 40% of memory stays free and the CPU is not saturated,
+  feature's run starts only while 20% of memory stays free and the CPU is not saturated,
   and one always runs. The user sets another share with `VERIFY_RESERVE=<percent>` or the
   file `~/.config/verify/reserve`. A summary line with `waiting for room` says how long
   feature runs waited; a pass's time is its own.
@@ -237,8 +237,14 @@ line; otherwise report
 blocked: helper <name>: <defect>. Behavior another feature covers is setup here, with no
 checks of its own. Return one line per feature: passed, product defect: <what>, or
 blocked: <reason>. For a product defect, add '# known failure: <step label>' to the recipe's
-header. While iterating, drive only your own features. Edit only your own recipes: no git
-branch, commit or stash, and no edit to PROJECT.md. Stop every process your
+header. Never weaken or drop a check to get past a product defect: checking only the
+response when the stored result is wrong hides the defect; keep the check, last in its
+step, and mark it. While iterating, drive only your own features. Edit only your own recipes: no git
+branch, commit or stash, and no edit to PROJECT.md. Run each drive in the foreground and
+read its summary; never end your turn while a drive runs. Data you make by hand while
+exploring is named verify-<area>-probe-..., and you delete it by that prefix only. Close
+every browser session and stop every process you open by hand as soon as you are done
+with it: an open one holds memory the other recorders' drives wait for. Stop every process your
 attempts started. As your last action, write those lines, and one line per trap that cost
 you a run for PROJECT.md's Gotchas, to
 .agents/skills/verify-<app>/.cache/results/<your first feature>.txt (through a temporary file

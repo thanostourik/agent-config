@@ -9,7 +9,7 @@
 # verify room               wait until the machine has room for one more browser session or process
 # Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
 # Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
-# (default 40, or ~/.config/verify/reserve) stays free and the CPU is not saturated, with at least one feature running.
+# (default 20, or ~/.config/verify/reserve) stays free and the CPU is not saturated, with at least one feature running.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
@@ -232,7 +232,7 @@ browser_mb=500
 
 reserve_percent() {
   local percent=${VERIFY_RESERVE:-$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/verify/reserve" 2> /dev/null)}
-  [[ "$percent" =~ ^[0-9]+$ ]] && ((percent < 100)) && echo "$percent" || echo 40
+  [[ "$percent" =~ ^[0-9]+$ ]] && ((percent < 100)) && echo "$percent" || echo 20
 }
 
 meminfo() { awk -v key="$1:" '$1 == key { print int($2 / 1024) }' /proc/meminfo; }
@@ -265,6 +265,21 @@ admit() {
     fi
   fi
   echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
+}
+
+# Every verify on the machine shares this copy's lock: an '# alone' feature holds it alone, the others share it.
+hold_copy() {
+  command -v flock > /dev/null || return 0
+  local wanted=$cache/drive/.copy-$VERIFY_RUN_ID.wanted
+  exec 7> "$cache/drive/.copy-$VERIFY_RUN_ID"
+  if grep -q '^# alone' "$skill/features/$1.sh"; then
+    echo "$BASHPID" > "$wanted"
+    flock -x 7
+    rm -f "$wanted"
+  else
+    while [[ -f "$wanted" ]] && kill -0 "$(cat "$wanted" 2> /dev/null)" 2> /dev/null; do sleep 1; done
+    flock -s 7
+  fi
 }
 
 take_room() {
@@ -304,6 +319,7 @@ run_feature() {
   mkdir -p "$cache/drive"
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
   start=$SECONDS
+  hold_copy "$feature"
   take_room "$BASHPID"
   local waited=$((SECONDS - start))
   start=$SECONDS
@@ -311,10 +327,11 @@ run_feature() {
   mkdir -p "$dir" "$cache/evidence/$feature"
   echo "$limit" > "$dir/deadline"
   echo "$waited" > "$dir/waited"
-  VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
-    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null
+  VERIFY_RUNNER=$$ VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
+    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 7>&-
   status=$?
   rm -f "$room_pool/slot-$BASHPID"
+  exec 7>&-
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
   line_of "$feature" > "$run/line-$feature"
@@ -398,6 +415,7 @@ drive() {
     can_queue && stack=$(cat "$cache/stack-mb" 2> /dev/null) || return 0
     most=$(cat "$skill/lanes" 2> /dev/null || echo 0)
     launch=$(cat "$cache/lane-seconds" 2> /dev/null || echo 120)
+    ((launch > 0)) || launch=1
     want=$((alone_seconds / (2 * launch)))
     ((want > most)) && want=$most
     ((want > ${#alone[@]} - 1)) && want=$((${#alone[@]} - 1))

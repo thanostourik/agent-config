@@ -148,7 +148,9 @@ Write and make executable:
     found in minutes;
   - before it opens a new browser session outside a feature's run (`$VERIFY_FEATURE`
     unset, such as a recorder exploring by hand), `bin/verify room`, which waits in the
-    machine-wide queue the runner keeps for every feature run;
+    machine-wide queue the runner keeps for every feature run; it notes each such
+    session's last use under `.cache/`, and every call closes those idle for 5 minutes:
+    in trials recorders left 20 sessions open, holding 8 GB;
   - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
     uncached address of the page's own origin:
     `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
@@ -221,9 +223,15 @@ Build the environment for speed, because every recipe pays for it on every run:
   recipes set up the state that job consumes.
 - Keep each copy small so lanes fit in memory: cap worker counts and heap sizes (a JVM
   without `-Xmx` takes a quarter of the machine). Start the project's own JVM apps with
-  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Leave
-  third-party services such as Keycloak on their own settings: Keycloak's start script picks
-  a collector that clashes with `UseSerialGC` and does not start.
+  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Give
+  every service of the run a memory limit, third-party ones included: a container limit
+  (`mem_limit`) about twice what it uses after a full drive, read with `docker stats`. A
+  runtime that sizes its heap from the container, such as a JVM, then stays inside it; in
+  trials an uncapped Keycloak grew to 8 GB in one drive. Change only the limit of a
+  third-party service, never its startup flags: Keycloak's start script picks a collector
+  that clashes with `UseSerialGC` and does not start. When the services come from the
+  project's local stack, the limit goes into that stack (`create-project-local-stack`),
+  not into the run.
 - A stub or helper that starts a process stops any leftover of the same feature first, so an
   interrupted run never blocks the next one.
 - Lanes share one build: build images or artifacts once, under a lock, and let every lane
@@ -248,10 +256,11 @@ checks in `PROJECT.md`, and go to step 6.
    missed what those steps would have checked. Every entry point belongs to at least one
    feature. Then group the features into areas that share a screen or setup, in
    `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
-   area. Size areas to equal work, so every recorder ends at about the same time: in trials
-   a recorder spent about 3 minutes per ordinary feature and twice that on one with many
-   states (filters, periods, empty and error states). Make one area per screen or closely
-   tied group of screens, at most as many areas as recorders can run at once (step 4.3).
+   area. Size areas by the lines of source they cover, about 1,000 each, so every recorder
+   ends at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10 minutes
+   and areas of 1,300 to 2,700 lines took 14 to 25, because a recorder lists and checks
+   every behavior it reads. Split a larger screen by the parts of its source, such as
+   its list and its editor, and join small screens that share setup.
    The recorder lists every behavior of its area from the source first and splits that
    list into features itself, so name only the features you can see from the entry
    points: in trials a recorder turned one screen into 7 features and 69 to 79 passing

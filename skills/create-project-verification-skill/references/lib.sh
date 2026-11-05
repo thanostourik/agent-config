@@ -2,6 +2,7 @@
 # lib.sh <recipe>: run one feature recipe for bin/verify. Shipped by create-project-verification-skill; never edit it in the project.
 # A recipe gets: step <label>, wait_for <seconds> <command...>, a cleanup function it may define, $EVIDENCE, $VERIFY_FEATURE, $VERIFY_RUN_ID, bin/ on PATH.
 set -Eeuo pipefail
+[[ -n "${VERIFY_RUNNER:-}" ]] || { echo "lib.sh: drive recipes with bin/verify <feature>, which queues them and counts the drive" >&2; exit 2; }
 cd "$VERIFY_ROOT"
 export PATH="$VERIFY_SKILL/bin:$PATH"
 verify_step=Start
