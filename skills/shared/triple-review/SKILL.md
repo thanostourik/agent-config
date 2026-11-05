@@ -20,10 +20,8 @@ give the user one short report.
 
 ## Reviewers
 
-Start the three reviewers in parallel with T3 Code's `delegate_task` tool: one
-call per reviewer, with `mode: "async"` and `role: "review"`. Use the user's
-selected provider, model, and effort for each reviewer; otherwise use these
-defaults:
+Start three independent reviewers in parallel. Use the user's selected
+provider, model, and effort for each reviewer; otherwise use these defaults:
 
 - General: `{{defaults.general_provider}}`, `{{defaults.general_model}}`,
   `{{defaults.general_effort}}`.
@@ -32,12 +30,27 @@ defaults:
 - Over-engineering: `{{defaults.over_engineering_provider}}`,
   `{{defaults.over_engineering_model}}`, `{{defaults.over_engineering_effort}}`.
 
-Before starting, call `orchestrator_capabilities` and check every selected
-provider, model, and effort. Use the provider as `providerInstanceId` and map
-the effort to that model's option in `options` (`reasoningEffort`, `effort`,
-or the option id the catalog gives). If `delegate_task` is missing or a
-selected combination is unavailable, tell the user and stop. Do not silently
-use another provider, model, or effort instead.
+Choose how to run each reviewer:
+
+1. **T3 delegates**, when `delegate_task` is available. Call
+   `orchestrator_capabilities` first. Use one call per reviewer with
+   `mode: "async"`, `role: "review"`, and the provider as `providerInstanceId`.
+   Set the model and map the effort to its catalog option in `target.options`.
+2. **Native subagents**, outside T3, when the harness's subagent tool supports
+   the selected provider, model, and effort. An inherited setting is enough
+   when it matches. Start one fresh subagent per reviewer.
+3. **Command-line tools**, for reviewers native subagents cannot run. Use the
+   custom-prompt mode in [codex-review](../codex-review/SKILL.md) for `codex`,
+   [claude-review](../claude-review/SKILL.md) for `claudeAgent`, or
+   [grok-review](../grok-review/SKILL.md) for `grok`. Follow that skill's setup,
+   permissions, execution, and waiting rules, passing this reviewer's model,
+   effort, and task below. Do not use its built-in review command: each role
+   needs its own question.
+
+Before starting, check the chosen route for all three reviewers. Each must
+support its selected provider, model, and effort; command-line tools must be
+installed and authenticated. If a route cannot run its reviewer, explain what
+is missing and stop. Do not silently change providers, models, or effort.
 
 Each reviewer's task gets the target, the intent, and one question:
 
@@ -59,8 +72,8 @@ Tell every reviewer:
 Do not tell a reviewer about the other two. Their answers stay independent.
 
 Wait until all three finish. If a reviewer fails or ends without a verdict,
-start it once more with a new `delegate_task` call. If it fails again, say so in
-the report.
+start it once more as a fresh reviewer through the same tool. If it fails
+again, say so in the report.
 
 ## Report
 
@@ -83,7 +96,8 @@ until the user tells you to.
 ## Re-review
 
 When the user says they made fixes and asks for another review, start the
-same three reviewers again with new `delegate_task` calls. Do not message the
-earlier reviewers' threads. This time the target is only the changes since the
-commit you wrote down last time. Give the reviewers the earlier findings too.
+same three reviewers again with fresh runs, using the selection rules above.
+Do not message the earlier reviewers. This time the target is only the changes
+since the commit you wrote down last time. Give the reviewers the earlier
+findings too.
 The report says which earlier findings are now fixed.
