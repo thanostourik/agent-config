@@ -10,7 +10,7 @@
 # verify room               wait until the machine has room for one more browser session or process
 # Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
 # Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
-# (default 20, or ~/.config/verify/reserve) stays free and the CPU is not saturated, with at least one feature running.
+# (default 20, or ~/.config/verify/reserve) stays free, with at least one feature running.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
@@ -283,7 +283,7 @@ reserve_mb() { echo $(($(meminfo MemTotal) * $(reserve_percent) / 100)); }
 
 # Runs under the pool's lock. A slot started in the last 20 s has not shown up in MemAvailable yet, so each counts a browser's worth.
 admit() {
-  local holder=$1 entry started pid recent=0 running=0 pressure
+  local holder=$1 entry started pid recent=0 running=0
   for entry in "$room_pool"/wait-*; do
     [[ -f "$entry" ]] && ! kill -0 "${entry##*/wait-}" 2> /dev/null && rm -f "$entry"
   done
@@ -299,10 +299,6 @@ admit() {
   done
   if ((running + recent)); then
     (($(meminfo MemAvailable) - (recent + 1) * browser_mb >= $(reserve_mb))) || return 1
-    if [[ -r /proc/pressure/cpu ]]; then
-      pressure=$(awk '/^some/ { split($2, a, "="); print int(a[2]) }' /proc/pressure/cpu)
-      ((pressure < 25)) || return 1
-    fi
   fi
   echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
 }

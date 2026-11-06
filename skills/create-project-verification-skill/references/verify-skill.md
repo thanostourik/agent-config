@@ -68,8 +68,7 @@ and read its output once. Do not poll it or tail its logs.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue: a
-  feature's run starts only while 20% of memory stays free and the CPU is not saturated,
-  and one always runs. The user sets another share with `VERIFY_RESERVE=<percent>` or the
+  feature's run starts only while 20% of memory stays free, and one always runs. The user sets another share with `VERIFY_RESERVE=<percent>` or the
   file `~/.config/verify/reserve`. A summary line with `waiting for room` says how long
   feature runs waited; a pass's time is its own.
 - `verify room`: wait until the machine has room for one more browser session or process.

@@ -153,6 +153,17 @@ Write and make executable:
   - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
     checkouts never share a browser session (`playwright cli list` shows every session on the
     machine, so cleanup matches its own names exactly), and its output under `.cache/`;
+  - one browser per run, shared by every session. The first `open` starts a Playwright
+    browser server under a lock (a node script:
+    `const s = await chromium.launchServer(); console.log(s.wsEndpoint())`), with the lock's
+    file descriptor closed (`9>&-`), or the server holds the lock for its life. Its endpoint
+    goes in a file under `.cache/` keyed on `$VERIFY_RUN_ID`, and a new server starts when
+    that endpoint no longer answers. Each `open` runs `attach --endpoint=<endpoint>`, grants
+    `clipboard-write` (`page.context().grantPermissions(['clipboard-write'])`), which `open`
+    grants and `attach` does not, then goes to the URL. Each attached session gets a context
+    of its own (cookies, storage), and `close` closes only that context; `cleanup.sh` stops
+    the server. In a replay of 214 features a session held 120 to 200 MB instead of 330,
+    and the drive ran 16% faster;
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
   - `after-feature.sh` closing the feature's session, and `cleanup.sh` itself closing every
@@ -219,9 +230,12 @@ Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `referen
 `references/lib.sh`, `references/harvest` and `references/areas` to `bin/`, and write the Claude stub and `.gitignore`. Then run
 `bin/verify up` in the background and do step 4.1 while it builds; then run
 `bin/verify up` again and time both. The first `up` records how much memory and time one
-copy of the environment takes, which the runner needs to decide on lanes later. Record on
-one copy: a feature marked `# alone` waits its turn there, and an extra copy would take
-memory the recorders' browsers need. When the build bakes ports into an image (such as
+copy of the environment takes, which the runner needs to decide on lanes later. Before
+recorders start, run `bin/verify up --lanes 1`, so every drive runs its `# alone` features
+on that extra copy. A feature marked `# alone` waits until its copy is free of other
+features and then holds it alone, so on a single copy every other drive stopped meanwhile:
+in a replay of 214 features in 51 drives at once, one extra copy cut the time from 359 to
+236 s. When the build bakes ports into an image (such as
 `NEXT_PUBLIC_*` URLs), each lane builds its own.
 
 For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
