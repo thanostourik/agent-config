@@ -152,7 +152,7 @@ select_affected() {
     printf '  %s\n' "${untouched[@]}"
   fi
   [[ -x "$skill/bin/entrypoints.sh" ]] || return 0
-  uncovered_items | awk -F '\t' 'NR == FNR { changed[$0]; next } $1 != "expectation" && ($3 in changed)' "$cache/changed" - > "$cache/new"
+  uncovered_items | awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } $1 != "expectation" && ($3 in changed)' "$cache/changed" - > "$cache/new"
   if [[ -s "$cache/new" ]]; then
     echo "In changed files, covered by no recipe (give each a step and an '# expects:' line, or an '# expects:' line marked not driven):"
     awk -F '\t' '{ print "  " $1 ": " $2 " (" $3 ")" }' "$cache/new"
@@ -228,7 +228,7 @@ uncovered_items() {
   "$skill/bin/entrypoints.sh" | sort -u > "$cache/entrypoints"
   if grep -q $'\t' "$cache/entrypoints"; then
     for feature in $(all_features); do covers_of "$feature"; done | sort -u > "$cache/covered"
-    awk -F '\t' 'NR == FNR { covered[$0]; next } !($1 in covered) { print "entry point\t" $1 "\t" $2 }' "$cache/covered" "$cache/entrypoints"
+    awk -F '\t' 'FILENAME == ARGV[1] { covered[$0]; next } !($1 in covered) { print "entry point\t" $1 "\t" $2 }' "$cache/covered" "$cache/entrypoints"
   else
     for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$cache/covered"
     comm -23 "$cache/entrypoints" "$cache/covered" | awk '{ print "entry point\t" $0 "\t" $0 }'
@@ -236,7 +236,7 @@ uncovered_items() {
   if [[ -x "$skill/bin/actions.sh" ]]; then
     for feature in $(all_features); do header "$feature" expects; done > "$cache/cited"
     "$skill/bin/actions.sh" | sort -u | awk -F '\t' '
-      NR == FNR { cited[++n] = $0; next }
+      FILENAME == ARGV[1] { cited[++n] = $0; next }
       {
         base = $2; sub(/.*\//, "", base); word = "(^|[^A-Za-z0-9_$])" $1 "([^A-Za-z0-9_$]|$)"
         for (i = 1; i <= n; i++) if (index(cited[i], base) && cited[i] ~ word) next
@@ -578,9 +578,9 @@ case $command in
     if (($#)); then
       area_files "$1" > "$cache/area-files"
       [[ -s "$cache/area-files" ]] || { echo "verify: no area '$1' with files in .cache/areas.txt" >&2; exit 2; }
-      awk -F '\t' -v area="$1" 'NR == FNR { mine[$0]; next } ($1 == "expectation" ? $3 == area : $3 in mine)' "$cache/area-files" "$cache/uncovered" > "$cache/uncovered-area"
+      awk -F '\t' -v area="$1" 'FILENAME == ARGV[1] { mine[$0]; next } ($1 == "expectation" ? $3 == area : $3 in mine)' "$cache/area-files" "$cache/uncovered" > "$cache/uncovered-area"
       mv "$cache/uncovered-area" "$cache/uncovered"
-      total=$(awk -F '\t' 'NR == FNR { mine[$0]; next } ($NF in mine)' "$cache/area-files" "$cache/entrypoints" | wc -l)
+      total=$(awk -F '\t' 'FILENAME == ARGV[1] { mine[$0]; next } ($NF in mine)' "$cache/area-files" "$cache/entrypoints" | wc -l)
     else
       total=$(wc -l < "$cache/entrypoints")
     fi
