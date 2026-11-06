@@ -134,7 +134,9 @@ Write and make executable:
   a search over the source, like `entrypoints.sh`. An inline handler
   (`onClick={() => remove(id)}`) is named after its element's label or test id, such as
   `Delete button`, never a line number: in trials line-numbered names changed whenever the
-  file shifted. `bin/verify uncovered` lists each action
+  file shifted. A handler the screen gets from a hook or a parent
+  (`const { start } = useDeviceControl()`) is listed under the screen's file too: in trials
+  a search for `const handle...` missed a screen's Start, Pause and Stop buttons. `bin/verify uncovered` lists each action
   that no recipe's `# expects:` line cites by its file and name, and `bin/verify affected`
   lists those in changed files: in trials nothing listed a screen's Delete, no recorder
   wrote a step for it, and a bug planted there went uncaught in two generations.
