@@ -35,7 +35,8 @@ replace it (delete and generate again) or upgrade it with
   bin/verify          copied from <generator>/references/verify, unchanged
   bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
   bin/harvest         copied from <generator>/references/harvest, unchanged
-  bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh
+  bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
+  bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh bin/actions.sh
   bin/<driver helpers>
   features/<feature>.sh
   .gitignore          holds .cache/
@@ -122,6 +123,13 @@ Write and make executable:
   job or message handler. It is a search over the source, such as route annotations or a
   router file, so it finds new entry points by itself. `bin/verify uncovered` compares it
   with the recipes' `# covers:` lines.
+- `actions.sh`: prints every user action, one per line, as `<name><TAB><file>`: each
+  function a screen runs when the user acts (event handlers such as `handleDelete`, form
+  submits), or for a project without a UI each handler method behind an entry point. It is
+  a search over the source, like `entrypoints.sh`. `bin/verify uncovered` lists each action
+  that no recipe's `# expects:` line cites by its file and name, and `bin/verify affected`
+  lists those in changed files: in trials nothing listed a screen's Delete, no recorder
+  wrote a step for it, and a bug planted there went uncaught in two generations.
 - Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
@@ -139,8 +147,9 @@ Write and make executable:
     machine, so cleanup matches its own names exactly), and its output under `.cache/`;
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
-  - `after-feature.sh` closing the feature's session, and cleanup closing every session the
-    run opened and removing its `<session>.err` files from every folder under
+  - `after-feature.sh` closing the feature's session, and `cleanup.sh` itself closing every
+    session the run opened, never a `pw.sh` option a recorder can call: in a trial three
+    recorders closed the run's sessions by hand and failed each other's drives; and removing its `<session>.err` files from every folder under
     `~/.cache/ms-playwright/daemon/` (the folder is named after the caller's working
     directory, so one run writes to several);
     the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
@@ -198,7 +207,7 @@ that recipe's header, not here):
   so parse URLs and log inside `page.evaluate`, or return the value.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
-`references/lib.sh` and `references/harvest` to `bin/`, and write the Claude stub and `.gitignore`. Then run
+`references/lib.sh`, `references/harvest` and `references/areas` to `bin/`, and write the Claude stub and `.gitignore`. Then run
 `bin/verify up` in the background and do step 4.1 while it builds; then run
 `bin/verify up` again and time both. The first `up` records how much memory and time one
 copy of the environment takes, which the runner needs to decide on lanes later. Record on
@@ -225,8 +234,9 @@ Build the environment for speed, because every recipe pays for it on every run:
   without `-Xmx` takes a quarter of the machine). Start the project's own JVM apps with
   `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Give
   every service of the run a memory limit, third-party ones included: a container limit
-  (`mem_limit`) about one and a half times what it uses right after a full drive, read with
-  `docker stats`, never sized from an idle stack. A runtime that sizes its heap from the
+  (`mem_limit`) about one and a half times what it uses after a busy run (the example
+  recipe's flow plus a few hundred sign-ins, 30 at a time), read with `docker stats`, never
+  sized from an idle stack. A runtime that sizes its heap from the
   container, such as a JVM, then stays inside it; in trials an uncapped Keycloak grew to
   8 GB in one drive, and a limit of twice its idle use got it killed for memory. Change only the limit of a
   third-party service, never its startup flags: Keycloak's start script picks a collector
@@ -248,37 +258,39 @@ checks in `PROJECT.md`, and go to step 6.
 
 ## 4. Record every feature
 
-1. Group the output of `bin/entrypoints.sh` into features: one user goal each, the size
-   of one end-to-end test file, with a one-line scope and its entry points. A screen with
-   several actions is several features: its create, edit, delete, search, settings, roles,
-   and error and empty states each make one when they have several steps. A feature has
-   about 8 to 15 steps, so most apps have two features per entry point or more: in trials,
-   one feature per area gave a fifth of the steps of a skill split by user goal, and
-   missed what those steps would have checked. Every entry point belongs to at least one
-   feature. Then group the features into areas that share a screen or setup, in
-   `.cache/areas.txt`, one line `<area>: <feature> <feature> ...`; one recorder records one
-   area. Size areas by the lines of source they cover, about 1,000 each, so every recorder
-   ends at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10 minutes
-   and areas of 1,300 to 2,700 lines took 14 to 25, because a recorder lists and checks
-   every behavior it reads. Split a larger screen by the parts of its source, such as
-   its list and its editor, and join small screens that share setup.
-   The recorder lists every behavior of its area from the source first and splits that
-   list into features itself, so name only the features you can see from the entry
-   points: in trials a recorder turned one screen into 7 features and 69 to 79 passing
-   steps in 10 minutes, where a recorder given two named features wrote 13 steps. For each feature, write its expectation list with
-   `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<feature>.txt`:
+1. Run `bin/areas > .cache/areas.txt`. It reads the source in under a second and groups
+   the entry points into areas of about 1,000 lines of source each, one line per area:
+   `<area>: <n> lines; entry points: <...>; files: <...>`, the files being the entry points'
+   folders and the project files they import. One recorder records one area. Areas that
+   size end at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10
+   minutes and areas of 1,300 to 2,700 lines took 14 to 25, because a recorder lists and
+   checks every behavior it reads. Then review the file, which takes minutes, not the
+   quarter hour that grouping by hand took in trials:
+   - split each line marked `split:` by the parts of its source, such as its list and its
+     editor, and drop the mark;
+   - rename an area whose name does not say what the user calls the screen;
+   - move a file to the area that uses it most when a line misses it, such as a component
+     two screens share.
+   No area name equals another or starts with another followed by `-`: features are named
+   `<area>-<goal>`, and `bin/verify uncovered <area>` finds an area's features by that
+   prefix. A feature's name is its file name and never a `verify` command (`list`,
+   `all`, ...). Do not name features: the recorder lists every behavior of its area from
+   the source and splits that list into features of 8 to 15 steps by user goal itself. In
+   trials a recorder turned one screen into 7 features and 69 to 79 passing steps in 10
+   minutes, where a recorder given two named features wrote 13 steps. For each area, write
+   its expectation list with
+   `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt`:
    every test name in the test files, and the docs headings that match the words, with the
-   lines under them. Give each feature only its own test files. Then delete the other feature's
-   tests from a test file two features share, and tests of internals (pure functions,
-   formatting, chart math). Every remaining test and heading in
-   the file is a source the recipe must cite in an `# expects:` line, and `bin/verify lint`
-   refuses the recipe until it does, so recorders never search for behavior and never
-   skip it. When the docs have no heading that matches the feature, the file holds its tests
-   only; the recorder takes the rest from source. A feature's name is its file name and never a `verify` command
-   (`list`, `all`, ...). Keep the list in `.cache/features.txt`, not in a file of the skill, one line per feature:
-   `<feature>: <scope>; entry points: <...>; files: <the entry points' source files>`.
+   lines under them. Give each area only its own test files. Then delete another area's
+   tests from a test file two areas share, and tests of internals (pure functions,
+   formatting, chart math). Every remaining test and heading in the file is a source one of
+   the area's recipes must cite in an `# expects:` line, and `bin/verify uncovered <area>`
+   lists each one none cites, so recorders never search for behavior and never skip it.
+   When the docs have no heading that matches the area, the file holds its tests only; the
+   recorder takes the rest from source.
 2. Write the first recipe yourself, for the simplest feature, following the Recipes section
-   of the skill you copied. Run `bin/verify <feature>` until it passes. It becomes the
+   of the skill you copied, named `<area>-<goal>` after its area; that area's recorder
+   keeps it. Run `bin/verify <feature>` until it passes. It becomes the
    example every recorder copies, so make it clean. Then drive the main create path by
    hand once: create the same record twice, and read it as a second tenant or user. Write
    what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
@@ -290,8 +302,8 @@ checks in `PROJECT.md`, and go to step 6.
    working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
    failed four recipes on the first fresh drive.
 3. Start recorders with the short prompt in the skill's Recorders section: one area each,
-   every area at once, heaviest first. Each feature's line in `.cache/features.txt` lists
-   its entry points' source files, so the recorder reads them instead of searching, and the
+   every area at once, heaviest first. Each area's line in `.cache/areas.txt` lists its
+   source files, so the recorder reads them instead of searching, and the
    short prompt lets you start twenty recorders in seconds instead of minutes. A recorder
    writes all its area's recipes first, then drives and fixes them together, so an area of
    five features takes about as long as one feature. Recorders need no limit of their own:
@@ -312,10 +324,10 @@ checks in `PROJECT.md`, and go to step 6.
    Start them in the background; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
    namespace (schema, prefix, account, data folder) before marking it `# alone`. A
-   recorder's result is the file it writes last, `.cache/results/<first feature>.txt`, not
+   recorder's result is the file it writes last, `.cache/results/<area>.txt`, not
    the host's completion notice: notices can be lost. A result file that appears is a
    returned recorder, with or without a notice. After 25
-   minutes, start no new recorder and list the features not reached; sending a failing
+   minutes, start no new recorder and list the areas not reached; sending a failing
    feature back in step 5 is still allowed.
 4. Read only their result files. Fold their traps into `PROJECT.md`'s Gotchas.
 
@@ -333,7 +345,8 @@ copy only when its `# alone` features take at least twice as long as a copy take
 start, and only while the copy fits beside the reserve; a recorder's drive of a few
 features never starts one. Then check the lifecycle once:
 
-- `bin/verify lint` and `bin/verify uncovered`. Map an uncovered entry point or say why not.
+- `bin/verify lint` and `bin/verify uncovered`. Send each area with an uncovered entry
+  point, action or expectation line back to its recorder; it lists nothing when done.
 - Commit, change one file a feature touches, and check that
   `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
   every new recipe counts as changed. Undo the change. In a companion, change a copy of the

@@ -5,7 +5,8 @@
 # verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base
 # verify all                drive every feature
 # verify <feature>...       drive those features
-# verify list | lint [feature...] | uncovered
+# verify list | lint [feature...]
+# verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers
 # verify room               wait until the machine has room for one more browser session or process
 # Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
 # Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
@@ -126,7 +127,7 @@ select_affected() {
       "$skill_rel"/features/*.sh)
         feature=$(basename "$file" .sh)
         [[ -f "$skill/features/$feature.sh" ]] && { echo "$feature	its recipe changed" >> "$cache/affected"; hit=1; } ;;
-      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest) continue ;;
+      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest | "$skill_rel"/bin/areas) continue ;;
       "$skill_rel"/bin/*)
         helper=$(basename "$file")
         for feature in $(features_using "$helper"); do
@@ -149,6 +150,12 @@ select_affected() {
   if ((${#untouched[@]})); then
     echo "Changed files no feature names (if one changes behavior, drive that feature by name and add the file to its touches):"
     printf '  %s\n' "${untouched[@]}"
+  fi
+  [[ -x "$skill/bin/entrypoints.sh" ]] || return 0
+  uncovered_items | awk -F '\t' 'NR == FNR { changed[$0]; next } $1 != "expectation" && ($3 in changed)' "$cache/changed" - > "$cache/new"
+  if [[ -s "$cache/new" ]]; then
+    echo "In changed files, covered by no recipe (give each a step and an '# expects:' line, or an '# expects:' line marked not driven):"
+    awk -F '\t' '{ print "  " $1 ": " $2 " (" $3 ")" }' "$cache/new"
   fi
 }
 
@@ -215,6 +222,39 @@ doctor() {
 }
 
 header() { sed -n "s/^# $2:[[:space:]]*//p" "$skill/features/$1.sh"; }
+
+uncovered_items() {
+  local feature list name source
+  "$skill/bin/entrypoints.sh" | sort -u > "$cache/entrypoints"
+  if grep -q $'\t' "$cache/entrypoints"; then
+    for feature in $(all_features); do covers_of "$feature"; done | sort -u > "$cache/covered"
+    awk -F '\t' 'NR == FNR { covered[$0]; next } !($1 in covered) { print "entry point\t" $1 "\t" $2 }' "$cache/covered" "$cache/entrypoints"
+  else
+    for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$cache/covered"
+    comm -23 "$cache/entrypoints" "$cache/covered" | awk '{ print "entry point\t" $0 "\t" $0 }'
+  fi
+  if [[ -x "$skill/bin/actions.sh" ]]; then
+    for feature in $(all_features); do header "$feature" expects; done > "$cache/cited"
+    "$skill/bin/actions.sh" | sort -u | awk -F '\t' '
+      NR == FNR { cited[++n] = $0; next }
+      {
+        base = $2; sub(/.*\//, "", base); word = "(^|[^A-Za-z0-9_$])" $1 "([^A-Za-z0-9_$]|$)"
+        for (i = 1; i <= n; i++) if (index(cited[i], base) && cited[i] ~ word) next
+        print "action\t" $1 "\t" $2
+      }' "$cache/cited" -
+  fi
+  for list in "$cache"/expect/*.txt; do
+    [[ -f "$list" ]] || continue
+    name=$(basename "$list" .txt)
+    [[ -f "$skill/features/$name.sh" ]] && continue
+    cat "$skill/features/$name"-*.sh 2> /dev/null | grep '^# expects:' > "$cache/cited"
+    sed -n 's/^- \([^ ][^:]*: [^ ].*\)$/\1/p' "$list" | while IFS= read -r source; do
+      grep -q -F -- "$source" "$cache/cited" || printf 'expectation\t%s\t%s\n' "$source" "$name"
+    done
+  done
+}
+
+area_files() { sed -n "s/^\(split: \)\{0,1\}$1: .*; files: //p" "$cache/areas.txt" 2> /dev/null | tr ' ' '\n'; }
 
 lane_count() { cat "$cache/lanes" 2> /dev/null || echo 0; }
 lane_id() { if (($1 == 0)); then cat "$cache/run-id"; else echo "$(cat "$cache/run-id")-l$1"; fi; }
@@ -534,17 +574,22 @@ case $command in
     lint "$@" && echo "lint: ok" ;;
   uncovered)
     [[ -x "$skill/bin/entrypoints.sh" ]] || { echo "verify: no bin/entrypoints.sh" >&2; exit 2; }
-    "$skill/bin/entrypoints.sh" | sort -u > "$cache/entrypoints"
-    if grep -q $'\t' "$cache/entrypoints"; then
-      for feature in $(all_features); do covers_of "$feature"; done | sort -u > "$cache/covered"
-      awk -F '\t' 'NR == FNR { covered[$0]; next } !($1 in covered)' "$cache/covered" "$cache/entrypoints" > "$cache/uncovered"
+    uncovered_items > "$cache/uncovered"
+    if (($#)); then
+      area_files "$1" > "$cache/area-files"
+      [[ -s "$cache/area-files" ]] || { echo "verify: no area '$1' with files in .cache/areas.txt" >&2; exit 2; }
+      awk -F '\t' -v area="$1" 'NR == FNR { mine[$0]; next } ($1 == "expectation" ? $3 == area : $3 in mine)' "$cache/area-files" "$cache/uncovered" > "$cache/uncovered-area"
+      mv "$cache/uncovered-area" "$cache/uncovered"
+      total=$(awk -F '\t' 'NR == FNR { mine[$0]; next } ($NF in mine)' "$cache/area-files" "$cache/entrypoints" | wc -l)
     else
-      for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$cache/covered"
-      comm -23 "$cache/entrypoints" "$cache/covered" > "$cache/uncovered"
+      total=$(wc -l < "$cache/entrypoints")
     fi
-    total=$(wc -l < "$cache/entrypoints") missing=$(wc -l < "$cache/uncovered")
+    missing=$(grep -c '^entry point' "$cache/uncovered")
     echo "Entry points covered: $((total - missing)) of $total"
-    [[ -s "$cache/uncovered" ]] && { echo "Not covered by any feature:"; sed 's/^/  /' "$cache/uncovered"; }
+    [[ -s "$cache/uncovered" ]] && {
+      echo "Not covered (give each a step and an '# expects:' line, or an '# expects:' line marked not driven):"
+      awk -F '\t' '{ print "  " $1 ": " $2 " (" $3 ")" }' "$cache/uncovered"
+    }
     exit 0 ;;
   affected)
     while (($#)); do

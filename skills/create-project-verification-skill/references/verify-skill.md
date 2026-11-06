@@ -28,7 +28,11 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    ([Recipes](#recipes)). A whole new feature can go to a recorder ([Recorders](#recorders)).
 3. Run `verify affected`. It drives the features whose `# touches:` line names a changed
    file, or whose recipe or helper changed, then prints one summary line per feature.
-4. It also lists changed files no feature names. For each one that changes behavior a
+4. It also lists the entry points and actions (`bin/actions.sh`) in changed files that no
+   recipe covers: new screens, routes, buttons and handlers the change added. Give each a
+   step and an `# expects:` line, in the feature it belongs to or a new one (for a whole
+   new screen, a recorder), or an `# expects:` line marked not driven with its reason, and
+   drive those features. It also lists changed files no feature names. For each one that changes behavior a
    feature covers, drive that feature by name (`verify <feature>`) and add the file to
    its `# touches:` line. Skip files that change no behavior: tests, docs, build files.
    Then read `verify list` against your diff and drive every other feature the change can
@@ -48,7 +52,8 @@ sign-in, a shared helper) and you cannot name fewer features.
 When the user asks to update or maintain verification, or `verify all` has not passed for a
 while: run `verify up`, `verify all` and `verify uncovered`, and rerun `bin/harvest` into
 `.cache/expect/` for each feature whose tests or docs changed, so `verify lint` names the
-behaviors its recipe no longer cites. Send each failing feature and
+behaviors its recipe no longer cites. `verify uncovered` lists every entry point, action
+and expectation line no recipe covers. Send each failing feature and
 each uncovered entry point to recorders ([Recorders](#recorders)): a failing recipe is
 repaired or its product defect reported, an uncovered entry point gets a recipe or joins an
 existing feature's `# covers:`. Then `verify down`, commit, and report what changed.
@@ -74,8 +79,10 @@ and read its output once. Do not poll it or tail its logs.
   one queue, longest first. A drive starts lanes itself, up to the skill's `lanes` file,
   when its `# alone` features take at least twice as long as a copy takes to start and the
   copy fits beside the reserve. `verify up --lanes N` keeps exactly N.
-- `verify uncovered`: entry points (routes, screens, commands) no feature's `# covers:`
-  names, with the count covered.
+- `verify uncovered [area]`: entry points (routes, screens, commands) no feature's `# covers:`
+  names, with the count covered; actions `bin/actions.sh` prints that no `# expects:` line
+  cites by file and name; and lines of an area's expectation list (`.cache/expect/<area>.txt`)
+  no recipe of that area cites. With an area of `.cache/areas.txt`, only that area's.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
   drives another checkout of that app, such as a worktree.
 
@@ -115,9 +122,11 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   `bin/entrypoints.sh` prints them (such as `POST /api/notes, /notes/[id]`).
 - `# expects: <behavior> (<source>) -> <step label>` once for every behavior the docs, the
   tests or the request state for this feature: what it does, its errors, limits and side
-  effects. `<source>` is the line from `.cache/expect/<feature>.txt` without its `- `, such as
-  `web/test/editor.test.ts: opens blank` or `README.md: ## Notes`; a behavior taken from the
-  source code cites its file. Several labels are joined by `, `. A behavior the run cannot
+  effects. `<source>` is the line from the feature's or its area's expectation list in
+  `.cache/expect/` without its `- `, such as `web/test/editor.test.ts: opens blank` or
+  `README.md: ## Notes`; a behavior taken from the source code cites its file and the
+  function, as `<file name>: <function>` (`NoteEditor.tsx: handleSave`), because
+  `verify uncovered` counts an action covered only when a line names both. Several labels are joined by `, `. A behavior the run cannot
   reach gets `-> not driven: <reason>`. `verify lint` refuses a line whose step does not
   exist, and, while `.cache/expect/<feature>.txt` exists, a recipe that leaves any of its
   listed tests or headings uncited. Read
@@ -188,16 +197,16 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 
 ## Recorders
 
-A recorder is a helper agent that writes the recipes of one area: 3 to 6 features that
-share a screen or setup. Start one per area, all at once: their feature runs wait in the machine's queue. When the host
+A recorder is a helper agent that writes the recipes of one area, a line of
+`.cache/areas.txt`: a screen or a few that share setup, about 1,000 lines of source. Start one per area, all at once: their feature runs wait in the machine's queue. When the host
 refuses one, start it again when another returns; with no helper agents at all, record the
 features yourself. Give each this short prompt, with the paths and features filled in:
 
 ```
 You are a recorder for verify-<app>. Follow the recorder prompt in the Recorders section of
 <absolute path>/.agents/skills/verify-<app>/SKILL.md, with the repository root
-<absolute path>, the example recipe features/<example>.sh, and these features from
-.agents/skills/verify-<app>/.cache/features.txt: <feature> ...
+<absolute path>, the example recipe features/<example>.sh, and the area <area> of
+.agents/skills/verify-<app>/.cache/areas.txt.
 ```
 
 The recorder prompt, which the short prompt points to:
@@ -208,15 +217,15 @@ every command from there, and read nothing outside it except the generator's fil
 names: another checkout's recipes are not this project's. Read
 .agents/skills/verify-<app>/SKILL.md (sections Recipes and When a drive fails),
 .agents/skills/verify-<app>/PROJECT.md, the example recipe
-.agents/skills/verify-<app>/features/<example>.sh, and each feature's expectation list
-.agents/skills/verify-<app>/.cache/expect/<feature>.txt. Then read every file of your area
+.agents/skills/verify-<app>/features/<example>.sh, and your area's expectation list
+.agents/skills/verify-<app>/.cache/expect/<area>.txt. Then read every file of your area
 and first write its inventory, .agents/skills/verify-<app>/.cache/behaviors/<area>.txt: one
 line per behavior the source states, never merged: each field and its validation message,
 each button and what it does, each state (empty, loading, filtered, paging, editing,
 error), each error response the screen handles, each permission rule, each side effect.
-Split the inventory into features of 8 to 15 steps, one behavior per step where it can be
-driven on its own; the features named for you are a start, add the ones the inventory
-needs, named <area>-<goal>. Write all your recipes,
+Split the inventory into features of 8 to 15 steps by user goal, one behavior per step
+where it can be driven on its own, named <area>-<goal>; a recipe of your area that
+already exists is one of them. Write all your recipes,
 .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
 inventory line, before driving any. A behavior whose data cannot be made through the app,
 its API or a documented helper within a few minutes is marked not driven with that
@@ -224,7 +233,10 @@ reason. Then drive them together,
 .agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
 together between drives, with small edits rather than rewriting a recipe, until each passes: one drive of all your features costs about what
 one feature costs. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
-times once and remove what is plainly avoidable; spend no further runs on speed. Last, run your features once together with three others that already have a
+times once and remove what is plainly avoidable; spend no further runs on speed. Before the last drive, run
+.agents/skills/verify-<app>/bin/verify uncovered <area>: it lists your area's entry
+points, actions and expectation lines no recipe covers; cover each with a step, or an
+'# expects:' line marked not driven with its reason, until it lists none. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
 data your recipe created. A step label never contains a comma. The environment is
@@ -249,10 +261,10 @@ every browser session and stop every process you open by hand as soon as you are
 with it: an open one holds memory the other recorders' drives wait for. Stop every process your
 attempts started. As your last action, write those lines, and one line per trap that cost
 you a run for PROJECT.md's Gotchas, to
-.agents/skills/verify-<app>/.cache/results/<your first feature>.txt (through a temporary file
+.agents/skills/verify-<app>/.cache/results/<area>.txt (through a temporary file
 and mv), then return the same lines.
-Features: <feature>: <scope>; entry points: <...>; files: <the entry points' source files>; ...
-(with the short prompt: each named feature's line in .agents/skills/verify-<app>/.cache/features.txt)
+Area: <area>: <n> lines; entry points: <...>; files: <...>
+(with the short prompt: the area's line in .agents/skills/verify-<app>/.cache/areas.txt)
 ```
 
 When a result file appears, with or without the host's completion notice, read only its

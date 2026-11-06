@@ -72,10 +72,14 @@ Do only the listed items, in this order:
   Features: <feature> <feature> ...
   ```
 
-- **`entrypoints.sh`**, stale references in helpers, and the `## Verification` section of
-  `AGENTS.md` (and `CLAUDE.md`) from `<generator>/references/agents-verification.md`.
-- Features the script could not convert: send them to recorders, as the Recorders section of
-  the new `SKILL.md` says, after step 3's `bin/verify up`.
+- **`entrypoints.sh`**, **`actions.sh`**, stale references in helpers, and the
+  `## Verification` section of `AGENTS.md` (and `CLAUDE.md`) from
+  `<generator>/references/agents-verification.md`.
+- Features the script could not convert, and what `bin/verify uncovered` lists: run
+  `bin/areas > .cache/areas.txt`, then send each area that holds such a feature or an
+  uncovered item to a recorder, as the Recorders section of the new `SKILL.md` says, after
+  step 3's `bin/verify up`. The recorder keeps the area's existing recipes and adds what
+  they miss.
 
 ## 3. Prove it
 

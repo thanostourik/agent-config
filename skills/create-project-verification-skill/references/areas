@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""areas [lines]: group bin/entrypoints.sh output into recorder areas of about <lines> source lines (default 1000).
+
+Prints one line per area, `<area>: <n> lines; entry points: <...>; files: <...>`, for .cache/areas.txt.
+An entry point's unit is its folder when the folder holds no other entry point file (a page folder with its
+components), else its own file (a controller among controllers). A unit also counts the project files its files
+import, one level deep, unless three or more units import them. A folder whose units fit the size is one area;
+a larger one packs its children's areas with their neighbors while they fit. A unit over the size is printed alone with `split:` before its name.
+No area name equals another or starts with another followed by '-', since features are named <area>-<goal>.
+Shipped by create-project-verification-skill.
+"""
+import os
+import re
+import subprocess
+import sys
+from collections import defaultdict
+
+SOURCE = {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.vue', '.svelte', '.py', '.java', '.kt', '.go', '.rb', '.php',
+          '.cs', '.rs', '.swift', '.dart', '.c', '.cc', '.cpp', '.h', '.hpp', '.ex', '.exs', '.scala'}
+SKIP = re.compile(r'(^|/)(node_modules|dist|build|target|vendor|\.next|\.git|__tests__|__mocks__)(/|$)|^(tests?|spec)/|(^|/)src/test/|\.(test|spec)\.')
+IMPORT = re.compile(r'''(?:from\s+|import\s+(?:[\w*{},\s]+from\s+)?|require\()\s*['"]([^'"]+)['"]|^import\s+(?:static\s+)?([\w.]+);|^from\s+([\w.]+)\s+import''', re.M)
+
+skill = os.environ.get('VERIFY_SKILL') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root = os.environ.get('VERIFY_ROOT') or os.path.abspath(os.path.join(skill, '..', '..', '..'))
+size = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
+os.chdir(root)
+
+entries = defaultdict(list)
+for line in subprocess.run([os.path.join(skill, 'bin', 'entrypoints.sh')], capture_output=True, text=True,
+                           check=True).stdout.splitlines():
+    entry, _, path = line.partition('\t')
+    entries[path or entry].append(entry)
+
+all_files = []
+for folder, dirs, names in os.walk('.'):
+    dirs[:] = [d for d in dirs if not SKIP.search(os.path.join(folder, d)[2:] + '/')]
+    all_files += [os.path.join(folder, n)[2:] for n in names if os.path.splitext(n)[1] in SOURCE]
+all_files = [f for f in all_files if not SKIP.search(f)]
+by_stem = defaultdict(list)
+for f in all_files:
+    by_stem[os.path.splitext(f)[0]].append(f)
+
+
+def lines(path):
+    with open(path, errors='replace') as handle:
+        return sum(1 for _ in handle)
+
+
+per_folder = defaultdict(list)
+for path in entries:
+    per_folder[os.path.dirname(path)].append(path)
+folder_units = {d for d, paths in per_folder.items() if len(paths) == 1}
+units, owned = {}, defaultdict(set)
+for path in entries:
+    folder = os.path.dirname(path)
+    units[folder if folder in folder_units else path] = set()
+for key in units:
+    if key in entries:
+        units[key].add(key)
+for f in all_files:
+    owner = max((d for d in folder_units if f.startswith(d + '/')), key=len, default=None)
+    if owner is not None:
+        units[owner].add(f)
+for path in entries:
+    folder = os.path.dirname(path)
+    owned[folder if folder in folder_units else path].add(path)
+
+
+def resolve(spec, importer):
+    candidates = []
+    if spec.startswith('.') and '/' in spec or spec in ('.', '..'):
+        candidates.append(os.path.normpath(os.path.join(os.path.dirname(importer), spec)))
+    elif spec.startswith(('@/', '~/')):
+        parts = importer.split('/')
+        candidates += ['/'.join(parts[:i] + [spec[2:]]) for i in range(len(parts)) if parts[i - 1:i] == ['src']]
+    elif '.' in spec and '/' not in spec:
+        candidates.append(spec.replace('.', '/'))
+    found = []
+    for candidate in candidates:
+        found += by_stem.get(candidate, []) + by_stem.get(candidate + '/index', [])
+        found += [f for f in all_files if f.endswith('/' + candidate.lstrip('./'))
+                  and os.path.splitext(f)[1] in SOURCE] if '/' in candidate and not found else []
+        if not found and candidate.count('/') >= 2:
+            tail = '/' + candidate
+            found += [f for stem, fs in by_stem.items() if stem.endswith(tail) for f in fs]
+    return found
+
+
+imports = defaultdict(set)
+for key, files in units.items():
+    for f in list(files):
+        with open(f, errors='replace') as handle:
+            text = handle.read()
+        for match in IMPORT.finditer(text):
+            for target in resolve(next(g for g in match.groups() if g), f):
+                if target not in files:
+                    imports[target].add(key)
+for target, importers in imports.items():
+    if len(importers) < 3:
+        for key in importers:
+            units[key].add(target)
+
+counted = {key: sum(lines(f) for f in files) for key, files in units.items()}
+common = os.path.commonpath([k if k in folder_units else os.path.dirname(k) for k in units]) if units else ''
+
+
+STOP = {'locale', 'app', 'src', 'rest', 'controller', 'resource', 'handler', 'api', 'page', 'route', 'index', 'main'}
+
+
+def slug(part):
+    words = re.sub(r'[^a-z0-9]+', '-', re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '-', part).lower()).split('-')
+    return [w for w in words if w and w not in STOP]
+
+
+def name_of(keys):
+    first, last = segments(keys[0]), segments(keys[-1])
+    words = slug(first[-1]) if first else []
+    if len(first) > 1 and len(words) < 2:
+        words = slug(first[-2]) + words
+    if len(keys) > 1 and last and last != first:
+        words += [w for w in slug(last[-1]) if w not in words]
+    words = list(dict.fromkeys(words)) or ['root']
+    return '-'.join(words + ['home'] if len(words) == 1 else words)
+
+
+def segments(key):
+    path = os.path.splitext(key)[0] if key in entries else key
+    return tuple(p for p in os.path.relpath(path or '.', common or '.').split('/') if p not in ('.', '') and not p.startswith(('[', '(')))
+
+
+tree = defaultdict(set)
+for key in units:
+    parts = segments(key)
+    for depth in range(len(parts)):
+        tree[parts[:depth]].add(parts[:depth + 1])
+own = defaultdict(list)
+for key in units:
+    own[segments(key)].append(key)
+
+
+def pack(node):
+    keys = [k for n in [node] for k in own[n]]
+    groups = [keys] if keys else []
+    for child in sorted(tree[node]):
+        groups += pack(child)
+    if sum(counted[k] for g in groups for k in g) <= size:
+        return [[k for g in groups for k in g]] if groups else []
+    merged = []
+    for group in groups:
+        if merged and sum(counted[k] for k in merged[-1] + group) <= size:
+            merged[-1] = merged[-1] + group
+        else:
+            merged.append(group)
+    return merged
+
+
+areas = pack(())
+
+
+def clash(name, taken):
+    return any(name == t or name.startswith(t + '-') or t.startswith(name + '-') for t in taken)
+
+
+named = []
+for keys in areas:
+    name, ancestors = name_of(keys), list(segments(keys[0])[:-1])
+    while clash(name, [n for _, n in named]) and ancestors:
+        extra = [w for w in slug(ancestors.pop()) if w not in name.split('-')]
+        name = '-'.join(extra + [name]) if extra else name
+    count = 1
+    while clash(name, [n for _, n in named]):
+        count += 1
+        name = f'area{count}-{name_of(keys)}'
+    named.append((keys, name))
+
+for keys, name in named:
+    total = sum(counted[k] for k in keys)
+    points = [e for k in keys for p in sorted(owned[k]) for e in entries[p]]
+    files = sorted({f for k in keys for f in units[k]})
+    flag = 'split: ' if total > size * 1.3 else ''
+    print(f"{flag}{name}: {total} lines; entry points: {', '.join(dict.fromkeys(points))}; files: {' '.join(files)}")
