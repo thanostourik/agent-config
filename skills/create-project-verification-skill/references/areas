@@ -7,6 +7,7 @@ components), else its own file (a controller among controllers). A unit also cou
 import, one level deep, unless three or more units import them. A folder whose units fit the size is one area;
 a larger one packs its children's areas with their neighbors while they fit. An area over the size is cut into
 runs of files of one folder that fit, each with the area's entry points; a single file over the size keeps `split:`.
+An entry point file that is not code, such as a Views or routes YAML file, counts a tenth of its lines.
 No area name equals another or starts with another followed by '-', since features are named <area>-<goal>.
 Shipped by create-project-verification-skill.
 """
@@ -45,7 +46,8 @@ for f in all_files:
 
 def lines(path):
     with open(path, errors='replace') as handle:
-        return sum(1 for _ in handle)
+        count = sum(1 for _ in handle)
+    return count if os.path.splitext(path)[1] in SOURCE else count // 10
 
 
 per_folder = defaultdict(list)

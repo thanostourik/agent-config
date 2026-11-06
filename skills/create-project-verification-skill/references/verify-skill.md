@@ -178,6 +178,11 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   `click` or `press`: each waits 6 to 10 s for the network to go quiet.
 - Wait for an event, never a margin: to prove a job left something alone, add an old probe
   item and stop waiting when the job removes it.
+- A check that something is gone first waits for the dialog or menu that removed it to
+  close, then checks that a neighbor the action left alone is visible and the item is
+  absent. While a dialog is open or closing, the page behind it is hidden from role
+  queries, so a wait for `detached` or `hidden` passes at once: in trials a delete step
+  passed 2 ms after the click with the card still on screen, and missed a planted bug.
 - Make a race impossible instead of racing it: when a job would remove state a step still
   needs, hold that state through a stub mode or the recipe's own data, not a slower job.
 - A save step fills every field the form offers (each input, select, toggle and list
@@ -258,7 +263,9 @@ response when the stored result is wrong hides the defect; keep the check, last 
 step, and mark it. While iterating, drive only your own features. Edit only your own recipes: no git
 branch, commit or stash, and no edit to PROJECT.md. Run each drive in the foreground and
 read its summary; never end your turn while a drive runs. Data you make by hand while
-exploring is named verify-<area>-probe-..., and you delete it by that prefix only. Close
+exploring is named verify-<area>-probe-..., and you delete it by that prefix only; a
+browser session you open by hand is VERIFY_SESSION=<area>-probe, because recorders that
+all named theirs probe closed each other's browsers. Close
 every browser session and stop every process you open by hand as soon as you are done
 with it: an open one holds memory the other recorders' drives wait for. Stop every process your
 attempts started. As your last action, write those lines, and one line per trap that cost

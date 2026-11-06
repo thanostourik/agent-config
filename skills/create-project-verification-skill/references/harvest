@@ -2,7 +2,7 @@
 # harvest <words> <file>...: list the behaviors a feature's tests and docs state, for its '# expects:' lines.
 # <words> is an extended regex such as 'archive|retention', matched case-insensitively against docs headings.
 # Test files give every test name they hold (pytest, unittest, JUnit, Jest/Vitest/Mocha, Go, RSpec, PHPUnit).
-# Markdown files give the lines under every heading that matches <words>. Shipped by create-project-verification-skill.
+# Markdown files give each paragraph, list item and table row under every heading that matches <words>. Shipped by create-project-verification-skill.
 set -euo pipefail
 words=${1:?usage: harvest <words> <file>...}
 shift
@@ -11,14 +11,27 @@ for file in "$@"; do
     *.md | *.markdown | *.rst | *.txt)
       [[ "$words" == . ]] && { echo "harvest: give the feature's words; '.' would take every heading of $file" >&2; continue; }
       awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
+        function flush() { if (entry != "") print "- " file ":   " entry; entry = "" }
         /^[[:space:]]*```/ { fenced = !fenced; next }
         fenced { next }
         /^#+ / {
+          flush()
           level = length($1)
           if (inside && level <= depth) inside = 0
           if (!inside && level > 1 && tolower($0) ~ words) { inside = 1; depth = level; print "- " file ": ## " substr($0, level + 2); next }
+          if (inside) { print "- " file ":   " $0; next }
         }
-        inside && /[^[:space:]]/ { line = $0; sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", line); print "- " file ":   " line }
+        !inside { next }
+        /^[[:space:]]*$/ { flush(); next }
+        {
+          line = $0
+          item = sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", line) || line ~ /^[[:space:]]*\|/
+          sub(/^[[:space:]]+/, "", line)
+          if (item) flush()
+          entry = entry == "" ? line : entry " " line
+          if (line ~ /^\|/) flush()
+        }
+        END { flush() }
       ' "$file"
       ;;
     *)

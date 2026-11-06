@@ -121,12 +121,20 @@ Write and make executable:
 - `entrypoints.sh`: prints every entry point, one per line, as `<entry point><TAB><file>`:
   a route with its method (`POST /api/notes`), a screen's path, a command (`todo add`), a
   job or message handler. It is a search over the source, such as route annotations or a
-  router file, so it finds new entry points by itself. `bin/verify uncovered` compares it
-  with the recipes' `# covers:` lines.
+  router file, so it finds new entry points by itself. When the project's framework is in
+  [`references/discovery.md`](references/discovery.md), list them the way it says: some
+  frameworks build entry points at run time, from configuration or the database, where no
+  source search finds them. List only what a user or client calls: not update or deploy
+  hooks, migrations, compose services or schemas. In trials 236 of a Drupal site's 402
+  lines were update hooks. `bin/verify uncovered` compares it with the recipes'
+  `# covers:` lines.
 - `actions.sh`: prints every user action, one per line, as `<name><TAB><file>`: each
   function a screen runs when the user acts (event handlers such as `handleDelete`, form
   submits), or for a project without a UI each handler method behind an entry point. It is
-  a search over the source, like `entrypoints.sh`. `bin/verify uncovered` lists each action
+  a search over the source, like `entrypoints.sh`. An inline handler
+  (`onClick={() => remove(id)}`) is named after its element's label or test id, such as
+  `Delete button`, never a line number: in trials line-numbered names changed whenever the
+  file shifted. `bin/verify uncovered` lists each action
   that no recipe's `# expects:` line cites by its file and name, and `bin/verify affected`
   lists those in changed files: in trials nothing listed a screen's Delete, no recorder
   wrote a step for it, and a bug planted there went uncaught in two generations.
