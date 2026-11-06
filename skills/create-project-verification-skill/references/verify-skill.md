@@ -229,10 +229,12 @@ already exists is one of them. Write all your recipes,
 .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
 inventory line, before driving any. A behavior whose data cannot be made through the app,
 its API or a documented helper within a few minutes is marked not driven with that
-reason. Then drive them together,
+reason. Then drive them together once,
 .agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
-together between drives, with small edits rather than rewriting a recipe, until each passes: one drive of all your features costs about what
-one feature costs. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
+together, with small edits rather than rewriting a recipe; after that drive only the
+recipes you edited, together, until each passes: every feature run waits in one queue
+for the whole machine, and in trials recorders that drove their whole area after each
+edit made 493 feature runs for 106 features. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
 times once and remove what is plainly avoidable; spend no further runs on speed. Before the last drive, run
 .agents/skills/verify-<app>/bin/verify uncovered <area>: it lists your area's entry
 points, actions and expectation lines no recipe covers; cover each with a step, or an

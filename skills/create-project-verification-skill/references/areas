@@ -5,7 +5,8 @@ Prints one line per area, `<area>: <n> lines; entry points: <...>; files: <...>`
 An entry point's unit is its folder when the folder holds no other entry point file (a page folder with its
 components), else its own file (a controller among controllers). A unit also counts the project files its files
 import, one level deep, unless three or more units import them. A folder whose units fit the size is one area;
-a larger one packs its children's areas with their neighbors while they fit. A unit over the size is printed alone with `split:` before its name.
+a larger one packs its children's areas with their neighbors while they fit. An area over the size is cut into
+runs of files of one folder that fit, each with the area's entry points; a single file over the size keeps `split:`.
 No area name equals another or starts with another followed by '-', since features are named <area>-<goal>.
 Shipped by create-project-verification-skill.
 """
@@ -162,21 +163,40 @@ def clash(name, taken):
     return any(name == t or name.startswith(t + '-') or t.startswith(name + '-') for t in taken)
 
 
-named = []
+def chunks(files):
+    groups, group, total = [], [], 0
+    for f in sorted(files, key=lambda f: (os.path.dirname(f), f)):
+        if group and total + lines(f) > size:
+            groups.append(group)
+            group, total = [], 0
+        group.append(f)
+        total += lines(f)
+    return groups + [group]
+
+
+pieces = []
 for keys in areas:
-    name, ancestors = name_of(keys), list(segments(keys[0])[:-1])
-    while clash(name, [n for _, n in named]) and ancestors:
+    files = sorted({f for k in keys for f in units[k]})
+    groups = chunks(files) if sum(counted[k] for k in keys) > size * 1.3 else [files]
+    for group in groups:
+        largest = max(group, key=lines) if len(groups) > 1 else None
+        pieces.append((keys, group, slug(os.path.splitext(os.path.basename(largest))[0])[-2:] if largest else []))
+
+named = []
+for keys, files, extra_words in pieces:
+    base = name_of(keys)
+    name, ancestors = '-'.join(dict.fromkeys(base.split('-') + extra_words)), list(segments(keys[0])[:-1])
+    while clash(name, [n for *_, n in named]) and ancestors:
         extra = [w for w in slug(ancestors.pop()) if w not in name.split('-')]
         name = '-'.join(extra + [name]) if extra else name
     count = 1
-    while clash(name, [n for _, n in named]):
+    while clash(name, [n for *_, n in named]):
         count += 1
-        name = f'area{count}-{name_of(keys)}'
-    named.append((keys, name))
+        name = f'area{count}-{base}'
+    named.append((keys, files, name))
 
-for keys, name in named:
-    total = sum(counted[k] for k in keys)
+for keys, files, name in named:
+    total = sum(lines(f) for f in files)
     points = [e for k in keys for p in sorted(owned[k]) for e in entries[p]]
-    files = sorted({f for k in keys for f in units[k]})
     flag = 'split: ' if total > size * 1.3 else ''
     print(f"{flag}{name}: {total} lines; entry points: {', '.join(dict.fromkeys(points))}; files: {' '.join(files)}")

@@ -158,8 +158,9 @@ Write and make executable:
   - before it opens a new browser session outside a feature's run (`$VERIFY_FEATURE`
     unset, such as a recorder exploring by hand), `bin/verify room`, which waits in the
     machine-wide queue the runner keeps for every feature run; it notes each such
-    session's last use under `.cache/`, and every call closes those idle for 5 minutes:
-    in trials recorders left 20 sessions open, holding 8 GB;
+    session's last use under `.cache/`, and every call closes those idle for 2 minutes:
+    in trials recorders left 20 sessions open, holding 8 GB, and with 37 open the queue
+    held each feature run 14 s for memory;
   - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
     uncached address of the page's own origin:
     `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
@@ -261,14 +262,17 @@ checks in `PROJECT.md`, and go to step 6.
 1. Run `bin/areas > .cache/areas.txt`. It reads the source in under a second and groups
    the entry points into areas of about 1,000 lines of source each, one line per area:
    `<area>: <n> lines; entry points: <...>; files: <...>`, the files being the entry points'
-   folders and the project files they import. One recorder records one area. Areas that
-   size end at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10
+   folders and the project files they import. It cuts a larger screen into runs of files
+   of one folder, each with the screen's entry points. One recorder records one area. Areas
+   that size end at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10
    minutes and areas of 1,300 to 2,700 lines took 14 to 25, because a recorder lists and
-   checks every behavior it reads. Then review the file, which takes minutes, not the
-   quarter hour that grouping by hand took in trials:
-   - split each line marked `split:` by the parts of its source, such as its list and its
-     editor, and drop the mark;
-   - rename an area whose name does not say what the user calls the screen;
+   checks every behavior it reads, and one recorder of the largest area finished 10 minutes
+   after all the others. Then review the file, which takes minutes, not the quarter hour
+   that grouping by hand took in trials:
+   - a line still marked `split:` is one file over the size: leave it, its recorder takes
+     longer;
+   - rename an area whose name does not say what the user calls the screen, such as one
+     named `area2-<name>`;
    - move a file to the area that uses it most when a line misses it, such as a component
      two screens share.
    No area name equals another or starts with another followed by `-`: features are named
@@ -334,9 +338,12 @@ checks in `PROJECT.md`, and go to step 6.
 ## 5. Prove it
 
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
-from a fresh environment while the others run in parallel. Then run `bin/verify all` again
-on the same environment: a recipe that fails the second time is not repeatable. Send each failing feature back to
-a recorder with its summary line. The runner starts up to as many features at once as the
+from a fresh environment while the others run in parallel. Send each failing feature back to
+a recorder with its summary line, and at once, while they work, drive every other feature
+again on the same environment (`bin/verify $(bin/verify list | cut -d: -f1 | grep -vxF -f <failing>)`): a
+recipe that fails the second time is not repeatable. A returned recorder has driven its
+feature with others, so drive only the returned features once more at the end, never
+everything again: in trials the second full drive waited 4 minutes for the repairs. The runner starts up to as many features at once as the
 machine has cores, each only when the machine-wide queue has room; write a `jobs` file only
 when the project needs a lower limit, such as a service with few connections. When `# alone`
 features remain, write into the skill's `lanes` file the most extra copies a drive may
