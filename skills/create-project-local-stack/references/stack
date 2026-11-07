@@ -388,7 +388,11 @@ def choose_ports(project, name, recorded, published, spare_from):
         if not siblings:
             raise StackError(f"usual ports are taken: {describe_ports(blocked, PORTS, holders)}; free them and run up again")
         print(f"stack: the usual ports are held by {', '.join(siblings)}, so this stack uses spare ports; an app whose committed settings expect the usual ports will not reach it", file=sys.stderr)
-    kept = {key: port for key, port in recorded.items() if key in PORTS and port >= spare_from and (key not in published or available(port))}
+    def unused_by_others(port):
+        holder = holders.get(port)
+        return not holder or holder["project"] == project
+
+    kept = {key: port for key, port in recorded.items() if key in PORTS and port >= spare_from and (available(port) if key in published else unused_by_others(port))}
     picked = spare_ports([key for key in PORTS if key not in kept], set(kept.values()) | set(holders))
     return {key: kept.get(key, picked.get(key)) for key in PORTS}
 
@@ -438,10 +442,10 @@ def lost_ports(project, ports, published):
 
 
 def port_holders():
-    output = docker("ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}\t{{.Names}}\t{{.Ports}}')
+    output = docker("ps", "--format", '{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}\t{{.Ports}}')
     holders = {}
     for line in output.splitlines():
-        project, working_dir, container, published = (line.split("\t") + ["", "", "", ""])[:4]
+        container, project, working_dir, published = (line.split("\t") + ["", "", "", ""])[:4]
         for first, last in re.findall(r":(\d+)(?:-(\d+))?->", published):
             for port in range(int(first), int(last or first) + 1):
                 holders[port] = {"project": project, "working_dir": working_dir, "container": container}
