@@ -83,8 +83,8 @@ Read the start of this system's ephemeral range. Every usual port must sit below
 
 For another repo:
 
-- Ask where its checkout is.
-- If that checkout has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one.
+- Ask for its path in its git remote, such as `my-org/catalog`. The stack names the repo by that path and never holds a folder. Find its clone next to this repo's main clone; when it is elsewhere, ask the user for the folder, only to read it.
+- If that clone has no `local-stack/stack`, tell the user to run `/create-project-local-stack` there first, and stop until they have, unless they choose a `stub` mode for it. Never build another repo's stack inside this one.
 - Use only what that repo's `local-stack/README.md` lists under Provides, so its stack can change inside without breaking this one.
 - If this repo needs a value the other stack does not provide, or the other stack rejects calls from this app, for example because it allows only one origin, ask the user. The fix goes into the other repo, on its own branch.
 
@@ -94,7 +94,7 @@ Show the user the design on one screen:
 
 - the services, each with what it runs and why;
 - the switches, each with its modes, its default, whether it is shared, and what its stub covers and does not;
-- the other repos it starts, and the variable that holds each checkout;
+- the other repos it starts, each by its path in its git remote;
 - the proof action and the result that shows it worked;
 - the change to the app's local configuration, the `## Local stack` section for `AGENTS.md`, and each existing line in `AGENTS.md` or `CLAUDE.md` you will rewrite;
 - the local override files the stack keeps out of images and containers;

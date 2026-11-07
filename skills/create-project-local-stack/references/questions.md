@@ -28,7 +28,7 @@ For each outside service:
 
 For each address that may belong to another repo of this project:
 
-6. Is it another repo of this project? If so, where is its checkout on this machine? Propose the name of the environment variable that will hold that path.
+6. Is it another repo of this project? If so, what is its path in its git remote, such as `my-org/catalog`?
 7. When this stack starts, should it also start that repo's own local stack, so the app talks to the real thing, or run a small fake of it instead, or offer both? Which one by default?
 
 ## Asked when the code does not settle it
