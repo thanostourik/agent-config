@@ -8,12 +8,9 @@ disable-model-invocation: true
 
 # Create a project local stack
 
-You build `local-stack/` in this repo: one command, `local-stack/stack`, that starts everything the app needs on this machine, isolated from every other stack. Two kinds of users run it:
+You build `local-stack/` in this repo: one command, `local-stack/stack`, that starts everything the app needs on this machine, isolated from every other stack. Developers run `local-stack/stack up` and start the app from their IDE or terminal. Agents run `local-stack/stack up --app --stubs --name <unique name>`, which also runs the app in a container and stubs every shared service; any number run at once, across repos.
 
-- **Developers** run `local-stack/stack up`, which starts everything the app needs, then run the app from their IDE or terminal.
-- **Agents** run `local-stack/stack up --app --stubs --name <unique name>`, which also runs the app in a container and replaces every shared service with a stub. Any number of these run at once, from one or several repos.
-
-The script [`references/stack`](references/stack) already handles stack names, ports, modes, dependency stacks and cleanup. Copy it unchanged. Your work is the project-specific part: what runs, how it is configured, and what replaces each outside service. [`references/stack-spec.md`](references/stack-spec.md) defines every file you write.
+The script [`references/stack`](references/stack) handles names, ports, modes, dependency stacks and cleanup; copy it unchanged. You write the project-specific part that [`references/stack-spec.md`](references/stack-spec.md) defines: what runs, how it is configured, and what replaces each outside service.
 
 ## Words
 
@@ -21,8 +18,6 @@ The script [`references/stack`](references/stack) already handles stack names, p
 - **Default stack:** the stack named after the branch. In the developer's checkout it is theirs; agents never use it.
 - **Usual port:** a port's value in `stack.json`, the one the app's committed settings use. The default stack normally gets the usual ports.
 - **Spare port:** a free port the operating system hands out to any program that asks for one. It comes from the system's ephemeral range, which by default starts at 32768 on Linux (`/proc/sys/net/ipv4/ip_local_port_range`) and 49152 on macOS (`sysctl net.inet.ip.portrange.first`). Stacks started with `--name` get spare ports, so every usual port must sit below that range.
-- **Published port:** a port a container of the stack binds on this machine.
-- **Proof stack:** a stack you start in step 6 under a name like `lsproof-a`, and destroy by name at the end.
 - **Proof action:** one action you pick from the code that shows the app works end to end: an HTTP call and its response, a command and its output, or a message and the row it writes.
 - **Switch:** an entry in `stack.json` for one thing the stack can run in different ways, such as the app itself or a payment API.
 - **Mode:** one value of a switch, such as `real`, `stub`, `host` or `container`.
@@ -32,7 +27,7 @@ The script [`references/stack`](references/stack) already handles stack names, p
 - **Repo path:** a repo's path in its git remote, such as `my-org/catalog` for `git@github.com:my-org/catalog.git`. A stack names other repos this way, never by a folder.
 - **Main clone:** the folder that holds a repo's `.git` folder. Every worktree of the repo belongs to it.
 - **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file, and an app running on the host reads it.
-- **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values and dependency stacks. The script writes nothing outside the repo.
+- **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values and dependency stacks.
 
 ## Ask, never guess
 
@@ -64,9 +59,9 @@ The script [`references/stack`](references/stack) already handles stack names, p
 
 Read the whole repo: code, configuration, build files, docs, CI pipelines, test setups, and any scripts or container files already there. Use existing files only as sources of facts; the stack follows `stack-spec.md`, not their structure. Discovery only reads; it runs nothing. Find:
 
-- **The processes:** each process this repo runs, such as an API, a worker, a scheduled job, a CLI or a web front end: its build command, its entry point, the port it listens on if any, and how it reads configuration. Read the build files (`pom.xml`, `package.json`, `pyproject.toml`, `go.mod`, `composer.json`, …), any Dockerfile, and the run scripts they define. A library runs no process; its stack holds what its tests need.
-- **Its configuration:** every profile and environment file, every environment variable the code reads, which of them a local run uses, and which local files are git-ignored overrides, such as `.env`, `.env.local`, `application-local.yml` or `settings_local.py`.
-- **Everything it talks to:** every host, URL, port, connection string, SDK client and queue in the configuration and the code: databases, caches, object storage, mail, message brokers, auth servers, search, AI services, webhooks, other APIs. For each, note what the app sends and what it expects back, from the client code.
+- **The processes:** each process this repo runs, such as an API, a worker, a scheduled job, a CLI or a web front end: its build command, its entry point, the port it listens on if any, and how it reads configuration. Read the build files, any Dockerfile, and the run scripts they define. A library runs no process; its stack holds what its tests need.
+- **Its configuration:** every profile and environment file, every environment variable the code reads, which of them a local run uses, and which local files are git-ignored overrides, such as `.env.local` or `application-local.yml`.
+- **Everything it talks to:** every host, URL, port, connection string, SDK client and queue in the configuration and the code. For each, note what the app sends and what it expects back, from the client code.
 - **What talks to it:** proxies, gateways, workers, browsers, devices or other repos that call it, and through which address.
 - **Its data:** schemas, migrations, seed or fixture data, and how an account or tenant comes to exist.
 - **Other repos of the project:** docs that describe the project and this repo's job in it, such as a README or `ARCHITECTURE.md`, and clients for services this repo does not contain.
@@ -112,7 +107,7 @@ Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Co
 
 ## 6. Prove it
 
-Never touch the developer's own stack: use only proof stacks. Before you start, save the output of `docker ps -a`, `docker volume ls` and `docker network ls`.
+Use only the proof stacks `lsproof-a`, `lsproof-b` and `lsproof-c`, never the developer's own stack, and stop only the processes you started, by process ID, never by name. Before you start, save the output of `docker ps -a`, `docker volume ls` and `docker network ls`. In step 5, `compose` means `local-stack/stack compose --name lsproof-a --`.
 
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
 2. **App on the host, at the same time:** when no switch has a `host` mode, skip this step and report it as not applicable. Otherwise:
@@ -125,8 +120,8 @@ Never touch the developer's own stack: use only proof stacks. Before you start, 
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
 5. **Offline:**
    1. From the build logs of step 1, list each outside address an image build downloads from, and put the list in the README as "the image build needs internet for: …".
-   2. Run `local-stack/stack compose --name lsproof-a -- down`.
-   3. Run `local-stack/stack compose --name lsproof-a -- -f <file> up --detach`, where `<file>` is a temporary file outside the repo with:
+   2. Run `compose down`.
+   3. Run `compose -f <file> up --detach`, where `<file>` is a temporary file outside the repo with:
 
       ```yaml
       networks:
@@ -135,13 +130,13 @@ Never touch the developer's own stack: use only proof stacks. Before you start, 
       ```
 
       When the app waits for a service that needs another repo's stack, add `--no-deps <app service>` and check only the app's own work.
-   4. Ports are not published on an internal network, so run the proof action from inside with `local-stack/stack compose --name lsproof-a -- exec <service> <command>`.
-   5. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed: go back to step 3 with it, never stub it silently. Failures to reach a dependency stack are expected, because it is reached through the host; say so in the report.
-   6. Run `local-stack/stack compose --name lsproof-a -- down` before the next `up`.
+   4. Ports are not published on an internal network, so run the proof action from inside with `compose exec <service> <command>`.
+   5. Read `compose logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed: go back to step 3 with it, never stub it silently. Failures to reach a dependency stack are expected, because it is reached through the host; say so in the report.
+   6. Run `compose down` before the next `up`.
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
 7. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack, `lsproof-b` from its worktree. Then remove the worktree with `git worktree remove <dir>` and its branch with `git branch -D lsproof-b`. Check that no container, volume, network or built image of their projects is left, that no `local-stack/.stack-lsproof-*` file is left, and that the lists you saved before step 1 are unchanged.
 
-Stop only the processes you started, by their process ID, never by name. When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
+When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
 
 ## 7. Hand over
 
