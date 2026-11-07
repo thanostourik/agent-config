@@ -206,9 +206,9 @@ that recipe's header, not here):
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh`, `references/harvest` and `references/areas` to `bin/` (with `pw.sh` and `pw-close` for a web UI), and write the Claude stub and `.gitignore`. Then run
 `VERIFY_APP=build bin/verify up` in the background and do step 4.1 while it builds; then run
-`bin/verify up` again and time both. Recorders drive the production build, and step 5
-drives every recipe again on the dev server, so each recipe passes on both: a dev server
-held 1.5 GB in trials, where the production app held 83 MB, and recording needs that memory. The first `up` records how much memory and time one
+`bin/verify up` again and time both. Generation drives the production build: a dev server
+held 1.5 to 6.5 GB in trials, where the production app held 83 MB, and under 240 features at
+once it lost clicks that landed before a page was ready. The first `up` records how much memory and time one
 copy of the environment takes, which the runner needs to decide on lanes later. Before
 recorders start, run `bin/verify up --lanes 1`, so every drive runs its `# alone` features
 on that extra copy. A feature marked `# alone` waits until its copy is free of other
@@ -338,8 +338,8 @@ checks in `PROJECT.md`, and go to step 6.
 
 ## 5. Prove it
 
-Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
-from a fresh environment, on the dev server this time, while the others run in parallel. Send each failing feature back to
+Run `bin/verify down`, `VERIFY_APP=build bin/verify up` and `bin/verify all`, so every recipe
+runs once more from a fresh environment while the others run in parallel. Send each failing feature back to
 a recorder with its summary line, and at once, while they work, drive every other feature
 again on the same environment (`bin/verify $(bin/verify list | cut -d: -f1 | grep -vxF -f <failing>)`): a
 recipe that fails the second time is not repeatable. A returned recorder has driven its
