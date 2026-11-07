@@ -22,10 +22,9 @@ SWITCHES = CONFIG.get("switches", {})
 VARS = CONFIG.get("vars", {})
 PROVIDES = CONFIG.get("provides", [])
 DEFAULT_STACK_FILE = HERE / ".stack.env"
-REGISTRY = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "local-stacks"
-SPARE_PORTS = range(10000, 32768)
 VARIABLE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 READY_TIMEOUT_SECONDS = 900
+PORT_ATTEMPTS = 3
 
 
 class StackError(Exception):
@@ -81,7 +80,7 @@ def parse_args():
     up_parser.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
     up_parser.add_argument("--mode", action="append", default=[], metavar="SWITCH=MODE", help="pick one switch's mode")
     command("down", down, "stop the stack; keep its data and ports; remove its stack file until the next up")
-    command("destroy", destroy, "remove the stack: containers, volumes, built images, ports, dependency stacks")
+    command("destroy", destroy, "remove the stack: containers, volumes, built images, its files, dependency stacks")
     command("status", status, "show the stack's modes, ports and containers")
     env_parser = command("env", env, "print the stack file")
     env_parser.add_argument("--provides", action="store_true", help="print only the variables this stack provides to others")
@@ -94,49 +93,72 @@ def up(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
     modes = chosen_modes(args)
-    with stack_lock(project):
-        with registry_lock():
-            claim = claim_ports(project)
-            write_claim(project, claim)
-        values = {"LOCAL_STACK_GATEWAY_IP": gateway_ip(), "LOCAL_STACK_CHECKOUT": str(CHECKOUT), **claim["ports"]}
-        requests = dependency_requests(modes, values)
-        records = dependency_records(claim)
+    with stack_lock(name):
+        check_owner(project)
+        spare_from = spare_ports_start()
+        too_high = [f"{key}={port}" for key, port in PORTS.items() if port >= spare_from]
+        if too_high:
+            raise StackError(f"stack.json: usual ports must be below {spare_from}, where this system's spare ports start: {', '.join(too_high)}")
+        record = read_record(name)
+        gateway = gateway_ip()
+        active, published = compose_plan(project, modes, gateway)
+        ports = choose_ports(project, name, record.get("ports", {}), published, spare_from)
+        record.update(modes=modes, ports=ports)
+        write_record(name, record)
+        base = {"LOCAL_STACK_GATEWAY_IP": gateway, "LOCAL_STACK_CHECKOUT": str(CHECKOUT)}
+        requests = dependency_requests(modes, {**base, **ports})
+        records = record.get("needs", [])
         started = []
+        dependency_values = {}
         for switch, mode in modes.items():
             checkout_variable = SWITCHES[switch]["modes"][mode].get("stack")
             if checkout_variable:
-                record = dependency_record(switch, checkout_variable, project)
-                if record not in records:
-                    records.append(record)
-                claim["needs"] = records
-                write_claim(project, claim)
-                values.update(start_dependency(switch, record, args.stubs, requests.get(switch, {})))
-                started.append(record)
-        for switch, mode in modes.items():
-            for key, template in SWITCHES[switch]["modes"][mode].get("vars", {}).items():
-                values[key] = interpolate(template, values, f"{switch}={mode} {key}")
-        for key, template in VARS.items():
-            values[key] = interpolate(template, values, key)
-        values = {"LOCAL_STACK_PROJECT": project, "LOCAL_STACK_NAME": name, **values}
-        claim["modes"] = modes
-        claim["needs"] = records
-        claim["values"] = values
+                dependency = dependency_record(switch, checkout_variable, project)
+                if dependency not in records:
+                    records.append(dependency)
+                record["needs"] = records
+                write_record(name, record)
+                dependency_values.update(start_dependency(switch, dependency, args.stubs, requests.get(switch, {})))
+                started.append(dependency)
         path = stack_file(name)
-        claim["stack_file"] = str(path)
-        path.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
-        write_claim(project, claim)
-        if name == stack_name(default_name()):
+        if name == default_stack_name():
             link_default_stack_file(path)
-        active = active_services(project, values, modes)
-        stop_inactive_services(project, values, active)
+        for attempt in range(1, PORT_ATTEMPTS + 1):
+            values = stack_values(project, name, modes, {**base, **ports, **dependency_values})
+            record.update(ports=ports, values=values)
+            write_record(name, record)
+            path.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
+            stop_inactive_services(project, values, active)
+            if not active:
+                break
+            try:
+                run_compose(project, values, profiles(modes), ["up", "--detach", "--build", "--remove-orphans"])
+                break
+            except StackError:
+                lost = lost_ports(project, ports, published)
+                if not lost or attempt == PORT_ATTEMPTS:
+                    raise
+                if any(ports[key] < spare_from for key in lost):
+                    raise StackError(f"usual ports taken while the stack started: {describe_ports(lost, ports)}; free them and run up again")
+                print(f"stack: ports taken before the stack could bind them: {describe_ports(lost, ports)}; picking new ones", file=sys.stderr)
+                ports = {**ports, **spare_ports(list(lost), set(ports.values()) | set(port_holders()))}
         if active:
-            run_compose(project, values, profiles(modes), ["up", "--detach", "--build", "--remove-orphans"])
             wait_until_ready(project, values, modes, active)
-        for record in records:
-            if record not in started:
-                run_dependency(record, "down")
+        for dependency in records:
+            if dependency not in started:
+                run_dependency(dependency, "down")
     print(f"Stack {project} is up. Modes: {describe(modes)}.", file=sys.stderr)
-    print(f"Stack file: {stack_file(name)}", file=sys.stderr)
+    print(f"Stack file: {path}", file=sys.stderr)
+
+
+def stack_values(project, name, modes, values):
+    values = dict(values)
+    for switch, mode in modes.items():
+        for key, template in SWITCHES[switch]["modes"][mode].get("vars", {}).items():
+            values[key] = interpolate(template, values, f"{switch}={mode} {key}")
+    for key, template in VARS.items():
+        values[key] = interpolate(template, values, key)
+    return {"LOCAL_STACK_PROJECT": project, "LOCAL_STACK_NAME": name, **values}
 
 
 def link_default_stack_file(path):
@@ -149,46 +171,50 @@ def link_default_stack_file(path):
 def down(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    with stack_lock(project):
-        claim = own_claim(project) or {}
-        run_compose(project, saved_values(name, claim), ["*"], ["down", "--remove-orphans"])
-        for record in dependency_records(claim):
-            run_dependency(record, "down")
+    with stack_lock(name):
+        check_owner(project)
+        running = docker("ps", "--quiet", "--filter", f"label=com.docker.compose.project={project}").split()
+        if running:
+            docker("stop", *running)
+        for dependency in read_record(name).get("needs", []):
+            run_dependency(dependency, "down")
         stack_file(name).unlink(missing_ok=True)
 
 
 def destroy(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    with stack_lock(project):
-        claim = own_claim(project) or {}
-        run_compose(project, saved_values(name, claim), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
-        for record in dependency_records(claim):
-            run_dependency(record, "destroy")
+    with stack_lock(name) as lock_path:
+        check_owner(project)
+        record = read_record(name)
+        run_compose(project, saved_values(name, record), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
+        for dependency in record.get("needs", []):
+            run_dependency(dependency, "destroy")
         stack_file(name).unlink(missing_ok=True)
-        with registry_lock():
-            (REGISTRY / f"{project}.json").unlink(missing_ok=True)
+        record_path(name).unlink(missing_ok=True)
+        lock_path.unlink()
 
 
 def status(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = read_claim(project)
-    if not claim:
-        print(f"No stack {project}.")
+    record = read_record(name)
+    if not record:
+        print(f"No stack {project} in {CHECKOUT}.")
         return
-    print(f"Stack {project} of {claim['checkout']}. Modes: {describe(claim.get('modes', {}))}.")
+    print(f"Stack {project} of {CHECKOUT}. Modes: {describe(record.get('modes', {}))}.")
     print(f"Stack file: {stack_file(name)}")
-    for key, port in claim["ports"].items():
+    for key, port in record.get("ports", {}).items():
         print(f"  {key}={port}")
-    for record in dependency_records(claim):
-        print(f"Dependency {record['switch']}: {record['checkout']}, stack name {record['name']}")
-    run_compose(project, saved_values(name, claim), ["*"], ["ps"])
+    for dependency in record.get("needs", []):
+        print(f"Dependency {dependency['switch']}: {dependency['checkout']}, stack name {dependency['name']}")
+    sys.stdout.flush()
+    run_compose(project, saved_values(name, record), ["*"], ["ps", "--all"])
 
 
 def env(args):
     name = stack_name(args.name)
-    own_claim(f"{APP}-{name}")
+    check_owner(f"{APP}-{name}")
     path = stack_file(name)
     if not path.exists():
         raise StackError(f"no stack file {path}; run `local-stack/stack up` first")
@@ -200,11 +226,12 @@ def env(args):
 def compose(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    claim = own_claim(project)
-    if not claim:
+    check_owner(project)
+    record = read_record(name)
+    if not record:
         raise StackError(f"no stack {project}; run `local-stack/stack up` first")
     compose_args = args.compose_args[1:] if args.compose_args[:1] == ["--"] else args.compose_args
-    run_compose(project, saved_values(name, claim), profiles(claim.get("modes", {})), compose_args)
+    run_compose(project, saved_values(name, record), profiles(record.get("modes", {})), compose_args)
 
 
 def stack_name(given):
@@ -228,22 +255,35 @@ def git(*args):
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def own_claim(project):
-    claim = read_claim(project)
-    if claim and claim["checkout"] != str(CHECKOUT):
-        raise StackError(f"stack {project} belongs to {claim['checkout']}; run this there, or pick another name with --name")
-    return claim
+def default_stack_name():
+    return stack_name(default_name())
 
 
-def dependency_records(claim):
-    needs = claim.get("needs") or []
-    if isinstance(needs, dict):
-        return [{"switch": switch, **record} for switch, record in needs.items()]
-    return list(needs)
+def check_owner(project):
+    working_dirs = docker("ps", "--all", "--filter", f"label=com.docker.compose.project={project}", "--format", '{{.Label "com.docker.compose.project.working_dir"}}').split("\n")
+    others = sorted({working_dir for working_dir in working_dirs if working_dir and working_dir != str(HERE)})
+    if others:
+        raise StackError(f"stack {project} belongs to {Path(others[0]).parent}; run this there, or pick another name with --name")
 
 
 def stack_file(name):
     return HERE / f".stack-{name}.env"
+
+
+def record_path(name):
+    return HERE / f".stack-{name}.json"
+
+
+def read_record(name):
+    path = record_path(name)
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def write_record(name, record):
+    path = record_path(name)
+    temporary = path.with_name(f"{path.name}.tmp")
+    temporary.write_text(json.dumps(record, indent=2) + "\n")
+    temporary.replace(path)
 
 
 def chosen_modes(args):
@@ -283,111 +323,171 @@ def interpolate(template, values, where):
 
 
 @contextlib.contextmanager
-def registry_lock():
-    REGISTRY.mkdir(parents=True, exist_ok=True)
-    with open(REGISTRY / ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        yield
+def stack_lock(name):
+    path = HERE / f".stack-{name}.lock"
+    waiting = False
+    while True:
+        with open(path, "a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if not waiting:
+                    print(f"stack: waiting for another command on stack {APP}-{name}", file=sys.stderr)
+                    waiting = True
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                current = os.stat(path).st_ino
+            except FileNotFoundError:
+                current = None
+            # destroy deletes the lock file while holding it; a waiter that locked the deleted file locks again
+            if current == os.fstat(lock.fileno()).st_ino:
+                yield path
+                return
 
 
-@contextlib.contextmanager
-def stack_lock(project):
-    REGISTRY.mkdir(parents=True, exist_ok=True)
-    with open(REGISTRY / f"{project}.lock", "a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print(f"stack: waiting for another command on stack {project}", file=sys.stderr)
-            fcntl.flock(lock, fcntl.LOCK_EX)
-        yield
+def spare_ports_start():
+    linux = Path("/proc/sys/net/ipv4/ip_local_port_range")
+    if linux.exists():
+        return int(linux.read_text().split()[0])
+    result = subprocess.run(["sysctl", "-n", "net.inet.ip.portrange.first"], capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip().isdigit():
+        return int(result.stdout)
+    raise StackError("cannot read this system's ephemeral port range")
 
 
-def is_busy(project):
-    path = REGISTRY / f"{project}.lock"
-    if not path.exists():
+def compose_plan(project, modes, gateway):
+    probe_ports = {key: str(index + 1) for index, key in enumerate(PORTS)}
+    placeholders = {key: "" for spec in SWITCHES.values() for mode in spec["modes"].values() for key in mode.get("vars", {})}
+    placeholders.update({key: "" for key in [*VARS, "LOCAL_STACK_PROJECT", "LOCAL_STACK_NAME", "LOCAL_STACK_CHECKOUT"]})
+    values = {**placeholders, "LOCAL_STACK_GATEWAY_IP": gateway, **probe_ports}
+    services = json.loads(run_compose(project, values, profiles(modes), ["config", "--format", "json"], capture=True)).get("services") or {}
+    numbers = {port for service in services.values() for entry in service.get("ports", []) for port in port_range(str(entry.get("published", "")))}
+    return set(services), {key for key, probe in probe_ports.items() if int(probe) in numbers}
+
+
+def port_range(text):
+    first, _, last = text.partition("-")
+    return range(int(first), int(last or first) + 1) if first.isdigit() else range(0)
+
+
+def choose_ports(project, name, recorded, published, spare_from):
+    holders = port_holders()
+
+    def available(port):
+        holder = holders.get(port)
+        return holder["project"] == project if holder else port_is_free(port)
+
+    if name == default_stack_name():
+        blocked = {key: PORTS[key] for key in published if not available(PORTS[key])}
+        if not blocked:
+            return dict(PORTS)
+        siblings = sorted({describe_holder(port, holders) for port in blocked.values() if is_sibling_stack(holders.get(port))})
+        if not siblings:
+            raise StackError(f"usual ports are taken: {describe_ports(blocked, PORTS, holders)}; free them and run up again")
+        print(f"stack: the usual ports are held by {', '.join(siblings)}, so this stack uses spare ports; an app whose committed settings expect the usual ports will not reach it", file=sys.stderr)
+    kept = {key: port for key, port in recorded.items() if key in PORTS and port >= spare_from and (key not in published or available(port))}
+    picked = spare_ports([key for key in PORTS if key not in kept], set(kept.values()) | set(holders))
+    return {key: kept.get(key, picked.get(key)) for key in PORTS}
+
+
+def is_sibling_stack(holder):
+    if not holder or not holder["working_dir"]:
         return False
-    with open(path) as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True
-    return False
-
-
-def read_claim(project):
-    path = REGISTRY / f"{project}.json"
-    return json.loads(path.read_text()) if path.exists() else None
-
-
-def write_claim(project, claim):
-    REGISTRY.mkdir(parents=True, exist_ok=True)
-    path = REGISTRY / f"{project}.json"
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(claim, indent=2) + "\n")
-    temporary.replace(path)
-
-
-def claim_ports(project):
-    claim = read_claim(project)
-    if claim and claim["checkout"] != str(CHECKOUT):
-        raise StackError(f"stack {project} belongs to {claim['checkout']}; pick another name with --name")
-    claim = claim or {"checkout": str(CHECKOUT), "ports": {}}
-    claim["ports"] = {key: port for key, port in claim["ports"].items() if key in PORTS}
-    missing = [key for key in PORTS if key not in claim["ports"]]
-    if not missing:
-        return claim
-    taken = set(claim["ports"].values())
-    for other, other_claim in other_claims(project):
-        if is_abandoned(other, other_claim):
-            (REGISTRY / f"{other}.json").unlink()
-        else:
-            taken.update(other_claim["ports"].values())
-    for key in missing:
-        usual = PORTS[key]
-        candidates = [usual, *SPARE_PORTS] if usual not in taken else SPARE_PORTS
-        port = next((port for port in candidates if port not in taken and port_is_free(port)), None)
-        if port is None:
-            raise StackError("no free port left; remove stacks you no longer need with `local-stack/stack destroy`")
-        claim["ports"][key] = port
-        taken.add(port)
-    return claim
-
-
-def other_claims(project):
-    for path in sorted(REGISTRY.glob("*.json")):
-        if path.stem != project:
-            yield path.stem, json.loads(path.read_text())
-
-
-def is_abandoned(project, claim):
-    if is_busy(project):
+    config = Path(holder["working_dir"]) / "stack.json"
+    try:
+        return json.loads(config.read_text()).get("app") == APP
+    except (OSError, ValueError):
         return False
-    if claim.get("stack_file") and Path(claim["stack_file"]).exists():
-        return False
-    if any(dependency_is_claimed(record) for record in dependency_records(claim)):
-        return False
-    label = f"label=com.docker.compose.project={project}"
-    for kind in (["ps", "--all"], ["volume", "ls"], ["network", "ls"]):
-        result = subprocess.run(["docker", *kind, "--quiet", "--filter", label], capture_output=True, text=True)
-        if result.returncode != 0 or result.stdout.strip():
-            return False
-    return True
 
 
-def dependency_is_claimed(record):
-    config = Path(record["checkout"]) / "local-stack" / "stack.json"
-    if not config.exists():
-        return False
-    return (REGISTRY / f"{json.loads(config.read_text())['app']}-{record['name']}.json").exists()
+def spare_ports(keys, avoid):
+    chosen = {}
+    probes = []
+    try:
+        for key in keys:
+            for _ in range(100):
+                probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                probes.append(probe)
+                probe.bind(("0.0.0.0", 0))
+                port = probe.getsockname()[1]
+                if port not in avoid:
+                    break
+            else:
+                raise StackError("the system has no free spare port left")
+            chosen[key] = port
+            avoid.add(port)
+    finally:
+        for probe in probes:
+            probe.close()
+    return chosen
+
+
+def lost_ports(project, ports, published):
+    holders = port_holders()
+    lost = {}
+    for key in published:
+        holder = holders.get(ports[key])
+        if holder and holder["project"] == project:
+            continue
+        if holder or not port_is_free(ports[key]):
+            lost[key] = ports[key]
+    return lost
+
+
+def port_holders():
+    output = docker("ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}\t{{.Names}}\t{{.Ports}}')
+    holders = {}
+    for line in output.splitlines():
+        project, working_dir, container, published = (line.split("\t") + ["", "", "", ""])[:4]
+        for first, last in re.findall(r":(\d+)(?:-(\d+))?->", published):
+            for port in range(int(first), int(last or first) + 1):
+                holders[port] = {"project": project, "working_dir": working_dir, "container": container}
+    return holders
+
+
+def describe_ports(keys, ports, holders=None):
+    holders = port_holders() if holders is None else holders
+    return ", ".join(f"{key}={ports[key]} by {describe_holder(ports[key], holders)}" for key in keys)
+
+
+def describe_holder(port, holders):
+    holder = holders.get(port)
+    if holder and holder["working_dir"]:
+        return f"Compose project {holder['project']} in {holder['working_dir']}"
+    if holder:
+        return f"container {holder['container']}"
+    return process_holding(port)
+
+
+def process_holding(port):
+    with contextlib.suppress(OSError):
+        output = subprocess.run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fpc"], capture_output=True, text=True).stdout
+        match = re.search(r"^p(\d+)\nc(.+)$", output, re.MULTILINE)
+        if match:
+            return f"process {match.group(2)} (PID {match.group(1)})"
+    with contextlib.suppress(OSError):
+        output = subprocess.run(["ss", "-Hltnp", f"sport = :{port}"], capture_output=True, text=True).stdout
+        match = re.search(r'"([^"]+)",pid=(\d+)', output)
+        if match:
+            return f"process {match.group(1)} (PID {match.group(2)})"
+    return "a process this user cannot see"
 
 
 def port_is_free(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("0.0.0.0", port))
         except OSError:
             return False
     return True
+
+
+def docker(*args):
+    result = subprocess.run(["docker", *args], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise StackError(f"docker {args[0]} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
 
 
 def dependency_record(switch, checkout_variable, project):
@@ -440,9 +540,9 @@ def run_dependency(record, *command, env=None):
         raise StackError(f"dependency stack {stack} {command[0]} failed")
 
 
-def saved_values(name, claim):
-    if claim.get("values"):
-        return claim["values"]
+def saved_values(name, record):
+    if record.get("values"):
+        return record["values"]
     path = stack_file(name)
     if path.exists():
         return parse_env(path.read_text())
@@ -450,7 +550,7 @@ def saved_values(name, claim):
     values.update({key: "" for key in VARS})
     values["LOCAL_STACK_GATEWAY_IP"] = "127.0.0.1"
     values.update({key: "0" for key in PORTS})
-    values.update(claim.get("ports", {}))
+    values.update(record.get("ports", {}))
     return values
 
 
@@ -460,10 +560,6 @@ def gateway_ip():
     if result.returncode != 0 or not address:
         raise StackError("cannot read the gateway address of Docker's bridge network")
     return address
-
-
-def active_services(project, values, modes):
-    return set(run_compose(project, values, profiles(modes), ["config", "--services"], capture=True).split())
 
 
 def wait_until_ready(project, values, modes, active):

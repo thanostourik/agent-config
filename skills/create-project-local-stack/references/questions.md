@@ -39,12 +39,14 @@ For each address that may belong to another repo of this project:
 - Where the starting data comes from: migrations alone, a seed script, a dump, or records the stack creates.
 - How an account, tenant or API key comes to exist, and which roles a developer needs to try the app.
 - Where a developer gets each secret that a `real` mode needs.
-- How the app should read the stack file on the host, when more than one way fits (`stack-spec.md`, "The app's configuration").
+- How the app should read the stack file on the host, when its framework offers more than one way (`stack-spec.md`, "The app's configuration").
 - Whether a client on another device, such as a phone, must reach the stack, when the code shows such a client.
 
 ## Asked on a conflict
 
 When two sources disagree, ask which one is right and show both. Example: "`README.md:40` says the app listens on 8080, `config/app.yaml:3` sets 8200. Which does a local run use?"
+
+When a usual port is at or above the start of the system's ephemeral range, ask which port below it the app should use, and change the app's local configuration to match. Example: "`config/app.yaml:3` sets the app's port to 40000. This machine hands out ports from 32768 up to any program that asks for a free one, so another program could take 40000 at any time, and the stack refuses it. Which port below 32768 should a local run use?"
 
 ## Asked after the offline proof
 

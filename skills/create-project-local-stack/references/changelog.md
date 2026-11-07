@@ -2,6 +2,14 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 10
+
+- **Script:** with the old script still in place, run `destroy` for each stack of this repo you no longer need and `down` for the rest, because the new script does not read the registry. Then copy `local-stack/stack` again. It keeps no registry: the default stack gets the usual ports, a stack started with `--name` gets spare ports from the system's ephemeral range, and each stack's record and lock live in `local-stack/`. `down` now stops the containers and keeps them. Once no repo on this machine runs an older script, delete `$XDG_STATE_HOME/local-stacks/` (by default `~/.local/state/local-stacks/`). **Check:** 1, 2 and 3; then copy the checkout, run `up --app --stubs --name lsproof-a` in both, and confirm the copy is refused; finish with 7.
+- **`.gitignore`:** replace `.stack*.env` with `.stack*`, so the record and the lock stay out of git. **Check:** after `up`, `git status` shows no `.stack-*` file.
+- **Usual ports:** each one sits below the start of the system's ephemeral range. Ask about each that does not, as `questions.md` says. **Check:** `up` on the default stack reports no port error.
+- **App on the host:** `LOCAL_STACK_FILE` is gone. The app always reads `local-stack/.stack.env` from the repo root, through its framework's own configuration mechanism. Replace a run script or an IDE run configuration's environment file with that mechanism, and ask the user first when it changes how developers start the app. In the README, replace the `LOCAL_STACK_FILE` steps with a second copy in its own worktree. **Check:** 2, plus one start of the app without a stack file, which uses its committed settings.
+- **Restart policy:** remove any `restart:` policy from `compose.yaml`, because `down` now keeps stopped containers. **Check:** none; read `compose.yaml`.
+
 ## Version 9
 
 - **Script:** copy `local-stack/stack` again. A mode may now ask a dependency stack for modes and environment values with `"dependencies"`, and `${LOCAL_STACK_CHECKOUT}` names the checkout's root. A stack that needs another repo's stack to start differently, such as with a feature on or a file from this checkout, adds a switch for it in both stacks instead of a manual step. **Check:** 6 with each mode that has `dependencies`; when none has, `up` once to confirm the script still starts the stack.

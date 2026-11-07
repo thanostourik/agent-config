@@ -11,7 +11,7 @@ local-stack/
   compose.yaml     every service of the stack
   stubs/<switch>/  one stub per switch that has a stub mode, when no emulator fits
   README.md        usage, provided values and decisions
-  .gitignore       .stack*.env and .facts.md
+  .gitignore       .stack* and .facts.md
 ```
 
 A stack may add folders its own services need, such as a certificate generator or a setup script.
@@ -20,15 +20,17 @@ Outside `local-stack/`, the design the user approves covers the app's local conf
 
 ## What `stack` does
 
-- **Name:** the stack name defaults to the current branch; `--name` picks another. The Compose project is `<app>-<name>`, such as `orders-main`. Every container, volume, network and built image carries that project's label, which is what `destroy` removes. Every command except `status` refuses a stack whose claim belongs to another checkout.
-- **Ports:** each stack's ports are recorded in a registry shared by every repo on this machine, `$XDG_STATE_HOME/local-stacks/`. A port gets its usual value if it is free, otherwise the lowest free port from 10000. After `down`, a stack keeps its ports while it still has data or a dependency stack. A stopped stack with neither can lose its ports to another stack, which costs nothing. `destroy` always frees them.
+- **Name:** the stack name defaults to the current branch; `--name` picks another. The Compose project is `<app>-<name>`, such as `orders-main`. Every container, volume, network and built image carries that project's label, which is what `destroy` removes. Every command except `status` refuses a stack whose containers Compose started from another checkout, as their `com.docker.compose.project.working_dir` label shows.
+- **Files:** the script writes only into `local-stack/` of its own checkout, git-ignored: the stack file, the record `.stack-<name>.json` and the lock `.stack-<name>.lock`. `destroy` deletes all three. Nothing goes into the home folder or the system, so a stack that was killed or never destroyed holds only the ports its running containers bind.
+- **Ports:** the default stack gets the usual ports, so an app on the host works with its committed settings. If a port its containers publish is taken by something other than another stack of this repo, `up` stops and names the holder. A port that only the app on the host listens on is not checked, so the app may start before the stack. When another stack of this repo, such as a second worktree's default stack, holds the usual ports, the default stack gets spare ports for every key, the app's included, and says which stack holds them. A stack started with `--name`, as agents and dependency stacks are, always gets spare ports.
+- **Spare ports:** `up` asks the operating system for a free port, closes it and starts the containers with it. The system takes these only from its ephemeral range, and every usual port must sit below that range, so a spare port is never a usual one. `up` reuses a stack's recorded spare ports while they are free or held by its own containers, so `down` and `up` keep them. The default stack moves back to the usual ports once they are free. When a port is taken in the moment before a container binds it, Compose fails; `up` names the holder, picks a new spare port and tries again, or stops when the port is a usual one. One gap remains: the app port of a stack on spare ports is not held while that app is stopped, so another stack may take it. The app then fails with "port in use", and the next `up` picks again.
 - **Gateway address:** `up` sets `LOCAL_STACK_GATEWAY_IP` to the gateway of Docker's bridge network, usually `172.17.0.1`. Only this machine and its containers reach it.
 - **Readiness:** `up` returns when every service of the active modes is running and healthy, or has exited with code 0, as setup jobs do. A service that exits with another code or turns unhealthy stops `up` with its name. A stack with no active service skips Compose.
-- **Stack file:** `up` writes every value of the stack as `KEY=value` lines to `local-stack/.stack-<name>.env`. Each stack keeps that one path, so two stacks never share a file. `local-stack/.stack.env` is a relative link to the stack file of the checked-out branch's stack: `up` of that stack points it there, so after a branch switch it follows the new branch's stack once that stack is up. `down` and `destroy` delete only their own stack file and leave the link, so an app never reads a stopped stack's ports: a link to a deleted file reads as no file. The claim records the values, so `destroy` works after `down`. Both may hold secrets from the user's environment.
+- **Stack file:** `up` writes every value of the stack as `KEY=value` lines to `local-stack/.stack-<name>.env`. Each stack keeps that one path, so two stacks never share a file. `local-stack/.stack.env` is a relative link to the stack file of the checked-out branch's stack: `up` of that stack points it there, so after a branch switch it follows the new branch's stack once that stack is up. `down` and `destroy` delete only their own stack file and leave the link, so an app never reads a stopped stack's ports: a link to a deleted file reads as no file. The record keeps the stack's modes, ports, values and dependency stacks, so `destroy` works after `down`. Both may hold secrets from the user's environment.
 - **Modes:** `up` uses each switch's default. `--stubs` sets every shared switch to `stub`, `--app` sets every switch that has a `container` mode to `container`, and `--mode <switch>=<mode>` sets one switch. A mode turns on the Compose profile `<switch>-<mode>` and sets its variables. `up` removes the services of modes no longer chosen before it starts the new ones.
 - **Dependency stacks:** a mode with `"stack": "<VARIABLE>"` starts the stack in the checkout that `<VARIABLE>` names, with `up --app --name <this project>`, passing `--stubs` on, plus the modes and environment values that this stack's active modes ask for under `dependencies`. It reads that stack's `env --provides` and adds each value as `<SWITCH>_<KEY>`, plus `<SWITCH>_<KEY>_FROM_CONTAINER` with `localhost` and `127.0.0.1` replaced by `host.docker.internal`. `down` and `destroy` reach the dependency stacks too. A dependency stack that a later `up` no longer uses is stopped and stays recorded until `destroy` removes it.
-- **One command at a time:** `up`, `down` and `destroy` hold a lock on their stack until they finish. A second one on the same stack waits for it; other stacks run in parallel.
-- **Commands:** `up`, `down` (stops the stack, keeps its data, removes the stack file), `destroy` (removes everything, dependency stacks included), `status`, `env` and `compose -- <docker compose arguments>`.
+- **One command at a time:** `up`, `down` and `destroy` hold their stack's lock file until they finish. A second one on the same stack waits for it; other stacks run in parallel.
+- **Commands:** `up`, `down` (stops the stack's containers and keeps them, its data and its ports; removes the stack file), `destroy` (removes everything, dependency stacks included), `status`, `env` and `compose -- <docker compose arguments>`.
 
 ## `stack.json`
 
@@ -56,7 +58,7 @@ A fictional order service with an API, a database, a message queue, a paid payme
 ```
 
 - `app`: a short lowercase name for this repo's stack.
-- `ports`: every host port the stack publishes or the app listens on, with its usual value: the one the app's configuration or docs use. Names end in `_PORT`.
+- `ports`: every host port the stack publishes or the app listens on, with its usual value: the one the app's committed configuration or docs use. Every usual value sits below the start of the system's ephemeral range, which is 32768 on Linux and 49152 on macOS by default; `up` refuses one inside it. Names end in `_PORT`.
 - **A switch per process:** each process this repo runs gets a switch, named `app` when there is one and `app-<process>` when there are several, such as `app-api` and `app-worker`. It has a `container` mode when agents run it in a container, and a `host` mode when developers run it on their machine; its default is `host` when it has one. Its variables are what changes when the process moves, such as the address a proxy forwards to; they may be empty. A repo that runs no process, such as a library, has no such switch.
 - **Other switches:** one per outside service or other repo. Name modes after what they do, such as `real`, `stub` or `off`; a mode with a `"stack"` key starts another repo's stack. `shared: true` marks a shared service, which needs a `stub` mode. Every mode of a switch sets the same variables.
 - **What a mode asks of another repo's stack:** `"dependencies": {"<switch>": {"modes": {...}, "env": {...}}}` on any mode, where `<switch>` is this stack's switch with the `"stack"` mode. `modes` become `--mode` arguments of that stack's `up`; `env` values are set in its environment, where its own `${NAME}` values read them. In the example, `promotions=on` starts the catalog stack with `--mode prices=stub` and `CATALOG_PRICE_FILE` set. It applies only while that switch is in its `stack` mode. Two active modes that ask for different values stop `up`. Give the other stack a switch for the behavior instead of starting it differently by hand, so this repo's verification only calls `up`.
@@ -64,7 +66,7 @@ A fictional order service with an API, a database, a message queue, a paid payme
 - `provides`: the values other repos' stacks may read. Other repos depend on these names, so renaming one breaks them.
 - Values use `${NAME}` for a port, an earlier value, a dependency value or a variable from the user's environment. `${LOCAL_STACK_CHECKOUT}` is this checkout's root, for a file in it. A missing one stops `up` with its name. Secrets come only from the user's environment this way, never from a file in the repo. A credential that exists only inside the stack, such as the stack database's password, is a fixed value in `compose.yaml`, not a secret.
 - **Address names:** a URL is `X_URL`, a host and port without a scheme is `X_ADDR`, a bare host is `X_HOST`, each as the host sees it. Add the same name with `_FROM_CONTAINER`, as a container sees it, only when a container uses that address.
-- When a process runs on the host, the port it listens on is one of the `ports`, and its configuration takes it from the stack file. Otherwise it may hold a port another stack has claimed.
+- When a process runs on the host, the port it listens on is one of the `ports`, and its configuration takes it from the stack file. Otherwise a second worktree's copy would start on the usual port that the first copy uses.
 - When the stack checks who calls it, by origin, redirect address or allowed host, it accepts any `localhost` port, because other repos' stacks call it from ports it cannot know.
 
 ## `compose.yaml`
@@ -80,18 +82,16 @@ A fictional order service with an API, a database, a message queue, a paid payme
 - Build a process from the repo with `build: {context: .., dockerfile: <its Dockerfile>}` when that Dockerfile builds a runnable image without values fixed for one environment. Otherwise write `local-stack/<process>/Dockerfile`, with a `Dockerfile.dockerignore` next to it. `up` always rebuilds, so the container runs the current working tree.
 - Keep the local override files that discovery found, such as `.env`, `.env.local` or `application-local.yml`, out of every image and container. They override the stack's values, so a run with stubs could reach a real server.
 - Mount every volume an image declares (`VOLUME`) on a named volume, so `destroy` removes it.
+- Set no `restart:` policy. `down` keeps the containers stopped, and a policy could start them again when Docker restarts.
 - Give every long-running service a healthcheck that passes only when it is ready, so `up` returns a working stack. Setup that runs once, such as migrations, is a service the others depend on with `condition: service_completed_successfully`. Setup that writes data the app later changes, such as seeded accounts or rows the app updates, runs only on a stack's first `up`, so a restart never undoes the app's changes.
 - Containers reach each other by service name. A container that calls a process on the host or another repo's stack gets `extra_hosts: ["host.docker.internal:host-gateway"]`.
 - Use only the default network. The offline proof replaces it.
 
 ## The app's configuration
 
-- **On the host:** the process reads `LOCAL_STACK_FILE` when it is set, and stops with that path when the file is missing, so a typo never falls back to settings that may point at a real server. When the variable is not set, it reads `local-stack/.stack.env` from the repo root, if that exists. Three ways to do this, and when more than one fits, ask the user which:
-  - the app's own configuration loader, in the configuration a local run uses only;
-  - the IDE run configuration's environment file, for apps that read only environment variables;
-  - a small run script in `local-stack/` that exports the file and starts the app.
-
-  Example: Node's `--env-file` stops on a missing file; `--env-file-if-exists` does not. Map the stack's names to the app's own settings there, and leave the app's other environments alone.
+- **On the host:** the process reads `local-stack/.stack.env`, resolved from the repo root, when that file exists. It reads it through its framework's own configuration mechanism, in the configuration a local run uses, such as `spring.config.import` with an `optional:file:` location in the local Spring profile, or the Next.js config loading the file. When the framework has no such mechanism, a few lines in the app's own startup code that only a local run reaches read it. Never a wrapper script, an IDE-only setting or a variable the developer has to set: the developer starts the app the framework's standard way, from the IDE or the terminal. Map the stack's names to the app's own settings there, and leave the app's other environments alone.
+- **Without the stack file:** the app starts with its committed settings, whose ports are the usual ports, so it may start before the stack.
+- **Two copies on the host:** a developer who runs two copies at once uses one worktree each. Each worktree's `up` starts its own default stack, and its `.stack.env` links to that stack's file.
 - **In a container:** the process's service in `compose.yaml` sets the same settings from the `_FROM_CONTAINER` values.
 
 ## Stubs
@@ -107,7 +107,7 @@ Written for the developers who use the stack. Sections, in this order:
 
 1. What the stack is, in two sentences, and the line `Built with create-project-local-stack version <n>.`
 2. `## Commands`: `up`, `up --app`, `--stubs`, `--mode`, `--name`, `down`, `destroy`, `status`, `env`, `compose`, each with one line.
-3. `## Run the app on your machine`: the exact steps for this app, and `LOCAL_STACK_FILE` for a named stack.
+3. `## Run the app on your machine`: the exact steps for this app, and how to run a second copy at once: in its own worktree, with its own `up`.
 4. `## Services`: each service, with what it runs.
 5. `## Switches`: a table of each switch, its modes, its default, whether it is shared, and what each stub does not cover.
 6. `## Needs`: each other repo, the variable that holds its checkout, and the values used from it.
