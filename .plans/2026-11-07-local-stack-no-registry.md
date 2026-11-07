@@ -75,8 +75,9 @@ All files live in the checkout's git-ignored `local-stack/`:
   never reads a stopped stack's ports.
 - `.stack-<name>.json`: the record: modes, ports, values and dependency
   stacks. It replaces the claim. `destroy` deletes it.
-- `.stack-<name>.lock`: the per-stack lock. `destroy` deletes it while holding
-  it; a waiting command notices the file was replaced and locks again.
+- `.stack-<name>.lock`: the per-stack lock. A command that ends with no
+  record (`destroy`, or a refused or failed first `up`) deletes it while
+  holding it; a waiting command notices the file was replaced and locks again.
 - `.gitignore` becomes `.stack*` and `.facts.md`.
 
 ## Ownership

@@ -184,7 +184,7 @@ def down(args):
 def destroy(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    with stack_lock(name) as lock_path:
+    with stack_lock(name):
         check_owner(project)
         record = read_record(name)
         run_compose(project, saved_values(name, record), ["*"], ["down", "--volumes", "--rmi", "local", "--remove-orphans"])
@@ -192,7 +192,6 @@ def destroy(args):
             run_dependency(dependency, "destroy")
         stack_file(name).unlink(missing_ok=True)
         record_path(name).unlink(missing_ok=True)
-        lock_path.unlink()
 
 
 def status(args):
@@ -339,9 +338,13 @@ def stack_lock(name):
                 current = os.stat(path).st_ino
             except FileNotFoundError:
                 current = None
-            # destroy deletes the lock file while holding it; a waiter that locked the deleted file locks again
+            # the lock file is deleted while held when its stack has no record; a waiter that locked the deleted file locks again
             if current == os.fstat(lock.fileno()).st_ino:
-                yield path
+                try:
+                    yield
+                finally:
+                    if not record_path(name).exists():
+                        path.unlink(missing_ok=True)
                 return
 
 
