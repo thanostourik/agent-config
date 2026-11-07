@@ -152,8 +152,12 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   when the result is wrong: `test`, `jq -e`, `grep -q` on a saved file, the driver's own
   assertion. A command that only prints proves nothing. Under `set -e`, `! command` never
   fails: use `test` or `if`.
-- Wait for state with `wait_for <seconds> <command...>` or the driver's own waits, with a
-  deadline of the expected time plus a margin. Never `sleep` or `waitForTimeout`.
+- Wait for state with `wait_for <seconds> <command...>` or the driver's own waits, 10 s at
+  most; `run-code` waits 10 s by default. A simple action, such as a save, that needs longer
+  is a finding to report, not a longer wait. Only a step that waits for slow work by design,
+  such as a background job, waits longer, with `# slow: <reason>` (`// slow: <reason>` inside
+  JavaScript) on that line; `verify lint` refuses any other wait over 10 s, and a pass names
+  its steps over 10 s. Never `sleep` or `waitForTimeout`.
 - Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
   otherwise. On a failure, `bin/observe.sh` saves the app's state there.
 - Every name the recipe creates starts with `verify-<feature>-`, dash included, or the

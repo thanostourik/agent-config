@@ -48,7 +48,7 @@ endpoint() {
 
 args=("$@")
 if [[ ${1:-} == run-code ]]; then
-  args=(run-code "async page => { try { return await ($2)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }" "${@:3}")
+  args=(run-code "async page => { page.setDefaultTimeout(10000); try { return await ($2)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }" "${@:3}")
 fi
 start=$(date +%s.%N)
 if [[ ${1:-} == open ]]; then

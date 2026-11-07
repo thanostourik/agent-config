@@ -190,6 +190,10 @@ lint() {
     while IFS= read -r problem; do report "$problem"; done < <(check_expects "$file")
     grep -n -E '(^|[^A-Za-z0-9_./-])sleep([[:space:]]|$)' "$file" | sed "s/^/$feature: bare sleep, use wait_for: line /" | grep . && problems=1
     grep -n 'waitForTimeout(' "$file" | sed "s/^/$feature: waitForTimeout, wait for the state instead: line /" | grep . && problems=1
+    awk -v f="$feature" '/(#|\/\/) slow: *[^ ]/ { next }
+      { line = $0; while (match(line, /wait_for[ \t]+[0-9]+|timeout: *[0-9]+/)) { n = substr(line, RSTART, RLENGTH); gsub(/[^0-9]/, "", n); n += 0
+          if ((n > 10 && n < 1000) || n > 10000) { print f ": line " NR " waits over 10 s; a simple action that takes longer is a finding, a slow job says why with \"# slow: <reason>\" or \"// slow: <reason>\" on that line"; break }
+          line = substr(line, RSTART + RLENGTH) } }' "$file" | grep . && problems=1
     grep -n -E '^step "[^"]*, ' "$file" | sed "s/^/$feature: a step label with ', ' breaks '# expects:' lines: line /" | grep . && problems=1
     bash -n "$file" 2> /dev/null || report "not valid bash: $(bash -n "$file" 2>&1 | head -n 1)"
   done
@@ -393,8 +397,10 @@ line_of() {
   grep -q -x cleanup-failed "$dir/result" 2> /dev/null && tail="; clean up failed"
   [[ -s "$dir/intent" ]] && intent=" ($(head -c 160 "$dir/intent"))"
   if ((status == 0)) && [[ "$result" == pass ]]; then
-    local slow=""
+    local slow="" step_slow
     ((seconds > budget)) && slow=", slow: over ${budget}s, split or speed it up"
+    step_slow=$(awk '/^== / && match($0, /\(([0-9]+)s\)$/) { t = substr($0, RSTART + 1, RLENGTH - 3) + 0; if (label != "" && t - start > 10) { out = out sep "\"" label "\" " (t - start) "s"; sep = ", " }; label = ($0 ~ /^== Clean up/) ? "" : substr($0, 4, index($0, ":") - 4); start = t } END { printf "%s", out }' "$dir/log" 2> /dev/null)
+    [[ -n "$step_slow" ]] && slow+=", steps over 10 s: $step_slow"
     echo "$feature: pass (${seconds}s$slow)$tail"
     [[ -z "$tail" ]]
     return
