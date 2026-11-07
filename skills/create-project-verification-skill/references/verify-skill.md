@@ -25,11 +25,16 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    already up and restarts only the app. Keep it up for the whole task.
 2. Bring the recipes in line with the change, as part of the change, like tests. For
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh`
-   ([Recipes](#recipes)). A whole new feature can go to a recorder ([Recorders](#recorders)).
+   ([Recipes](#recipes)). Before writing a step, open its screen once in a session of your
+   own (`VERIFY_SESSION=<feature>-probe`) and save its snapshot (`bin/pw.sh snapshot`), and
+   call the API once for each record a step checks: write locators from the snapshot and
+   checks from the response, not from the source. A whole new feature can go to a recorder
+   ([Recorders](#recorders)).
 3. Run `verify affected`. It drives the features whose `# touches:` line names a changed
    file, or whose recipe or helper changed, then prints one summary line per feature.
 4. It also lists the entry points and actions (`bin/actions.sh`) in changed files that no
-   recipe covers: new screens, routes, buttons and handlers the change added. Give each a
+   recipe covers: new screens, routes, buttons and handlers the change added, and fails
+   while that list is not empty, even when every driven feature passed. Give each a
    step and an `# expects:` line, in the feature it belongs to or a new one (for a whole
    new screen, a recorder), or an `# expects:` line marked not driven with its reason, and
    drive those features. It also lists changed files no feature names. For each one that changes behavior a
@@ -64,7 +69,8 @@ and read its output once. Do not poll it or tail its logs.
 ## Commands
 
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment.
-- `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects.
+- `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects. It
+  exits 1 while the change adds entry points or actions no recipe covers.
 - `verify <feature>...`, `verify all`: drive those features, or every feature.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue: a

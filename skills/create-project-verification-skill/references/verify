@@ -2,7 +2,7 @@
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
-# verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base
+# verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
 # verify all                drive every feature
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
@@ -120,6 +120,7 @@ select_affected() {
   local file feature helper hit features=() untouched=()
   mapfile -t features < <(all_features)
   : > "$cache/affected"
+  : > "$cache/new"
   changed_files > "$cache/changed" || return 1
   while IFS= read -r file; do
     hit=""
@@ -596,8 +597,10 @@ case $command in
       esac
     done
     select_affected || exit 2
-    [[ -s "$cache/affected" && -z "$dry" ]] || exit 0
-    drive $(cut -f1 "$cache/affected" | sort -u) ;;
+    result=0
+    [[ -s "$cache/affected" && -z "$dry" ]] && { drive $(cut -f1 "$cache/affected" | sort -u); result=$?; }
+    [[ -s "$cache/new" ]] && { echo "verify: the change adds entry points or actions no recipe covers (listed above)" >&2; ((result)) || result=1; }
+    exit $result ;;
   all)
     drive $(all_features) ;;
   "" | -h | help)
