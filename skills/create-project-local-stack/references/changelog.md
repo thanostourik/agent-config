@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 11
+
+- **Script:** copy `local-stack/stack` again. A mode with a `"stack"` key now names the other repo by its path in its git remote, and `up` finds its clone next to this repo's main clone, or in the folder saved once with `up --use <switch>=<folder>`. Replace each `"stack": "<VARIABLE>"` in `stack.json` with that repo's path, such as `"stack": "my-org/catalog"`, and remove the variable everywhere it is mentioned: README, `AGENTS.md`, and the repo's own skills or scripts that read it. Something that needs the other clone's folder reads it from `status`, which prints each dependency's checkout. In the README, add `--use` to the commands and rewrite `## Needs` as `stack-spec.md` says. **Check:** 1, 2 and 6 with the variable unset in your shell; step 2 runs in a worktree outside the repo, which proves the clone is found from a worktree too. Leave your clones where they are; the skill's own proof covers `--use`. Finish with 7.
+
 ## Version 10
 
 - **Script:** with the old script still in place, run `destroy` for each stack of this repo you no longer need and `down` for the rest, because the new script does not read the registry. Then copy `local-stack/stack` again. It keeps no registry: the default stack gets the usual ports, a stack started with `--name` gets spare ports from the system's ephemeral range, and each stack's record and lock live in `local-stack/`. `down` now stops the containers and keeps them. Once no repo on this machine runs an older script, delete `$XDG_STATE_HOME/local-stacks/` (by default `~/.local/state/local-stacks/`). **Check:** 1, 2 and 3; then copy the checkout, run `up --app --stubs --name lsproof-a` in both, and confirm the copy is refused; finish with 7.
