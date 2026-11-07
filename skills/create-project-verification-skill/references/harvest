@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# harvest <words> <file>...: list the behaviors a feature's tests and docs state, for its '# expects:' lines.
+# <words> is an extended regex such as 'archive|retention', matched case-insensitively against docs headings.
+# Test files give every test name they hold (pytest, unittest, JUnit, Jest/Vitest/Mocha, Go, RSpec, PHPUnit).
+# Markdown files give each paragraph, list item and table row under every heading that matches <words>. Shipped by create-project-verification-skill.
+set -euo pipefail
+words=${1:?usage: harvest <words> <file>...}
+shift
+for file in "$@"; do
+  case $file in
+    *.md | *.markdown | *.rst | *.txt)
+      [[ "$words" == . ]] && { echo "harvest: give the feature's words; '.' would take every heading of $file" >&2; continue; }
+      awk -v words="$(tr 'A-Z' 'a-z' <<< "$words")" -v file="$file" '
+        function flush() { if (entry != "") print "- " file ":   " entry; entry = "" }
+        /^[[:space:]]*```/ { fenced = !fenced; next }
+        fenced { next }
+        /^#+ / {
+          flush()
+          level = length($1)
+          if (inside && level <= depth) inside = 0
+          if (!inside && level > 1 && tolower($0) ~ words) { inside = 1; depth = level; print "- " file ": ## " substr($0, level + 2); next }
+          if (inside) { print "- " file ":   " $0; next }
+        }
+        !inside { next }
+        /^[[:space:]]*$/ { flush(); next }
+        {
+          line = $0
+          item = sub(/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/, "", line) || line ~ /^[[:space:]]*\|/
+          sub(/^[[:space:]]+/, "", line)
+          if (item) flush()
+          entry = entry == "" ? line : entry " " line
+          if (line ~ /^\|/) flush()
+        }
+        END { flush() }
+      ' "$file"
+      ;;
+    *)
+      awk -v file="$file" '
+        function emit(name) { gsub(/_/, " ", name); print "- " file ": " name; pending = "" }
+        match($0, /@DisplayName\("[^"]*"\)/) { pending = substr($0, RSTART + 13, RLENGTH - 15); next }
+        match($0, /def test_[A-Za-z0-9_]+/) { emit(substr($0, RSTART + 9, RLENGTH - 9)); next }
+        match($0, /func Test[A-Za-z0-9_]+/) { emit(substr($0, RSTART + 9, RLENGTH - 9)); next }
+        match($0, /function test[A-Za-z0-9_]+/) { emit(substr($0, RSTART + 13, RLENGTH - 13)); next }
+        /@Test/ { java = 1; next }
+        java && match($0, /void [A-Za-z0-9_]+\(/) { java = 0; name = substr($0, RSTART + 5, RLENGTH - 6); emit(pending != "" ? pending : name); next }
+        match($0, /(^|[^A-Za-z0-9_.])(it|test|describe|context|scenario)(\.(only|skip|each\([^)]*\)))?\([[:space:]]*["\047`][^"\047`]+/) {
+          text = substr($0, RSTART, RLENGTH); sub(/^[^"\047`]*["\047`]/, "", text); emit(text); next
+        }
+        match($0, /^[[:space:]]*(it|describe|context|scenario)[[:space:]]+["\047][^"\047]+/) {
+          text = substr($0, RSTART, RLENGTH); sub(/^[^"\047]*["\047]/, "", text); emit(text); next
+        }
+      ' "$file"
+      ;;
+  esac
+done

@@ -55,29 +55,26 @@ If `mkdir` fails, stop and tell the user which checkout `holder` names, and
 that they can delete `<skill>/.cache/with-verification.lock` when that run is
 gone. Delete the lock yourself as the last step, also when the run fails.
 
-Then read `<skill>/SKILL.md` and follow it. Its paths are relative to
-`<skill>`. The change to verify is this checkout's diff against its base.
+Then read `<skill>/SKILL.md` and follow it. Its paths are relative to `<skill>`. The change
+to verify is this checkout's diff against its base.
 
-Give every call of a helper in `<skill>/bin/` this checkout, or it builds and
-diffs the main checkout:
+Give every `bin/verify` call this checkout, or it builds and diffs the main checkout:
 
 ```bash
-APP_OTIS="$(git rev-parse --show-toplevel)" <skill>/bin/drive.sh search
+APP_OTIS="$(git rev-parse --show-toplevel)" <skill>/bin/verify affected
 ```
 
-### Map changes
+### Recipe changes
 
-The skill updates its feature map before driving when the change adds,
-alters, or removes behavior. In a companion, that map is in another repo. Ask
-the user with your question tool:
+The skill updates recipes as part of the change when the change adds, alters, or removes
+behavior. In a companion, those recipes are in another repo. Ask the user with your question
+tool:
 
-- **Report only:** leave the map as it is. Drive the selected features the
-  map still describes, and list the others as not verified, so the user can
-  run `/maintain-verify-<app>` from the companion later.
-- **Update now:** with a clean companion, create a branch there, update the
-  map as the skill says, and drive. Then commit, push, open a draft PR in the
-  companion, and switch the companion back to the branch it was on. A
-  companion with uncommitted changes stops this choice: tell the user.
+- **Report only:** leave the recipes as they are. Drive the affected features as they
+  stand, and list the behavior no recipe checks yet as not verified.
+- **Update now:** with a clean companion, create a branch there, update the recipes as the
+  skill says, and drive. Then commit, push, open a draft PR in the companion, and switch the
+  companion back to the branch it was on. A companion with uncommitted changes stops this
+  choice: tell the user.
 
-Report as the skill's Report section says, and add the companion PR link when
-there is one.
+Report as the skill's Report section says, and add the companion PR link when there is one.

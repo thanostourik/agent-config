@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# pw-close feature | run: close the browser sessions this feature opened (after-feature.sh), or every session and browser
+# server of the run with its daemon error files (cleanup.sh). Recorders never call it: other drives share the run's browser.
+# Shipped by create-project-verification-skill; never edit it in the project.
+set -uo pipefail
+: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"
+cache=$VERIFY_SKILL/.cache
+: "${VERIFY_RUN_ID:=$(cat "$cache/run-id" 2> /dev/null || echo manual)}"
+cli=$cache/pw/node_modules/playwright-core/lib/tools/cli-client/cli.js
+[[ -f $cli ]] || exit 0
+close_all() {
+  [[ -f $1 ]] || return 0
+  while read -r session; do
+    (cd "$cache/pw-out" 2> /dev/null && node "$cli" -s="$session" close > /dev/null 2>&1)
+    rm -f "$cache/pw-idle/$session" "$HOME"/.cache/ms-playwright/daemon/*/"$session".err
+  done < "$1"
+  rm -f "$1"
+}
+case ${1:-} in
+  feature) close_all "${VERIFY_DIR:?}/pw-sessions" ;;
+  run)
+    close_all "$cache/pw-sessions-$VERIFY_RUN_ID"
+    base=$cache/pw-server-$VERIFY_RUN_ID
+    [[ -f $base.pids ]] && while read -r pid; do kill "$pid" 2> /dev/null; done < "$base.pids"
+    rm -f "$base.pids" "$base.ws" "$base.out" "$base.lock"
+    ;;
+  *) echo "usage: pw-close feature | run" >&2; exit 2 ;;
+esac
