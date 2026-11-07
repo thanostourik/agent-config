@@ -2,6 +2,7 @@
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
+#                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; lanes always run the production build
 # verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
 # verify all                drive every feature
 # verify <feature>...       drive those features
@@ -260,10 +261,13 @@ area_files() { sed -n "s/^\(split: \)\{0,1\}$1: .*; files: //p" "$cache/areas.tx
 lane_count() { cat "$cache/lanes" 2> /dev/null || echo 0; }
 lane_id() { if (($1 == 0)); then cat "$cache/run-id"; else echo "$(cat "$cache/run-id")-l$1"; fi; }
 
+# Next.js and others refuse a second dev server in one checkout, so only the main copy runs one.
+app_mode() { if (($1 == 0)); then cat "$cache/app-mode" 2> /dev/null || echo dev; else echo build; fi; }
+
 on_lane() {
   local lane=$1
   shift
-  VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") "$@"
+  VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") VERIFY_APP=$(app_mode "$lane") "$@"
 }
 
 held() { [[ -d "$cache/drive/.lock-$1" ]] && kill -0 "$(cat "$cache/drive/.lock-$1/pid" 2> /dev/null)" 2> /dev/null; }
@@ -349,7 +353,7 @@ take_lock() {
 
 run_feature() {
   local lane=$2
-  export VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane")
+  export VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") VERIFY_APP=$(app_mode "$lane")
   local feature=$1 dir=$cache/drive/$1 start=$SECONDS status limit
   limit=$(header "$feature" deadline)
   limit=${limit:-$deadline}
@@ -411,7 +415,7 @@ drive() {
   local feature together=() alone=() pids=() started=$SECONDS result=0 lane count
   (($#)) || { echo "verify: no features to drive" >&2; return 2; }
   [[ -f "$cache/run-id" ]] || { echo "verify: no environment; run 'bin/verify up' first" >&2; return 2; }
-  export VERIFY_RUN_ID=$(cat "$cache/run-id") VERIFY_LANE=0
+  export VERIFY_RUN_ID=$(cat "$cache/run-id") VERIFY_LANE=0 VERIFY_APP=$(app_mode 0)
   count=$(lane_count)
   run=$cache/drive/.run-$$
   mkdir -p "$run"
@@ -519,7 +523,7 @@ command=${1:-}
 
 case $command in
   up)
-    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; }
+    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; echo "${VERIFY_APP:-dev}" > "$cache/app-mode"; }
     previous=$(lane_count)
     echo "${lanes:-$previous}" > "$cache/lanes"
     for ((lane = previous; lane > $(lane_count); lane--)); do
@@ -560,7 +564,7 @@ case $command in
       "$skill/bin/cleanup.sh" "$@" || failed=1
     fi
     ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes"
+    rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes" "$cache/app-mode"
     echo "down" ;;
   room)
     take_room "$$" ;;
@@ -604,7 +608,7 @@ case $command in
   all)
     drive $(all_features) ;;
   "" | -h | help)
-    sed -n '2,12s/^# \{0,1\}//p' "$0" ;;
+    sed -n '2,13s/^# \{0,1\}//p' "$0" ;;
   *)
     for feature in "$command" "$@"; do
       [[ -f "$skill/features/$feature.sh" ]] || { echo "verify: no features/$feature.sh (verify list shows the features)" >&2; exit 2; }

@@ -102,10 +102,14 @@ possible.
 Write and make executable:
 
 - `launch.sh`: creates and starts the run's environment, registering each resource as it is
-  created, and waits until it is ready with a bounded deadline. It is idempotent: when the
-  run's environment already exists, it rebuilds and restarts only the app, so a second
-  `bin/verify up` takes seconds or a short rebuild, not a fresh start. `$VERIFY_RUN_ID` names
-  the run and is stable until `bin/verify down`.
+  created, and waits until it is ready with a bounded deadline. With `VERIFY_APP=dev`, the
+  runner's default for the main copy, it runs the app with its developers' own dev command,
+  such as `next dev` or `./mvnw spring-boot:run`, as a process the run records, so a code
+  change needs no image build: in trials a web change reached the next drive in 8 s instead
+  of 45 to 60 s, and a backend change in 15 s instead of 40. With `VERIFY_APP=build` it runs
+  the production build. It is idempotent: when the run's environment already exists, it
+  restarts only what a code change needs, so a second `bin/verify up` takes seconds.
+  `$VERIFY_RUN_ID` names the run and is stable until `bin/verify down`.
 - `cleanup.sh`: removes only what the run created, on success, failure and interruption,
   and checks that none of it remains. It never checks resources that existed before. With no
   run recorded, it exits 0.
@@ -201,8 +205,10 @@ that recipe's header, not here):
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
 `references/lib.sh`, `references/harvest` and `references/areas` to `bin/` (with `pw.sh` and `pw-close` for a web UI), and write the Claude stub and `.gitignore`. Then run
-`bin/verify up` in the background and do step 4.1 while it builds; then run
-`bin/verify up` again and time both. The first `up` records how much memory and time one
+`VERIFY_APP=build bin/verify up` in the background and do step 4.1 while it builds; then run
+`bin/verify up` again and time both. Recorders drive the production build, and step 5
+drives every recipe again on the dev server, so each recipe passes on both: a dev server
+held 1.5 GB in trials, where the production app held 83 MB, and recording needs that memory. The first `up` records how much memory and time one
 copy of the environment takes, which the runner needs to decide on lanes later. Before
 recorders start, run `bin/verify up --lanes 1`, so every drive runs its `# alone` features
 on that extra copy. A feature marked `# alone` waits until its copy is free of other
@@ -333,7 +339,7 @@ checks in `PROJECT.md`, and go to step 6.
 ## 5. Prove it
 
 Run `bin/verify down`, `bin/verify up` and `bin/verify all`, so every recipe runs once more
-from a fresh environment while the others run in parallel. Send each failing feature back to
+from a fresh environment, on the dev server this time, while the others run in parallel. Send each failing feature back to
 a recorder with its summary line, and at once, while they work, drive every other feature
 again on the same environment (`bin/verify $(bin/verify list | cut -d: -f1 | grep -vxF -f <failing>)`): a
 recipe that fails the second time is not repeatable. A returned recorder has driven its
