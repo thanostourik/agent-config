@@ -229,7 +229,16 @@ each button and what it does, each state (empty, loading, filtered, paging, edit
 error), each error response the screen handles, each permission rule, each side effect.
 Split the inventory into features of 8 to 15 steps by user goal, one behavior per step
 where it can be driven on its own, named <area>-<goal>; a recipe of your area that
-already exists is one of them. Write all your recipes,
+already exists is one of them. Then look at the real app before writing: open each screen
+of your area once in a browser session of your own (VERIFY_SESSION=<area>-probe), signed
+in as the role that uses it, and save its accessibility snapshot (bin/pw.sh snapshot), with
+each of its dialogs and menus open, under .agents/skills/verify-<app>/.cache/snapshots/<area>/;
+and call the API once (bin/api.sh or the project's API helper) for each record a step will
+check. Write every locator from those snapshots and every check against those responses:
+in trials recorders that wrote from the source alone failed two thirds of their first
+drives on wrong names and response shapes, and needed 6 to 10 drives per area instead of
+2 to 5. The snapshots never shrink the inventory: a behavior they do not show, such as an
+error, an empty state or a refused permission, keeps its line. Write all your recipes,
 .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
 inventory line, before driving any. A behavior whose data cannot be made through the app,
 its API or a documented helper within a few minutes is marked not driven with that

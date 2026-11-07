@@ -25,6 +25,10 @@ fi
 
 cp "$shipped/verify" "$shipped/lib.sh" "$shipped/harvest" "$shipped/areas" "$skill/bin/"
 chmod +x "$skill/bin/verify" "$skill/bin/lib.sh" "$skill/bin/harvest" "$skill/bin/areas"
+if [[ -f "$skill/pw-version" ]]; then
+  cp "$shipped/pw.sh" "$shipped/pw-close" "$skill/bin/"
+  chmod +x "$skill/bin/pw.sh" "$skill/bin/pw-close"
+fi
 sed "s/<app>/$app/g" "$shipped/verify-skill.md" > "$skill/SKILL.md"
 description=$(sed -n 's/^description: //p' "$skill/SKILL.md")
 mkdir -p ".claude/skills/verify-$app"

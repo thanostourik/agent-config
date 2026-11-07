@@ -36,6 +36,7 @@ replace it (delete and generate again) or upgrade it with
   bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
   bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
+  bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh bin/actions.sh
   bin/<driver helpers>
   features/<feature>.sh
@@ -47,7 +48,7 @@ replace it (delete and generate again) or upgrade it with
 
 `<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`;
 Claude Code reads only `.claude/skills/`, so the stub exists for it. Never use symlinks.
-Never edit `SKILL.md`, `bin/verify` or `bin/lib.sh` for the project: an upgrade replaces them.
+Never edit `SKILL.md`, `bin/verify`, `bin/lib.sh`, `bin/pw.sh` or `bin/pw-close` for the project: an upgrade replaces them.
 Everything project-specific goes into `PROJECT.md`, `bin/` helpers and `features/`.
 
 ## Companion repo
@@ -147,50 +148,19 @@ Write and make executable:
   (`bin/cli -e KEY=VALUE <command>`), so a recipe can point one command at its own schema,
   prefix or folder.
 - Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
-  own harness, `pw.sh` runs the Playwright CLI (`playwright cli`) with:
-  - a pinned Playwright version whose browser build is installed (`ls ~/.cache/ms-playwright`),
-    installed under `.cache/` (`npm install --prefix .cache/pw playwright@<version>`) when the
-    project has none, and called as `node <playwright-core>/lib/tools/cli-client/cli.js`,
-    never `npx` or the `.bin` wrapper: about 1.2 s per call instead of 3 s;
-  - the session `-s="$VERIFY_RUN_ID-$VERIFY_SESSION"`, so runs of other projects and
-    checkouts never share a browser session (`playwright cli list` shows every session on the
-    machine, so cleanup matches its own names exactly), and its output under `.cache/`;
-  - one browser per run, shared by every session. The first `open` starts a Playwright
-    browser server under a lock (a node script:
-    `const s = await chromium.launchServer(); console.log(s.wsEndpoint())`), with the lock's
-    file descriptor closed (`9>&-`), or the server holds the lock for its life. Its endpoint
-    goes in a file under `.cache/` keyed on `$VERIFY_RUN_ID`, and a new server starts when
-    that endpoint no longer answers. Every server's process id is appended to one file,
-    and `cleanup.sh` stops them all: in a trial a restart under load replaced the only
-    saved id, and two servers outlived the run. Each `open` runs `attach --endpoint=<endpoint>`, grants
-    `clipboard-write` (`page.context().grantPermissions(['clipboard-write'])`), which `open`
-    grants and `attach` does not, then goes to the URL. Each attached session gets a context
-    of its own (cookies, storage), and `close` closes only that context. In a replay of 214 features a session held 120 to 200 MB instead of 330,
-    and the drive ran 16% faster;
-  - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
-    errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
-  - `after-feature.sh` closing the feature's session, and `cleanup.sh` itself closing every
-    session the run opened, never a `pw.sh` option a recorder can call: in a trial three
-    recorders closed the run's sessions by hand and failed each other's drives; and removing its `<session>.err` files from every folder under
-    `~/.cache/ms-playwright/daemon/` (the folder is named after the caller's working
-    directory, so one run writes to several);
-    the list of sessions a feature opened lives in its drive folder (`$VERIFY_DIR`);
-  - one line per call with its duration in `$VERIFY_DIR/pw-calls.log`, so a slow call is
-    found in minutes;
-  - before it opens a new browser session outside a feature's run (`$VERIFY_FEATURE`
-    unset, such as a recorder exploring by hand), `bin/verify room`, which waits in the
-    machine-wide queue the runner keeps for every feature run; it notes each such
-    session's last use under `.cache/`, and every call closes those idle for 2 minutes:
-    in trials recorders left 20 sessions open, holding 8 GB, and with 37 open the queue
-    held each feature run 14 s for memory;
-  - every `run-code` wrapped so the caller's function ends by loading a hidden frame at an
-    uncached address of the page's own origin:
-    `async page => { try { return await (<code>)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }`.
-    After each call the CLI waits up to 5 s for the page's requests to finish, and Chrome
-    never reports some as finished, such as cross-origin API calls and Next.js page-data
-    fetches; a navigation ends that wait. In trials it cut such calls from 6 s to 0.6 s.
-    Recipes then wait for the result they check (a response, a row, a message), never on
-    the CLI;
+  own harness, copy `<generator>/references/pw.sh` and `<generator>/references/pw-close` to
+  `bin/` unchanged, and write into the skill's `pw-version` file a Playwright version whose
+  browser build is installed (`ls ~/.cache/ms-playwright`); `pw.sh` installs it under
+  `.cache/` on first use. `pw.sh` runs the Playwright CLI in the session
+  `$VERIFY_RUN_ID-$VERIFY_SESSION`, attaches every session as a context of its own to one
+  browser per run, waits in the machine-wide queue before a session opened by hand, closes
+  hand sessions idle for 2 minutes, logs each call's duration in `$VERIFY_DIR/pw-calls.log`,
+  and ends every `run-code` with a hidden same-origin frame load, because the CLI otherwise
+  waits up to 5 s for requests Chrome never reports finished. Its header says how to call
+  it. `after-feature.sh` runs `bin/pw-close feature` and `cleanup.sh` runs
+  `bin/pw-close run`; no recorder calls it, because other drives share the run's browser.
+  In trials writing this helper by hand took minutes of every generation, and one
+  generation's version left two browser servers running after cleanup. Then write:
   - a sign-in helper that saves each account's storage state once per run and loads it in
     one call, signing each account into a browser session of its own: a second account in
     the same session is signed in as the first through the sign-in provider's cookie;
@@ -230,7 +200,7 @@ that recipe's header, not here):
   so parse URLs and log inside `page.evaluate`, or return the value.
 
 Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
-`references/lib.sh`, `references/harvest` and `references/areas` to `bin/`, and write the Claude stub and `.gitignore`. Then run
+`references/lib.sh`, `references/harvest` and `references/areas` to `bin/` (with `pw.sh` and `pw-close` for a web UI), and write the Claude stub and `.gitignore`. Then run
 `bin/verify up` in the background and do step 4.1 while it builds; then run
 `bin/verify up` again and time both. The first `up` records how much memory and time one
 copy of the environment takes, which the runner needs to decide on lanes later. Before
