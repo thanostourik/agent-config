@@ -19,6 +19,8 @@ The script [`references/stack`](references/stack) already handles stack names, p
 
 - **Stack:** one running copy of `local-stack/`, identified by its name. The name defaults to the current branch.
 - **Default stack:** the stack named after the branch. It belongs to the developer; agents never use it.
+- **Usual port:** a port's value in `stack.json`, the one the app's committed settings use. The default stack gets the usual ports.
+- **Spare port:** a free port the operating system hands out from its ephemeral range when asked for any port. Stacks started with `--name` get spare ports. On Linux the range is in `/proc/sys/net/ipv4/ip_local_port_range`, on macOS in `sysctl net.inet.ip.portrange.first`.
 - **Proof stack:** a stack you start in step 6 under a name like `lsproof-a`, and destroy by name at the end.
 - **Switch:** an entry in `stack.json` for one thing the stack can run in different ways, such as the app itself or a payment API.
 - **Mode:** one value of a switch, such as `real`, `stub`, `host` or `container`.
@@ -26,7 +28,7 @@ The script [`references/stack`](references/stack) already handles stack names, p
 - **Stub:** something in the stack that answers in place of an outside service: a local emulator of it, or a small server you write. In questions to the user, call it a "fake".
 - **Dependency stack:** another repo's stack that this stack starts, through a mode with a `"stack"` key.
 - **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file, and an app running on the host reads it.
-- **Claim:** a stack's record in the machine's registry: its checkout, ports, modes, values and dependency stacks.
+- **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values and dependency stacks. The script writes nothing outside the repo.
 
 ## Ask, never guess
 
@@ -77,6 +79,8 @@ When the code does not settle the kind, ask.
 
 Ask every open question from step 2, following [`references/questions.md`](references/questions.md). New facts can open new questions; ask those too. Write each answer into the fact file.
 
+Read the start of this system's ephemeral range. Every usual port must sit below it, because spare ports come from that range and `up` refuses a usual port inside it. Ask about each usual port that does not, as `questions.md` says under "Asked on a conflict".
+
 For another repo:
 
 - Ask where its checkout is.
@@ -100,15 +104,15 @@ Wait for an explicit go. If the user asks for a change, update the design and sh
 
 ## 5. Build
 
-Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged and make it executable.
+Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged and make it executable. Commit `local-stack/` and the app's configuration change following the repo's branch and commit conventions, so step 6 can check them out in a worktree.
 
 ## 6. Prove it
 
 Never use the default stack. Record `docker ps -a`, `docker volume ls` and `docker network ls` before you start. "The proof action" below is one action you pick from the code that shows the app works end to end, fitting the kind of project: an HTTP call and its response, a command and its output, or a message and the row it writes. It is not recorded anywhere; a later run picks it again.
 
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
-2. **App on the host, at the same time:** skip this step and report it as not applicable when no switch has a `host` mode. Otherwise run `local-stack/stack up --stubs --name lsproof-b`, so the proof sends nothing to a shared service; step 4 proves the real ones. Start the app on the host the way a developer does, with its usual run command and `LOCAL_STACK_FILE` set to `lsproof-b`'s stack file, nothing else added. Run the proof action against it directly, and once through each service that calls it. Stop the app.
-3. **Parallel:** create one record in `lsproof-a`, and check that `lsproof-b` does not show it and that `status` shows different ports for the two.
+2. **App on the host, at the same time:** skip this step and report it as not applicable when no switch has a `host` mode. Otherwise add a worktree outside the repo with `git worktree add -b lsproof-b <dir>`. In it, run `local-stack/stack up --stubs` without `--name`, so the stack is that worktree's default stack, `lsproof-b`, and the proof sends nothing to a shared service; step 4 proves the real ones. It gets the usual ports, or spare ports and a message naming the stack that holds the usual ones, such as the developer's own. Do what a fresh checkout needs before its first run, such as installing dependencies. Then start the app in the worktree the way a developer does, with its usual run command, nothing added. Run the proof action against it directly, and once through each service that calls it. Stop the app. When a later fix changes the stack, commit it and run `git -C <dir> reset --hard <your branch>` before rerunning this step.
+3. **Parallel:** create one record in `lsproof-a`, and check that `lsproof-b` does not show it and that `status` shows different ports for the two, with every port of `lsproof-a` at or above the start of the ephemeral range. Run `local-stack/stack down --name lsproof-a`, then `up --app --stubs --name lsproof-a` again, and check that its ports and the record are unchanged.
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
 5. **Offline:**
    1. From the build logs of step 1, list each outside address an image build downloads from, and put the list in the README as "the image build needs internet for: …".
@@ -126,7 +130,7 @@ Never use the default stack. Record `docker ps -a`, `docker volume ls` and `dock
    5. Read `local-stack/stack compose --name lsproof-a -- logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed: go back to step 3 with it, never stub it silently. Failures to reach a dependency stack are expected, because it is reached through the host; say so in the report.
    6. Run `local-stack/stack compose --name lsproof-a -- down` before the next `up`.
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
-7. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack. Check that no container, volume, network or built image of their projects is left, that their stack files and claims are gone, and that the names in the lists you recorded are unchanged.
+7. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack, `lsproof-b` from its worktree. Then remove the worktree with `git worktree remove <dir>` and its branch with `git branch -D lsproof-b`. Check that no container, volume, network or built image of their projects is left, that no `local-stack/.stack-lsproof-*` file is left, and that the names in the lists you recorded are unchanged.
 
 Stop only the processes you started, by their process ID, never by name. When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
 
