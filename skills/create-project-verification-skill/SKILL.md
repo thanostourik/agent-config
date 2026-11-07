@@ -160,11 +160,12 @@ Write and make executable:
     `const s = await chromium.launchServer(); console.log(s.wsEndpoint())`), with the lock's
     file descriptor closed (`9>&-`), or the server holds the lock for its life. Its endpoint
     goes in a file under `.cache/` keyed on `$VERIFY_RUN_ID`, and a new server starts when
-    that endpoint no longer answers. Each `open` runs `attach --endpoint=<endpoint>`, grants
+    that endpoint no longer answers. Every server's process id is appended to one file,
+    and `cleanup.sh` stops them all: in a trial a restart under load replaced the only
+    saved id, and two servers outlived the run. Each `open` runs `attach --endpoint=<endpoint>`, grants
     `clipboard-write` (`page.context().grantPermissions(['clipboard-write'])`), which `open`
     grants and `attach` does not, then goes to the URL. Each attached session gets a context
-    of its own (cookies, storage), and `close` closes only that context; `cleanup.sh` stops
-    the server. In a replay of 214 features a session held 120 to 200 MB instead of 330,
+    of its own (cookies, storage), and `close` closes only that context. In a replay of 214 features a session held 120 to 200 MB instead of 330,
     and the drive ran 16% faster;
   - `--raw` to silence page snapshots, and the output of `open` sent to a file; with `--raw`,
     errors arrive on stdout as `### Error`, so never send that output to `/dev/null`;
