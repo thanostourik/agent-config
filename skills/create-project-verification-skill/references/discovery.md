@@ -17,9 +17,8 @@ Add a framework here only after its command ran on a real project.
 - **Entry points:** each `page.*` file is a screen and each method a `route.*` file exports
   is an API route. The URL is the folder path without `(group)` segments; a dynamic segment
   keeps its brackets (`/tenants/[tenantId]`).
-- **Why the source search is enough:** routes are files. On one project the search found
-  the same 72 routes as `.next/app-path-routes-manifest.json`, which adds only Next's own
-  pages such as `/_not-found`.
+- **Why the source search is enough:** routes are files.
+  `.next/app-path-routes-manifest.json` adds only Next's own pages, such as `/_not-found`.
 
 ## Spring MVC
 
@@ -33,8 +32,7 @@ Add a framework here only after its command ran on a real project.
   `-Dlogging.level._org.springframework.web.servlet.HandlerMapping.Mappings=debug`.
   At startup Spring then logs every mapping under its class, one per line:
   `{GET [/api/v1/abbreviations]}: getAbbreviations()`. The script reads those lines from
-  the run's app log. On one project the log listed the same 175 routes as the annotations,
-  8 s after start.
+  the run's app log.
 
 ## Drupal
 

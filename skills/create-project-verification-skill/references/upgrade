@@ -128,7 +128,7 @@ mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/featu
 ((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
 [[ -f "$skill/bin/launch.sh" ]] && ! grep -q VERIFY_APP "$skill/bin/launch.sh" && todo+=("Give $skill/bin/launch.sh the two app modes of the generator's step 3: the developers' dev command when VERIFY_APP=dev, the runner's default, and the production build when VERIFY_APP=build.")
-[[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3), then run bin/verify uncovered and cover or mark not driven each action it lists, citing '<file name>: <function>'.")
+[[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3).")
 for script in launch.sh cleanup.sh doctor.sh; do
   [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
 done

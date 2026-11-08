@@ -15,4 +15,5 @@ Run the focused checks relevant to the change as well:
 - Tests: `<command>`, or "none" when the repo has no test suite
 - Lint and type checks: `<command>`, or "none"
 
-`/maintain-project-verification-skill` brings this skill up to date with its generator.
+`/verify-<app> full` drives every feature, repairs the failing ones and records what no recipe
+covers. `/maintain-project-verification-skill` brings this skill up to date with its generator.
