@@ -176,9 +176,11 @@ def down(args):
     project = f"{APP}-{name}"
     with stack_lock(name):
         check_owner(project)
-        running = docker("ps", "--quiet", "--filter", f"label=com.docker.compose.project={project}").split()
+        running = docker("ps", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.ID}} {{.Names}}").splitlines()
         if running:
-            docker("stop", *running)
+            docker("stop", *(line.split()[0] for line in running))
+            for line in running:
+                print(f"stack: stopped {line.split()[1]}", file=sys.stderr)
         for dependency in read_record(name).get("needs", []):
             run_dependency(dependency, "down")
         stack_file(name).unlink(missing_ok=True)
