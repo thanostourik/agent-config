@@ -3,7 +3,7 @@
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; lanes always run the production build
-# verify affected [--dry]   drive the features a change against the default branch touches; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
+# verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
 # verify all                drive every feature
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
@@ -117,9 +117,24 @@ features_using() {
   done
 }
 
+callers_of() {
+  local dir=$root prefix="" path=$1 name=${1%%/*} variable stem
+  if [[ -f "$skill/apps" ]] && grep -q "^${name}[[:space:]]" "$skill/apps"; then
+    variable=$(app_variable "$name")
+    dir=${!variable} prefix=$name/ path=${1#*/}
+  fi
+  [[ $path =~ [.](c|cc|cjs|cpp|cs|dart|ex|exs|go|h|hpp|java|js|jsx|kt|m|mjs|php|py|rb|rs|scala|svelte|swift|ts|tsx|vue)$ ]] || return 0
+  stem=$(basename "$path")
+  stem=${stem%%.*}
+  case $stem in index | __init__ | mod) stem=$(basename "$(dirname "$path")") ;; esac
+  [[ -n "$stem" && "$stem" != . ]] || return 0
+  git -C "$dir" grep -l -I -w -F --untracked -e "$stem" -- . ':!.agents' ':!.claude' | grep -v -x -F "$path" | sed "s|^|$prefix|"
+}
+
 select_affected() {
-  local file feature helper hit features=() untouched=()
+  local file feature helper hit via features=() untouched=()
   mapfile -t features < <(all_features)
+  for feature in "${features[@]}"; do touches_of "$feature" | sed "s|^|$feature	|"; done > "$work/touches"
   : > "$work/affected"
   : > "$work/new"
   changed_files > "$work/changed" || return 1
@@ -137,9 +152,12 @@ select_affected() {
         done ;;
       .agents/* | .claude/* | "$skill_rel"/*) continue ;;
       *)
-        for feature in "${features[@]}"; do
-          touches_of "$feature" | grep -q -x -F "$file" && { echo "$feature	$file" >> "$work/affected"; hit=1; }
-        done ;;
+        { echo "$file"; callers_of "$file"; } > "$work/via"
+        while IFS=$'\t' read -r feature via; do
+          [[ "$via" == "$file" ]] || via="$via names $file"
+          echo "$feature	$via" >> "$work/affected"
+          hit=1
+        done < <(awk -F '\t' 'FILENAME == ARGV[1] { want[$0]; next } $2 in want' "$work/via" "$work/touches") ;;
     esac
     [[ -n "$hit" ]] || untouched+=("$file")
   done < "$work/changed"
