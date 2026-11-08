@@ -161,37 +161,34 @@ session:
 | Skill | What it does |
 |---|---|
 | `create-project-local-stack` | Writes `local-stack/`: one command that starts everything the app needs, isolated from other copies, with fakes for shared services. Developers run it next to their IDE; agents run many at once to check their work. |
-| `create-project-verification-skill` | Writes the project's own `verify-<app>` and `maintain-verify-<app>` skills, a feature map, and an `AGENTS.md` section. When `local-stack/` exists, the skills start the app through it. Add `quick` to write and drive only one feature per surface. |
+| `create-project-verification-skill` | Writes the project's own `verify-<app>` skill: one bash recipe per feature, the shipped runner `bin/verify`, and an `AGENTS.md` section. When `local-stack/` exists, the skill starts the app through it. |
 
-If the project already has verification skills, `create-project-verification-skill`
-stops and asks whether to replace or upgrade them.
+If the project already has a verification skill, `create-project-verification-skill`
+stops and asks whether to replace or upgrade it.
 
-**Use it every day.** After setup, the project has its own skills:
+**Use it every day.** After setup, the project has its own skill:
 
 | Skill | What it does |
 |---|---|
-| `verify-<app>` | Agents run it on their own before they call work done. You can also ask for it by name. |
-| `/maintain-verify-<app>` | Keeps the feature map up to date: adds features missing from it and drives the ones whose steps changed. Add `map only` to skip driving, or `full audit` to drive every feature. After a `quick` setup, its first run adds and drives the remaining features. |
+| `verify-<app>` | Agents run it on their own before they call work done. `bin/verify affected` drives only the features a change touches, `bin/verify all` drives every feature, and every run on the machine shares one queue that keeps 20% of memory free. You can also ask for it by name. |
 | `with-verification` | Add "with verify" to any request, in any repository. The agent finds the project's `verify-<app>` skill and runs it before it calls the work done. |
 
 **Keep up with this repository.** When the generator here changes, run `./sync --apply`,
-then `/maintain-project-verification-skill` in each project. It updates the project's
-skills and map, and drives the features with new or changed steps. Add `map only` to skip
-driving, or `full audit` to drive every feature.
+then `/maintain-project-verification-skill` in each project. A script copies the shipped
+files into the project and converts old recipes; the agent does only what the script lists.
 
 #### Companion QA repository
 
 When a [restricted repository](#restricted-repositories) also needs verification,
 and its agent files must stay outside the app repository, use a **companion QA
-repository**. It holds the verification skills and feature map beside the app
+repository**. It holds the verification skill and its recipes beside the app
 checkouts:
 
 1. Create a Git repository beside the app checkout, for example `my-app-qa/` beside
    `my-app/`.
 2. Open an agent session in `my-app-qa/` and run
    `/create-project-verification-skill`. Provide each app checkout's path when asked.
-   Add `quick` to record and drive only one feature per surface initially.
-3. The generator creates the verification skills and
+3. The generator creates the verification skill and
    `.agents/skills/verify-<app>/apps`, which lists each app name and checkout path
    relative to the QA repository root, for example `my-app ../my-app`. Agent files
    stay in the QA repository.
@@ -199,8 +196,8 @@ checkouts:
    installed `with-verification` skill finds the companion and verifies the checkout
    being changed, including worktrees. If the app repository has its own
    `verify-<app>`, it uses that one instead.
-5. Run `/maintain-verify-<app>` from the QA repository to keep its feature map current.
-   After a `quick` setup, its first run adds and drives the remaining features.
+5. After the generator here changes, run `/maintain-project-verification-skill` from the
+   QA repository.
 
 ## Scripts
 

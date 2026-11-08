@@ -2,145 +2,389 @@
 name: create-project-verification-skill
 metadata:
   harness: "claude-code, codex, grok, cursor"
-description: "Generate the project's own verification skills, committed in the repo or in a separate companion repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive the real app and prove its work. Use for /create-project-verification-skill, /create-project-verification-skill quick, or \"set up verification for this repo\"."
+description: "Generate the project's verify skill, committed in the repo or in a separate companion repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive every feature of the real app end to end and prove its work. Use for /create-project-verification-skill, /create-project-verification-skill quick, or \"set up verification for this repo\"."
 disable-model-invocation: true
 ---
 
 # Create a project verification skill
 
-Every serious project needs a scripted way to drive the real app and prove behavior: launch it, exercise a feature the way a user would, and capture evidence. This skill generates that as two project skills committed in the repo, so every developer's agent gets them without any global setup. You write the output for the next agent, not for a human. It will be read cold, mid-task, by an agent that has never seen the app.
-
-When you need me to make a choice before you can continue, use your question tool if you have one, or ask in your reply if you don't. If the question gets no answer, ask again in your reply and wait. Do not answer it yourself.
+This skill gives a project a `verify-<app>` skill: an isolated environment, one bash recipe
+per feature, and the shipped runner `bin/verify` that drives them in parallel with no agent.
+Agents then drive the features a change touches before calling work done. You write for the
+next agent, which reads the result cold, mid-task.
 
 ## Modes
 
-- `/create-project-verification-skill` (default): record every feature against the live app, then prove the whole map from a fresh environment (step 7).
-- `/create-project-verification-skill quick`: record only one feature per surface, drive each of them once as a smoke proof, and stop. `/maintain-verify-<app>` finds the other features in the source and adds them later.
+- `/create-project-verification-skill` (default): record every feature.
+- `/create-project-verification-skill quick`: steps 1 to 3, steps 4.1 and 4.2, the lifecycle
+  checks of step 5 except `verify uncovered`, and step 6, with no recorders. The one recipe proves that the environment, sign-in, the
+  browser helper and cleanup work, and agents copy it. Recipes then grow with the code:
+  `verify affected` fails while a change adds a screen, route or action no recipe covers,
+  `verify uncovered` lists the rest, and the skill's Keep the map current section records it
+  when the user asks.
 
-Honor an equivalent request. Do not ask which mode to use.
+Honor an equivalent request. Do not ask which mode to use. Keep your own context small: you
+write the environment and the first recipe, and recorders write the rest.
 
-If `.agents/skills/verify-*` or `.agents/skills/maintain-verify-*` already exists, stop before writing anything. Ask the user whether to replace those skills (delete them and generate again) or to upgrade them with `/maintain-project-verification-skill`. Never overwrite them silently.
+When you need me to make a choice before you can continue, use your question tool if you
+have one, or ask in your reply if you don't. If the question gets no answer, ask again in
+your reply and wait. Do not answer it yourself.
 
-When you send a message anyway, you may add one progress line, such as `recorded 12/88`, at most once per 6 finished recorders. Never send a message or reorder work just to report.
+If `.agents/skills/verify-*` already exists, stop before writing anything. Ask whether to
+replace it (delete and generate again) or upgrade it with
+`/maintain-project-verification-skill`.
 
-## Companion repo
-
-Some projects must not show that agents work on them. Their verification skills live in a **companion repo**: a separate git repo next to the app checkouts that holds only agent files. Before anything else, run one `git ls-files` here. When it lists no app source, such as a build file or a source tree, this is a companion: ask the user for the path of each app checkout, then go on. Write them to `.agents/skills/verify-<app>/apps`, one line per app, `<name> <path>`, the path relative to this repo's root, such as `otis ../otis`. `bin/drive.sh` and `bin/rec.sh` export each path as `APP_<NAME>`, upper case with `-` as `_`, and a value the caller already set wins, so a run can drive another checkout: `APP_OTIS=~/wt/otis bin/drive.sh search`. A helper that needs an app checkout starts with `source "$(dirname "$0")/steps.sh" && export_apps "$(dirname "$0")/../apps"`.
-
-In a companion, the steps below read source, docs and tests in the app checkouts and write only to this repo. Nothing goes into an app checkout: no file, no dependency, no ignore entry, no commit, no build output. Run git commands against a checkout with `GIT_OPTIONAL_LOCKS=0`, which `export_apps` sets for the helpers, so `git status` does not rewrite its index. A checkout that does not build or start is reported, not fixed. Playwright, when the project lacks it, goes into this repo's own `package.json`. The `## Verification` section of step 6 goes into this repo's `AGENTS.md`.
+`<generator>` below is this skill's folder.
 
 ## What you write
 
 ```
-.agents/skills/verify-<app>/                    the verification skill
-  SKILL.md
-  features/README.md, features/<feature>.md     the feature map
-  bin/                                          helpers, including drive.sh, doctor.sh, observe.sh and find.sh
-  .gitignore                                    ignores .cache/
-  apps                                          in a companion repo only: the app checkouts
-  .cache/                                       everything a run writes
-.agents/skills/maintain-verify-<app>/           map maintenance with three drive modes
-  SKILL.md
-  agents/openai.yaml
-.claude/skills/verify-<app>/SKILL.md            stub for Claude Code
-.claude/skills/maintain-verify-<app>/SKILL.md   stub for Claude Code
-.claude/settings.json                           permissions.deny gets "Bash(sudo:*)", merged in
+.agents/skills/verify-<app>/
+  SKILL.md            <generator>/references/verify-skill.md, with <app> filled in
+  PROJECT.md          this project's facts (step 3)
+  bin/verify          copied from <generator>/references/verify, unchanged
+  bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
+  bin/harvest         copied from <generator>/references/harvest, unchanged
+  bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
+  bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
+  bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh bin/actions.sh
+  bin/<driver helpers>
+  features/<feature>.sh
+  .gitignore          holds .cache/
+  apps                companion repo only
+.claude/skills/verify-<app>/SKILL.md   stub from <generator>/references/claude-stub.md
+.claude/settings.json                  "Bash(sudo:*)" merged into permissions.deny
 ```
 
-`<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`. Claude Code reads only `.claude/skills/`, so the stubs exist for it. Never use symlinks: Windows checkouts turn them into plain files.
+`<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`;
+Claude Code reads only `.claude/skills/`, so the stub exists for it. Never use symlinks.
+Never edit `SKILL.md`, `bin/verify`, `bin/lib.sh`, `bin/pw.sh` or `bin/pw-close` for the project: an upgrade replaces them.
+Everything project-specific goes into `PROJECT.md`, `bin/` helpers and `features/`.
 
-Helper agents build and repair the recipes, so your own context stays small. A **recorder** writes one feature's recipe and runs it against the live app with `bin/rec.sh` (step 4). A **fixer** repairs one recipe that failed a drive (step 7). Each gets a brief file, and both briefs send it first to the **common file**, `.cache/record/brief-common.md`, which holds what is the same for every helper. Helpers and Helper briefs in [`references/maintain-verify.md`](references/maintain-verify.md) describe both helpers, their brief files and what you read of their work.
+## Companion repo
 
-## 1. Interview the repo, not the user
+Some projects must not show that agents work on them. Their skill lives in a companion repo:
+a separate git repo next to the app checkouts that holds only agent files. Run one
+`git ls-files` here. When it lists no app source, this is a companion: ask for the path of
+each app checkout and write `.agents/skills/verify-<app>/apps`, one line `<name> <path>` per
+app, the path relative to this repo's root. `bin/verify` exports each as `APP_<NAME>` (upper
+case, `-` as `_`), and a value the caller set wins. Recipes, `# touches:` and helpers name app
+files as `<name>/<path>` and reach them through `$APP_<NAME>`.
 
-Answer these from the codebase. Ask the user only what you cannot observe.
+Nothing goes into an app checkout: no file, no dependency, no build output. Build from a copy
+under `.cache/` or send build output outside the checkout. Run git against a checkout with
+`GIT_OPTIONAL_LOCKS=0`. A checkout that does not build is reported, not fixed. Playwright,
+when needed, goes into the companion's own `package.json`.
 
-- **Surface:** what the project exposes to people or other software: web UI, CLI/TUI, desktop app, API, mobile app, firmware, library. Pick the primary one and note the rest.
-- **Verification triggers:** the changes that should make an agent use the skill, named from this repo for its `description`. Include internal components and configuration, not only screens. Examples: endpoints, services, migrations, routing and authentication for a backend; command handling, output and file effects for a CLI. Observable behavior includes responses, permissions, stored data, background jobs and external side effects.
-- **Run:** how the app starts locally. Prefer the repo's documented dev command. Note ports, env vars, seed data and auth.
-- **Depends on:** what must run next to it: databases, auth servers, other services. Read the README and the docs it links (a `PLATFORM.md` naming sibling repos, compose files). For a service in another repo, learn how to start it there. Ask the user where that checkout is if you need to read it.
-- **Contract sources:** the README, docs, plans, tests and specs that say what the features should do. Note when they only mention the features without saying what they should do, such as a high-level README.
-- **Existing harness:** specs, helper scripts, sign-in or seed tools, curl-able endpoints, a debug port. Reuse them.
-- **Side effects of starting:** what startup may change: files, data, processes, external systems. Check what is already running (`ps`, `ss -ltn`), such as an installed copy of the app holding a port, a global hotkey or a single-instance lock, and record it as original state. See [`references/lifecycle.md`](references/lifecycle.md).
-- **Observe:** the evidence you can capture: screenshots, accessibility snapshots, terminal transcripts, response bodies, logs, exit codes, database state.
+## 1. Read the repo
 
-If the checkout does not build or start as-is, fix that first, or report it precisely, before generating; in a companion, only report it. A skill written against a broken base teaches wrong steps. When an irrelevant missing asset blocks startup, the generated skill may create it, marked as verification scaffolding, and remove it in cleanup.
+Answer from the codebase; ask only what you cannot observe. Spend minutes, not an hour.
 
-## 2. Decide once, write one path
+- **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs.
+- **Run:** how the app starts locally, its dependencies, ports, seed data and sign-in.
+- **Harness:** existing end-to-end specs, sign-in or seed helpers, curl-able endpoints.
+- **Entry points:** the files that define routes, screens, commands or endpoints, found
+  with one grep. That grep becomes `bin/entrypoints.sh`.
+- **Checks:** the focused test, lint and type-check commands.
+- **Sibling repos:** another repo the app needs at run time, such as a backend. Use the path
+  its docs name, else `../<name>`, and write it into `PROJECT.md`.
 
-Decide these now, with the user where needed, and write the concrete choice into the skill.
+If the app does not build or start as-is, fix that or report it before going on.
 
-- **Isolation.** Verification must never touch what the developer uses. Choose the isolation level (`full`, `shared` or `checks-only`), the ownership markers and the lifecycle commands, following [`references/lifecycle.md`](references/lifecycle.md). Ask the user only when `full` is not possible.
-- **Drive tool.** Reuse the repo's own harness first. Otherwise use the defaults in [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Every step is a shell command.
+## 2. Isolation
 
-## 3. Write `verify-<app>`
+Choose the isolation level once, following
+[`references/lifecycle.md`](references/lifecycle.md): `full` (default), `shared` or
+`checks-only`. A run never listens on the project's default ports (such as 3000, 5432,
+8080), even when they are free; check the stack's port choice before the first `up`: the developer's own tools connect there and would write into the run. Take ports
+the run picks, or the stack's spare-port option; when the stack has none, add one to it as
+part of the repo. Recipes read every URL and port from `env.sh`, never `localhost:<default>`.
+A project with `local-stack/stack` uses it: `launch.sh` runs
+`local-stack/stack up --app --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the
+features need, and `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"` and
+removes both registry files, `<stack>-<run id>.json` and `<stack>-<run id>.lock` under
+`~/.local/state/local-stacks/`, of that stack and of every stack it started for a
+dependency, then checks that neither remains. Ask the user only when `full` is not
+possible.
 
-Write `.agents/skills/verify-<app>/SKILL.md` following [`references/verify-skill-spec.md`](references/verify-skill-spec.md). Include the failure rules from [`references/drive-failures.md`](references/drive-failures.md). Copy [`references/drive.sh`](references/drive.sh), [`references/steps.sh`](references/steps.sh) and [`references/rec.sh`](references/rec.sh) to `bin/` unchanged. Write the other helpers in `bin/` and make them executable, among them `observe.sh` and `find.sh` for this project's driver, as the spec's Helpers item describes: `rec.sh` looks at the app only through them. Each line of the Helpers section shows one real call of its helper, as the spec's Helpers item describes.
+## 3. Write the environment and `PROJECT.md`
 
-## 4. Map every feature
+Write and make executable:
 
-List the features the project exposes to people or other software: screens, route groups, commands, endpoint groups, library operations, and their data effects and background processing. One grep over routes, navigation, command definitions and endpoints lists them, next to the docs read in step 1: a list, not a read of every component. Do not map internal functions. In `quick` mode, keep only one feature per surface, the ones step 7 drives. Each UI, each CLI and each API with its own clients or sign-in is a surface: a web UI, a REST API for integrations and a mobile app's API are three. Follow [`references/feature-map-example/`](references/feature-map-example/).
+- `launch.sh`: creates and starts the run's environment, registering each resource as it is
+  created, and waits until it is ready with a bounded deadline. With `VERIFY_APP=dev`, the
+  runner's default for the main copy, it runs the app with its developers' own dev command,
+  such as `next dev` or `./mvnw spring-boot:run`, as a process the run records, so a code
+  change needs no image build: in trials a web change reached the next drive in 8 s instead
+  of 45 to 60 s, and a backend change in 15 s instead of 40. With `VERIFY_APP=build` it runs
+  the production build. It is idempotent: when the run's environment already exists, it
+  restarts only what a code change needs, so a second `bin/verify up` takes seconds.
+  `$VERIFY_RUN_ID` names the run and is stable until `bin/verify down`.
+- `cleanup.sh`: removes only what the run created, on success, failure and interruption,
+  and checks that none of it remains. It never checks resources that existed before. With no
+  run recorded, it exits 0.
+- `env.sh` (optional): exports the run's values that recipes and helpers need, such as base
+  URLs, ports and keys, read from the run's record. The runner sources it before each recipe.
+- `after-feature.sh` (optional): runs after every recipe's `cleanup`, such as closing the
+  feature's browser session, so a finished feature holds nothing until `bin/verify down`.
+- `doctor.sh`: one fast, read-only check that the environment is this run's and healthy:
+  processes up, right checkout, ports owned, sign-in works. It never adopts a process outside
+  the run's record.
+- `observe.sh <path>`: saves the app's current state for a failed step: the snapshot or
+  screenshot of the feature's browser session (`$VERIFY_SESSION`), the last HTTP response, or
+  the last command output.
+- `entrypoints.sh`: prints every entry point, one per line, as `<entry point><TAB><file>`:
+  a route with its method (`POST /api/notes`), a screen's path, a command (`todo add`), a
+  job or message handler. It is a search over the source, such as route annotations or a
+  router file, so it finds new entry points by itself. When the project's framework is in
+  [`references/discovery.md`](references/discovery.md), list them the way it says: some
+  frameworks build entry points at run time, from configuration or the database, where no
+  source search finds them. List only what a user or client calls: not update or deploy
+  hooks, migrations, compose services or schemas. In trials 236 of a Drupal site's 402
+  lines were update hooks. `bin/verify uncovered` compares it with the recipes'
+  `# covers:` lines.
+- `actions.sh`: prints every user action, one per line, as `<name><TAB><file>`: each
+  function a screen runs when the user acts (event handlers such as `handleDelete`, form
+  submits), or for a project without a UI each handler method behind an entry point. It is
+  a search over the source, like `entrypoints.sh`. An inline handler
+  (`onClick={() => remove(id)}`) is named after its element's label or test id, such as
+  `Delete button`, never a line number: in trials line-numbered names changed whenever the
+  file shifted. A handler the screen gets from a hook or a parent
+  (`const { start } = useDeviceControl()`) is listed under the screen's file too: in trials
+  a search for `const handle...` missed a screen's Start, Pause and Stop buttons. `bin/verify uncovered` lists each action
+  that no recipe's `# expects:` line cites by its file and name, and `bin/verify affected`
+  lists those in changed files: in trials nothing listed a screen's Delete, no recorder
+  wrote a step for it, and a bug planted there went uncaught in two generations.
+- Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
+  `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
+  variables it reads.
+- A helper that runs a command inside a container passes environment overrides through
+  (`bin/cli -e KEY=VALUE <command>`), so a recipe can point one command at its own schema,
+  prefix or folder.
+- Driver helpers, keyed on `$VERIFY_SESSION` when they keep state. For a web UI without its
+  own harness, copy `<generator>/references/pw.sh` and `<generator>/references/pw-close` to
+  `bin/` unchanged, and write into the skill's `pw-version` file a Playwright version whose
+  browser build is installed (`ls ~/.cache/ms-playwright`); `pw.sh` installs it under
+  `.cache/` on first use. `pw.sh` runs the Playwright CLI in the session
+  `$VERIFY_RUN_ID-$VERIFY_SESSION`, attaches every session as a context of its own to one
+  browser per run, waits in the machine-wide queue before a session opened by hand, closes
+  hand sessions idle for 2 minutes, logs each call's duration in `$VERIFY_DIR/pw-calls.log`,
+  and ends every `run-code` with a hidden same-origin frame load, because the CLI otherwise
+  waits up to 5 s for requests Chrome never reports finished. Its header says how to call
+  it. `after-feature.sh` runs `bin/pw-close feature` and `cleanup.sh` runs
+  `bin/pw-close run`; no recorder calls it, because other drives share the run's browser.
+  In trials writing this helper by hand took minutes of every generation, and one
+  generation's version left two browser servers running after cleanup. Then write:
+  - a sign-in helper that saves each account's storage state once per run and loads it in
+    one call, signing each account into a browser session of its own: a second account in
+    the same session is signed in as the first through the sign-in provider's cookie;
+  - creating or deleting an account also removes that account's cached state and token;
+  - a cached file (token, storage state) written through a temporary file of its own
+    (`mktemp` in the same folder) and `mv`: features sign in at once, and a shared
+    temporary name makes one feature's `mv` fail.
+  For an API, an `api` helper wraps `curl` with the base URL, auth, `--max-time`, and saves
+  the last response for `observe.sh`.
 
-Write `features/README.md` first. It holds the baseline every feature starts from, the driving conventions, the gotchas, the feature file shape and the index. `## Gotchas` lists the traps that hit every feature, one line each with its fix; it may start empty, and step 8 adds what recorders found. The common file carries this file's Baseline, Driving conventions, Feature file shape and Gotchas sections, next to the skill's Helpers section, and the recorder reads no skill file. So the Driving conventions state each recipe rule of this step once, tersely, and add `Driver limits`: the traps of this project's drivers, one line each with its fix. Examples:
+Then write `PROJECT.md`, about 10 KB, with these sections (a trap of one feature goes in
+that recipe's header, not here):
 
-- Playwright CLI: `pw.sh click` and `fill` do not wait for the element, so wait for it first. No command prints a confirm dialog's text, and every command fails while one is open; wrap `window.confirm` in `run-code`. A multi-line string breaks `run-code`; join its lines. A locator containing `"` goes inside `run-code`, not on the command line. `locator.ariaSnapshot()` drops generic names; read attributes instead. A role name matches as a case-insensitive substring; pass `exact: true` when another name contains yours.
-- HTTP: check the status before the body, because an error response can carry a body that matches. `curl … | grep -q` fails under `pipefail` when `grep` exits before `curl` finishes writing; save the body to a file and check the file. A list endpoint returns one page; follow its pagination before counting. An auth token can expire during a recipe; get a fresh one in Preconditions.
-- CLI: check the exit code before stdout, because a failing command can still print the expected text. Errors go to stderr, which `$(...)` does not capture; check it separately.
+- **Drivers:** the driver phrase, such as `Playwright CLI and curl`, and why.
+- **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
+  markers, and the success paths isolation makes unreachable.
+- **Environment:** what `launch.sh`, `cleanup.sh` and `doctor.sh` do, how long a first and
+  a second `bin/verify up` take.
+- **Sign-in and data:** the test accounts and baseline data a recipe can count on, each
+  checked with one command against the running environment.
+- **Stubs:** for each stub or fake service in the run, what it returns and stores and what it
+  cannot do (such as an ML stub that stores nothing, or a collector that returns no data),
+  each checked with one call. Recorders read this instead of finding it out in failed runs.
+- **Helpers:** one line per helper with one real call as a recipe writes it, what it checks
+  or returns, and its deadline when it waits.
+- **Focused checks:** the test, lint and type-check commands.
+- **Gotchas:** traps that hold for several features, one line each with the fix. A trap of
+  one feature stays in that recipe's header. Start with the driver's.
+  Playwright CLI: act through `run-code` only. The CLI's `click` and `press` wait 6 to 10 s
+  for the network to go quiet and do not wait for the element; a `run-code` click takes
+  about a second. After a click that navigates, wait for the new URL or state before the
+  next check. After `goto` or `reload`, wait for an element only the client renders before
+  the first click: a click before the page is interactive does nothing. A `confirm()`
+  dialog blocks every command until it is handled; a role name
+  matches as a substring unless `exact: true`. The `run-code` function runs in a bare
+  sandbox: Node and browser globals such as `URL`, `require` and `console` are not there,
+  so parse URLs and log inside `page.evaluate`, or return the value.
 
- The recorder's brief carries its own index line, the other features' names, the scope rule and what to do past about 15 steps, so the conventions leave those out. The index gives every feature one line with its name and scope before any recorder starts. `verify-<app>`'s Pick features step and maintenance select features by comparing a change with those scopes, so each scope names the behavior and the data the feature covers. No behavior falls in two scopes.
+Copy `references/verify-skill.md` to `SKILL.md` with `<app>` filled in, `references/verify`,
+`references/lib.sh`, `references/harvest` and `references/areas` to `bin/` (with `pw.sh` and `pw-close` for a web UI), and write the Claude stub and `.gitignore`. Then run
+`VERIFY_APP=build bin/verify up` in the background and do step 4.1 while it builds; then run
+`bin/verify up` again and time both. Generation drives the production build: a dev server
+held 1.5 to 6.5 GB in trials, where the production app held 83 MB, and under 240 features at
+once it lost clicks that landed before a page was ready. The first `up` records how much memory and time one
+copy of the environment takes, which the runner needs to decide on lanes later. Before
+recorders start, run `bin/verify up --lanes 1`, so every drive runs its `# alone` features
+on that extra copy. A feature marked `# alone` waits until its copy is free of other
+features and then holds it alone, so on a single copy every other drive stopped meanwhile:
+in a replay of 214 features in 51 drives at once, one extra copy cut the time from 359 to
+236 s. When the build bakes ports into an image (such as
+`NEXT_PUBLIC_*` URLs), each lane builds its own.
 
-Each feature file starts with an H1 and one paragraph on the observable behavior, then exactly five H2s in this order:
+For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data
+folder and builds once, and `doctor.sh` checks that the folder is the run's and the build is
+current.
 
-1. `Sub-features`: short IDs, one line per behavior.
-2. `How to get to it (user POV)`: every entry point a user has.
-3. `Driving it with <tools>`, naming every driver the recipe uses: `Preconditions:` with its setup, then labeled bullets `- **<Label>.**`, each a **step**. Every step states one user action and its observable result in one or two short sentences, followed by a fenced `bash` block. Split a step that proves several results. The block exits non-zero when the result is not met: a command that only prints a value gets a check, such as `test`. Blocks run under `set -euo pipefail`, where `! command` never fails a block, so write negative checks with `test` or `if`. Preconditions get a block too. End with proof, then the known-failure step described below, if any, then a last step labeled `Clean up` that removes the feature's fixtures; `drive.sh` runs it even after a failure. A fixture that is itself a user action worth proving gets its own step. The section holds at most about 15 steps, `Clean up` included, because a recorder's cost and context grow with every step it writes and repairs. A feature that needs more is several features, split by groups of sub-features, each with its own file and index line.
-4. `Contract`: one line per mapped `section`, `- <file>:<heading> → <step labels>` or `- <file>:<heading> → not driven: <reason>`. `rec.sh run` and `drive.sh --check` refuse a file that skips one.
-5. `Gotchas`: traps that waste or invalidate a run.
+Build the environment for speed, because every recipe pays for it on every run:
 
-Keep code paths out of the feature files and the index. Every behavior the contract sources name for the feature, such as a test case, a README sentence, a plan's acceptance line or an entry point, gets a step. So does every sub-feature line and every entry point the file lists, or it is reported as blocked with the reason. A test case names a behavior to drive through the app; a recipe never runs the project's own tests or build. The feature's index line bounds it: a step belongs to the feature whose index line names the behavior. A behavior another feature's index line names is not tested again here. When the recipe needs it, it is setup, done in the fewest commands and with no check beyond what the recipe's own steps need. A behavior that fits no index line is reported under Split or Blocked, never tested in passing.
+- Key every per-run file and port on `$VERIFY_RUN_ID`, never a fixed path such as
+  `.cache/run/`, so lanes (extra copies of the environment, `bin/verify up --lanes N`) can
+  run side by side.
+- Shorten every timer the features wait on in the run's own configuration: job intervals,
+  retry delays, grace periods, expiries, polling. When the project's stack fixes the
+  environment and has no override hook, add one to the stack as part of the repo (such as a
+  compose override file it reads), or note the gap and start the job once per recipe. Write each override and the recipes that
+  rely on it into `PROJECT.md`; before shortening a job for all features, check which
+  recipes set up the state that job consumes.
+- Keep each copy small so lanes fit in memory: cap worker counts and heap sizes (a JVM
+  without `-Xmx` takes a quarter of the machine). Start the project's own JVM apps with
+  `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`; it cut startup by 15 to 20% in trials. Give
+  every service of the run a memory limit, third-party ones included: a container limit
+  (`mem_limit`) about one and a half times what it uses after a busy run (the example
+  recipe's flow plus a few hundred sign-ins, 30 at a time), read with `docker stats`, never
+  sized from an idle stack. A runtime that sizes its heap from the
+  container, such as a JVM, then stays inside it; in trials an uncapped Keycloak grew to
+  8 GB in one drive, and a limit of twice its idle use got it killed for memory. Change only the limit of a
+  third-party service, never its startup flags: Keycloak's start script picks a collector
+  that clashes with `UseSerialGC` and does not start. When the services come from the
+  project's local stack, the limit goes into that stack (`create-project-local-stack`),
+  not into the run.
+- A stub or helper that starts a process stops any leftover of the same feature first, so an
+  interrupted run never blocks the next one.
+- Lanes share one build: build images or artifacts once, under a lock, and let every lane
+  start from them.
+- Restarting the app, such as for a clock shift, polls readiness every half second and
+  never runs the whole doctor. `cleanup.sh` stops throwaway containers without a grace
+  period (`docker compose down -t 1`).
+- `doctor.sh` retries each probe a few times with a 30 s limit, so a loaded machine never
+  stops a drive with a false failure.
 
-Each recipe runs from the documented baseline in its own session, possibly while other features run. It sets up its own data instead of relying on another feature having run. Steps of one feature share shell variables and functions, so the Preconditions block can define what later steps use. A feature you saw change state other features read, such as global settings, says `Runs alone.` in its Preconditions sentence; nothing else runs features one at a time. Prefer a fresh identity or namespace per recipe over deleting fixtures afterwards. Otherwise restore fixtures so the recipe can run again. For an irreversible operation, use a disposable fixture the run removes. Administrative setup and cleanup are fine inside the isolated environment, but never substitute them for the user action being proved. The example map is a fictional app: derive real commands from this project and run them.
+At level `checks-only`, skip launching and recording: write no recipes, put the focused
+checks in `PROJECT.md`, and go to step 6.
 
-Blocks wait for the observable state with the project's wait helpers or the driver's own waits, never with `sleep` or a fixed timeout in place of a condition. A contract that states a time, such as "expires after 2.5 s" or "autosaves about 400 ms after the last keystroke", is checked with a wait bounded to that time plus a small margin, never with a helper's default deadline. The proof step saves evidence under `.cache/evidence/<feature>/`: a screenshot or accessibility snapshot for a UI, the response body or command output otherwise. `Clean up` removes what the recipe created and closes its sessions, without checking that they are gone: `bin/cleanup.sh` removes the run's leftovers. `|| true` goes only on a command whose failure cannot matter, such as one of those deletes. When the app does not do what the contract says, that behavior is a **known failure**, and its check stays in the recipe. The check goes into the **known-failure step**, run with `rec.sh <feature> run --known-failure '<Label>'`, so every drive reports it and still proves the rest. `drive.sh` stops at the first failing step, so that one step carries all of the feature's known failures, in one block that runs every check and fails at the end. Any setup it needs happens inside that step. Its sentence states the contract. It is never weakened, dropped or moved to Gotchas.
+## 4. Record every feature
 
-Then record the features. At isolation level `checks-only`, skip launching and recording: write each Driving section as step sentences without `bash` blocks, and its steps stay `blocked: no isolation`. Otherwise write `maintain-verify-<app>` first, as step 5 describes, because `rec.sh` reads its brief templates from it. Then record every feature as that skill's Update the map step 3 does, from the launch to `bin/rec.sh install`. Only these things differ on a first run:
+1. Run `bin/areas > .cache/areas.txt`. It reads the source in under a second and groups
+   the entry points into areas of about 1,000 lines of source each, one line per area:
+   `<area>: <n> lines; entry points: <...>; files: <...>`, the files being the entry points'
+   folders and the project files they import. It cuts a larger screen into runs of files
+   of one folder, each with the screen's entry points. One recorder records one area. Areas
+   that size end at about the same time: in trials areas of 500 to 1,000 lines took 3 to 10
+   minutes and areas of 1,300 to 2,700 lines took 14 to 25, because a recorder lists and
+   checks every behavior it reads, and one recorder of the largest area finished 10 minutes
+   after all the others. Then review the file, which takes minutes, not the quarter hour
+   that grouping by hand took in trials:
+   - a line still marked `split:` is one file over the size: leave it, its recorder takes
+     longer;
+   - rename an area whose name does not say what the user calls the screen, such as one
+     named `area2-<name>`;
+   - move a file to the area that uses it most when a line misses it, such as a component
+     two screens share.
+   No area name equals another or starts with another followed by `-`: features are named
+   `<area>-<goal>`, and `bin/verify uncovered <area>` finds an area's features by that
+   prefix. A feature's name is its file name and never a `verify` command (`list`,
+   `all`, ...). Do not name features: the recorder lists every behavior of its area from
+   the source and splits that list into features of 8 to 15 steps by user goal itself. In
+   trials a recorder turned one screen into 7 features and 69 to 79 passing steps in 10
+   minutes, where a recorder given two named features wrote 13 steps. For each area, write
+   its expectation list with
+   `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt`:
+   every test name in the test files, and the docs headings that match the words, with the
+   lines under them. Give each area only its own test files. Then delete another area's
+   tests from a test file two areas share, and tests of internals (pure functions,
+   formatting, chart math). Every remaining test and heading in the file is a source one of
+   the area's recipes must cite in an `# expects:` line, and `bin/verify uncovered <area>`
+   lists each one none cites, so recorders never search for behavior and never skip it.
+   When the docs have no heading that matches the area, the file holds its tests only; the
+   recorder takes the rest from source.
+2. Write the first recipe yourself, for the simplest feature, following the Recipes section
+   of the skill you copied, named `<area>-<goal>` after its area; that area's recorder
+   keeps it. Run `bin/verify <feature>` until it passes. It becomes the
+   example every recorder copies, so make it clean. Then drive the main create path by
+   hand once: create the same record twice, and read it as a second tenant or user. Write
+   what that shows about ids, uniqueness and shared data into `PROJECT.md`'s Gotchas before
+   any recorder starts, so no recorder pays for the same trap. Also write the setup helpers
+   several features need, such as signing in as each role, creating an account with a role,
+   provisioning a subscription or workspace, adding a member, or reading the run's mail.
+   Call each once the way a recipe calls it, after deleting its cached state (such as saved
+   sign-ins), so its slow path runs too: in trials, four recorders each spent minutes
+   working out the same setup alone, and a sign-in helper whose cache hid a wrong argument
+   failed four recipes on the first fresh drive.
+3. Start recorders with the short prompt in the skill's Recorders section: one area each,
+   every area at once, heaviest first. Each area's line in `.cache/areas.txt` lists its
+   source files, so the recorder reads them instead of searching, and the
+   short prompt lets you start twenty recorders in seconds instead of minutes. A recorder
+   writes all its area's recipes first, then drives and fixes them together, so an area of
+   five features takes about as long as one feature. Recorders need no limit of their own:
+   a recorder spends most of its time on the model, which costs this machine little, and
+   every feature run and browser session waits in one queue for the whole machine, which
+   keeps the user's reserve of memory free (see the skill's Commands section). The host's helper limit (Claude Code runs 19 or 20 helper agents at once,
+   Codex 3) does not limit recorders either: start the areas beyond it as headless sessions
+   of your own CLI, from the repository root, in the background, each with the same short
+   prompt, its output in `.cache/recorders/<area>.log`:
+   `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
+   `codex exec -m <model> --full-auto "<short prompt>"`. In trials 30 headless sessions
+   started at once with no rate limit. Each headless session is a process of its own, so
+   run `bin/verify room` before starting each one: it returns once the machine has room.
+   Use headless sessions only when your own session
+   runs commands without asking; otherwise queue the areas past the limit and start one
+   as each recorder returns. With no helper agents and no CLI, record the rest yourself. Start recorders on the host's fast model
+   (such as `sonnet`) when it offers one: in trials it was 3 times faster at the same depth.
+   Start them in the background; never block on a
+   foreground command while recorders run, or their returns reach you late. Give a feature its own
+   namespace (schema, prefix, account, data folder) before marking it `# alone`. A
+   recorder's result is the file it writes last, `.cache/results/<area>.txt`, not
+   the host's completion notice: notices can be lost. A result file that appears is a
+   returned recorder, with or without a notice. After 25
+   minutes, start no new recorder and list the areas not reached; sending a failing
+   feature back in step 5 is still allowed.
+4. Read only their result files. Fold their traps into `PROJECT.md`'s Gotchas.
 
-- Every feature is new: none has a file in `features/` yet. In the once-per-run command the mode is `full` and `refused` is empty, so `convert.txt` stays empty.
-- There is no `features/last-reviewed` and no starting record, so no brief lists changes or changed conventions, and `rec.sh sendback` prints nothing.
-- The project has no recipe yet, so until a staged copy of at least five steps has passed `rec.sh run`, `rec.sh common` takes its example from `.cache/record/first-example.md`. Before the first `rec.sh common`, write that file from [`references/feature-map-example/create-note.md`](references/feature-map-example/create-note.md) with `awk '/^## /{d = /^## Driving it with/; next} d && /^Preconditions:/ {p = 1} d && /^- \*\*/ && ++n > 2 {exit} p' <generator>/references/feature-map-example/create-note.md > .agents/skills/verify-<app>/.cache/record/first-example.md`, where `<generator>` is this skill's folder.
+## 5. Prove it
 
-## 5. Write `maintain-verify-<app>` and the stubs
+Run `bin/verify down`, `VERIFY_APP=build bin/verify up` and `bin/verify all`, so every recipe
+runs once more from a fresh environment while the others run in parallel. Send each failing feature back to
+a recorder with its summary line, and at once, while they work, drive every other feature
+again on the same environment (`bin/verify $(bin/verify list | cut -d: -f1 | grep -vxF -f <failing>)`): a
+recipe that fails the second time is not repeatable. A returned recorder has driven its
+feature with others, so drive only the returned features once more at the end, never
+everything again: in trials the second full drive waited 4 minutes for the repairs. The runner starts up to as many features at once as the
+machine has cores, each only when the machine-wide queue has room; write a `jobs` file only
+when the project needs a lower limit, such as a service with few connections. When `# alone`
+features remain, write into the skill's `lanes` file the most extra copies a drive may
+start: about their total time divided by the longest parallel feature. A drive starts a
+copy only when its `# alone` features take at least twice as long as a copy takes to
+start, and only while the copy fits beside the reserve; a recorder's drive of a few
+features never starts one. Then check the lifecycle once:
 
-Copy [`references/maintain-verify.md`](references/maintain-verify.md) to `.agents/skills/maintain-verify-<app>/SKILL.md` and [`references/maintain-verify-openai.yaml`](references/maintain-verify-openai.yaml) to `.agents/skills/maintain-verify-<app>/agents/openai.yaml`. Replace `<app>`, and replace `<driver>` with the driver named in `verify-<app>`'s driver block. Step 4 does this before the first recorder starts. Write this project's main-screen snapshot command into Update the map step 3, and 6 in place of `<n>` in `Recorders at once: <n>`, which `rec.sh next` reads. Merge `Bash(sudo:*)` into `permissions.deny` of `.claude/settings.json`, keeping what the file holds, so no recorder on Claude Code runs `sudo`. Adjust only what this project needs besides, for example how its PRs are opened.
+- `bin/verify lint` and `bin/verify uncovered`. Send each area with an uncovered entry
+  point, action or expectation line back to its recorder; it lists nothing when done.
+- Commit, change one file a feature touches, and check that
+  `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
+  every new recipe counts as changed. Undo the change. In a companion, change a copy of the
+  app checkout instead and point `APP_<NAME>` at it.
+- Check that `bin/verify down` leaves nothing of the run outside `.cache/`: no process, port,
+  container, browser session or file.
 
-Write the two Claude Code stubs from [`references/claude-stub.md`](references/claude-stub.md). Their `name` and `description` must match the real skills exactly. The maintain stub also carries `disable-model-invocation: true`.
+## 6. Instructions and hand-over
 
-## 6. Reconcile the project's verification instructions
+Write one `## Verification` section in the project's `AGENTS.md` (the companion's, in a
+companion repo; create the file when there is none) from [`references/agents-verification.md`](references/agents-verification.md),
+with `<app>` and the focused check commands filled in. Integrate an existing verification
+section instead of adding a second one; a section that points at a verify skill this run
+replaces is rewritten. If there is no `CLAUDE.md`, create one holding only
+`@AGENTS.md`; if one exists without that import, put the same section there too. Replace
+agent instructions for launching the app by hand with a pointer to the skill; leave the
+README's instructions for people. Report an older verification
+system instead of deleting it.
 
-Write one coherent `## Verification` section in the project's `AGENTS.md`, from [`references/agents-verification.md`](references/agents-verification.md). Replace `<app>` and `<work-scope>` with the app name and a concrete scope, such as "backend work" or "command-line tool changes". Integrate an existing verification section instead of appending a second one. With several apps, say which surface each skill covers. Use links relative to `AGENTS.md`.
-
-Claude Code reads `CLAUDE.md`, not `AGENTS.md`. If the project has no `CLAUDE.md`, create one that holds only `@AGENTS.md`, which imports it. If it has a `CLAUDE.md` that does not import `AGENTS.md`, put the same section in `CLAUDE.md` too.
-
-Read the rest of those files and anything they import for conflicting verification guidance. Replace superseded manual launch and cleanup recipes with references to the skill. Reconcile stale startup restrictions with the user's instructions and existing authorization. Do not invent a new approval requirement or silently remove a deliberate restriction. If a conflict cannot be resolved from those instructions, ask about that one conflict. Keep ports, resource names and lifecycle commands only in the skill, so there is one maintained procedure.
-
-Keep the project's test, lint and type-check guidance, and add the exact focused commands from the repo where missing. In a companion, each command names its checkout and writes nothing into it: use the tool's no-write option, such as `python3 -B`, or run it in a fresh copy under `.cache/`, as `mvn test`, which writes `target/`, needs. Do not turn every verification into a full build. If an older verification system exists, report what it overlaps and conflicts with. Do not delete it without explicit authorization. Leave unrelated instructions alone.
-
-## 7. Prove it
-
-At isolation level `checks-only` there is no launch and no `drive.sh` call: the proof is the focused checks that [`references/lifecycle.md`](references/lifecycle.md) names, and every feature is reported `blocked: no isolation`. The rest of this step applies to the other levels.
-
-The selected features are every mapped feature; in `quick` mode, the recorded ones. Drive them in parallel, check that parallel features stayed apart, and write the `--jobs` value that worked into the skill's Drive section. Drive them from a fresh environment, not from the state the recorders left, and fix the failing ones, as `maintain-verify-<app>`'s Drive the selected features section says.
-
-- **Default:** every recipe passed `rec.sh run` on the recording environment, ending with its `Clean up` step, and then ran in this newly created environment with no reset step, so each feature has been run, cleaned up and run again. When startup creates more than one resource, also force a startup failure after one resource exists and check that cleanup removes it. Check that cleanup removes only the run's own resources and that evidence survives. Test the wait helpers with a short completion and a timeout. Re-run only the affected checks after a correction.
-- **`quick`:** skip the failure test. Then clean up and check that evidence survives.
-
-A feature that is partial, blocked or failing is reported as such. Writing the map does not complete the proof. A generated skill without live proof is a draft, even if a PR is already open.
-
-## 8. Hand over
-
-When `.cache/record/traps.md` has lines, read it once and fold the lines that still hold into the `## Gotchas` list of `features/README.md` in one edit. Remove the working notes under `.cache/record/`, except the `.cache/record/<feature>/` folder of each blocked feature, so a later pass starts from its staged copy, and name that folder in the report. Commit everything following the repo's branch and commit conventions. In the default mode, after a live proof, `bin/rec.sh reviewed '<message>'` then commits `features/last-reviewed`, so the next `/maintain-verify-<app>` reads only what changed since. In `quick` mode and at `checks-only`, write no `features/last-reviewed`: without it, the next `/maintain-verify-<app>` greps the whole app and adds the features this run did not map. Report per the generated Report section, plus the isolation level, the lifecycle checks and the known failures as possible product defects: each with its feature, the step that carries it and the contract it misses. When you break something on purpose to test a helper and the helper correctly stops, write "stopped it, as expected", not "failed". Example: "Doctor: I stopped a container, and Doctor correctly refused to continue." In `quick` mode, say that the map is partial. Name the features no source says the behavior of: their `## Contract` section is empty or maps only a high-level README's overview. Say that their expectations are the behavior observed on this date, to be questioned by whoever changes that area, because nothing in the run could tell a bug from an intention. When that is every feature, say it once for the whole map. Say that keeping the map in step with the app from now on is `/maintain-verify-<app>`'s job, and explain the maintenance calls:
-
-- `/maintain-verify-<app>` updates the map where source changed since its last pass, adds missing features and drives those with new or changed steps.
-- `/maintain-verify-<app> map only` updates the map without feature drives.
-- `/maintain-verify-<app> full audit` drives every feature.
-- `/maintain-project-verification-skill` brings the project's skills up to date when this generator changes. It accepts the same three modes and runs focused checks for changed helpers in every mode.
+Merge `Bash(sudo:*)` into `permissions.deny` of `.claude/settings.json`, keeping the rest.
+Commit following the repo's conventions. Report: the isolation level, how long recording and
+`bin/verify all` took, one line per feature (pass, fail with its kind, or blocked with what
+was tried), product defects found, and the features not reached.
