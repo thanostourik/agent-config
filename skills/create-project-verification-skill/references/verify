@@ -2,9 +2,9 @@
 # verify: drive this project's feature recipes. Shipped by create-project-verification-skill; never edit it in the project.
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
-#                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; lanes always run the production build
+#                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
 # verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
-# verify all                drive every feature
+# verify all                drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
 # verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers
@@ -538,6 +538,56 @@ drive() {
   return $result
 }
 
+up_env() {
+  local previous count failed=0 before="" began used lane
+  [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; echo "${VERIFY_APP:-dev}" > "$cache/app-mode"; }
+  previous=$(lane_count)
+  echo "${lanes:-$previous}" > "$cache/lanes"
+  for ((lane = previous; lane > $(lane_count); lane--)); do
+    on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; return 1; }
+  done
+  count=$(lane_count)
+  [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
+  began=$SECONDS
+  if ((count == 0)); then
+    on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
+  else
+    for ((lane = 0; lane <= count; lane++)); do
+      on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 &
+    done
+    for ((lane = 0; lane <= count; lane++)); do wait -n || failed=1; done
+    ((failed == 0)) || tail -n 20 "$cache"/launch-*.log >&2
+  fi
+  ((failed == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; return 1; }
+  for ((lane = 0; lane <= count; lane++)); do
+    on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; return 1; }
+  done
+  if [[ -f "$cache/run-id.unmeasured" && -n "$before" ]]; then
+    used=$(((before - $(meminfo MemAvailable)) / (count + 1)))
+    ((used > 0)) && echo "$used" > "$cache/stack-mb"
+    echo $((SECONDS - began)) > "$cache/lane-seconds"
+    rm -f "$cache/run-id.unmeasured"
+  fi
+  echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")"
+}
+
+down_env() {
+  local count failed=0 lane lock
+  if others_running ""; then
+    echo "verify: features are still running ($(for lock in "$cache"/drive/.lock-*; do held "${lock##*/.lock-}" && printf '%s ' "${lock##*/.lock-}"; done)); run 'down' again once they finish" >&2
+    return 2
+  fi
+  count=$(lane_count)
+  if [[ -f "$cache/run-id" ]]; then
+    for ((lane = count; lane >= 0; lane--)); do on_lane "$lane" "$skill/bin/cleanup.sh" "$@" || failed=1; done
+  else
+    "$skill/bin/cleanup.sh" "$@" || failed=1
+  fi
+  ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; return 1; }
+  rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes" "$cache/app-mode"
+  echo "down"
+}
+
 cd "$root"
 mkdir -p "$cache"
 work=$(mktemp -d "$cache/work.XXXXXX")
@@ -549,49 +599,9 @@ command=${1:-}
 
 case $command in
   up)
-    [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; echo "${VERIFY_APP:-dev}" > "$cache/app-mode"; }
-    previous=$(lane_count)
-    echo "${lanes:-$previous}" > "$cache/lanes"
-    for ((lane = previous; lane > $(lane_count); lane--)); do
-      on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; exit 1; }
-    done
-    count=$(lane_count) failed=0
-    [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
-    began=$SECONDS
-    if ((count == 0)); then
-      on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
-    else
-      for ((lane = 0; lane <= count; lane++)); do
-        on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 &
-      done
-      for ((lane = 0; lane <= count; lane++)); do wait -n || failed=1; done
-      ((failed == 0)) || tail -n 20 "$cache"/launch-*.log >&2
-    fi
-    ((failed == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; exit 1; }
-    for ((lane = 0; lane <= count; lane++)); do
-      on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; exit 1; }
-    done
-    if [[ -f "$cache/run-id.unmeasured" && -n "${before:-}" ]]; then
-      used=$(((before - $(meminfo MemAvailable)) / (count + 1)))
-      ((used > 0)) && echo "$used" > "$cache/stack-mb"
-      echo $((SECONDS - began)) > "$cache/lane-seconds"
-      rm -f "$cache/run-id.unmeasured"
-    fi
-    echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")" ;;
+    up_env "$@" || exit ;;
   down)
-    if others_running ""; then
-      echo "verify: features are still running ($(for lock in "$cache"/drive/.lock-*; do held "${lock##*/.lock-}" && printf '%s ' "${lock##*/.lock-}"; done)); run 'down' again once they finish" >&2
-      exit 2
-    fi
-    count=$(lane_count) failed=0
-    if [[ -f "$cache/run-id" ]]; then
-      for ((lane = count; lane >= 0; lane--)); do on_lane "$lane" "$skill/bin/cleanup.sh" "$@" || failed=1; done
-    else
-      "$skill/bin/cleanup.sh" "$@" || failed=1
-    fi
-    ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; exit 1; }
-    rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes" "$cache/app-mode"
-    echo "down" ;;
+    down_env "$@" || exit ;;
   room)
     take_room "$$" ;;
   list)
@@ -632,6 +642,11 @@ case $command in
     [[ -s "$work/new" ]] && { echo "verify: the change adds entry points or actions no recipe covers (listed above)" >&2; ((result)) || result=1; }
     exit $result ;;
   all)
+    if [[ -f "$cache/run-id" && "$(app_mode 0)" != build ]]; then
+      echo "all: restarting the run on the production build"
+      down_env || exit
+    fi
+    VERIFY_APP=build up_env || exit
     drive $(all_features) ;;
   "" | -h | help)
     sed -n '2,13s/^# \{0,1\}//p' "$0" ;;
