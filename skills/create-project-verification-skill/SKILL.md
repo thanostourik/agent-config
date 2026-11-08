@@ -15,11 +15,9 @@ next agent, which reads the result cold, mid-task.
 
 ## Modes
 
-- `/create-project-verification-skill` (default): record every feature. In trials it took
-  2 to 3 hours on projects of 124 and 241 features.
+- `/create-project-verification-skill` (default): record every feature.
 - `/create-project-verification-skill quick`: steps 1 to 3, steps 4.1 and 4.2, the lifecycle
-  checks of step 5 except `verify uncovered`, and step 6, with no recorders: in trials the
-  same setup took about 20 minutes. The one recipe proves that the environment, sign-in, the
+  checks of step 5 except `verify uncovered`, and step 6, with no recorders. The one recipe proves that the environment, sign-in, the
   browser helper and cleanup work, and agents copy it. Recipes then grow with the code:
   `verify affected` fails while a change adds a screen, route or action no recipe covers,
   `verify uncovered` lists the rest, and the skill's Keep the map current section records it
