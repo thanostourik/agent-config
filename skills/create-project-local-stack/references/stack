@@ -82,7 +82,7 @@ def parse_args():
     up_parser.add_argument("--app", action="store_true", help="also run the app in a container: every switch with a container mode")
     up_parser.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
     up_parser.add_argument("--mode", action="append", default=[], metavar="SWITCH=MODE", help="pick one switch's mode")
-    up_parser.add_argument("--use", action="append", default=[], metavar="SWITCH=FOLDER", help="the clone of the repo a switch starts, when it is not next to this repo; saved for every checkout of this repo")
+    up_parser.add_argument("--use", action="append", default=[], metavar="SWITCH=FOLDER", help="the clone of the repo a switch starts, for this run only, instead of the one next to this repo")
     command("down", down, "stop the stack; keep its data and ports; remove its stack file until the next up")
     command("destroy", destroy, "remove the stack: containers, volumes, built images, its files, dependency stacks")
     command("status", status, "show the stack's modes, ports and containers")
@@ -97,15 +97,19 @@ def up(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
     modes = chosen_modes(args)
-    save_clones(args.use)
+    clones = chosen_clones(args.use)
     with stack_lock(name):
         check_owner(project)
         spare_from = spare_ports_start()
         too_high = [f"{key}={port}" for key, port in PORTS.items() if port >= spare_from]
         if too_high:
             raise StackError(f"stack.json: usual ports must be below {spare_from}, where this system's spare ports start: {', '.join(too_high)}")
-        dependencies = {switch: dependency_record(switch, SWITCHES[switch]["modes"][mode]["stack"], project) for switch, mode in modes.items() if SWITCHES[switch]["modes"][mode].get("stack")}
+        dependencies = {switch: dependency_record(switch, SWITCHES[switch]["modes"][mode]["stack"], project, clones) for switch, mode in modes.items() if SWITCHES[switch]["modes"][mode].get("stack")}
         record = read_record(name)
+        for switch, dependency in dependencies.items():
+            elsewhere = [other["checkout"] for other in record.get("needs", []) if other["switch"] == switch and other["checkout"] != dependency["checkout"]]
+            if elsewhere:
+                raise StackError(f"stack {project} runs {switch} from {elsewhere[0]}, not {dependency['checkout']}; run `local-stack/stack destroy --name {name}` first, or pick another name with --name")
         gateway = gateway_ip()
         active, published = compose_plan(project, modes, gateway)
         ports = choose_ports(project, name, record.get("ports", {}), published, spare_from)
@@ -502,31 +506,27 @@ def docker(*args):
     return result.stdout.strip()
 
 
-def dependency_record(switch, repo, project):
-    command = find_clone(switch, repo) / "local-stack" / "stack"
+def dependency_record(switch, repo, project, clones):
+    command = (clones.get(switch) or find_clone(switch, repo)) / "local-stack" / "stack"
     if not os.access(command, os.X_OK):
         raise StackError(f"{command} does not exist; {switch} needs its own local stack first")
     return {"switch": switch, "checkout": str(command.parent.parent), "name": project}
 
 
 def find_clone(switch, repo):
-    advice = f"clone it next to this repo, or tell the stack where your clone is, once: `local-stack/stack up --use {switch}=<folder>`"
-    saved = git("config", "--get", f"local-stack.{switch}.checkout")
-    if saved:
-        if not is_clone(Path(saved), repo):
-            raise StackError(f"{saved}, saved for {switch}, is no longer a clone of {repo}; name your clone's folder: `local-stack/stack up --use {switch}=<folder>`")
-        return Path(saved)
+    advice = f"clone it next to this repo, or name your clone for this run: `local-stack/stack up --use {switch}=<folder>`"
     common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
     main_clone = Path(common).parent if common.endswith("/.git") else CHECKOUT
-    found = sorted(folder for folder in main_clone.parent.iterdir() if is_clone(folder, repo))
+    found = sorted(folder for folder in main_clone.parent.iterdir() if (folder / ".git").is_dir() and is_clone(folder, repo))
     if not found:
         raise StackError(f"{switch} needs a clone of {repo}, and none is next to this repo in {main_clone.parent}; {advice}")
     if len(found) > 1:
-        raise StackError(f"{switch} needs a clone of {repo}, and {main_clone.parent} holds several: {', '.join(map(str, found))}; pick one, once: `local-stack/stack up --use {switch}=<folder>`")
+        raise StackError(f"{switch} needs a clone of {repo}, and {main_clone.parent} holds several: {', '.join(map(str, found))}; pick one for this run: `local-stack/stack up --use {switch}=<folder>`")
     return found[0]
 
 
-def save_clones(uses):
+def chosen_clones(uses):
+    clones = {}
     for use in uses:
         switch, _, folder = use.partition("=")
         repo = next((mode["stack"] for mode in SWITCHES.get(switch, {}).get("modes", {}).values() if "stack" in mode), None)
@@ -535,7 +535,8 @@ def save_clones(uses):
         folder = Path(folder).expanduser().resolve()
         if not is_clone(folder, repo):
             raise StackError(f"--use {use}: {folder} is not a clone of {repo}")
-        subprocess.run(["git", "-C", str(CHECKOUT), "config", f"local-stack.{switch}.checkout", str(folder)], check=True)
+        clones[switch] = folder
+    return clones
 
 
 def is_clone(folder, repo):

@@ -2,6 +2,10 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 14
+
+- **Script:** copy `local-stack/stack` again. `up` no longer saves a folder: `--use <switch>=<folder>` names the other repo's clone for that one `up`, and `up` no longer reads one saved in git settings. The search next to this repo's main clone skips worktrees, so a worktree of the other repo there no longer makes `up` stop and ask for `--use`. When a stack already runs the other repo's stack from a different clone than this `up` picked, `up` stops before changing anything and says to `destroy` the stack or pick another name. In the README, describe `--use` as naming a clone for one run, and remove "once" from it in `## Commands` and `## Needs`. Remove a folder an earlier version saved with `git config --unset local-stack.<switch>.checkout`, when `git config --get-regexp '^local-stack\.'` shows one. **Check:** 6, with a worktree of the other repo added next to its clone first, then removed.
+
 ## Version 13
 
 - **Script:** copy `local-stack/stack` again. `down` now prints `stack: stopped <container>` for each container it stops; before, it stopped them silently. **Check:** 3; `down` prints one line per container.
