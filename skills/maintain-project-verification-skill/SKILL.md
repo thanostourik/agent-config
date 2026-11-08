@@ -50,11 +50,11 @@ Do only the listed items, in this order:
 - **The project's stack**, checked on every upgrade even when the script does not list it:
   when the repo has an environment `<generator>/references/lifecycle.md` would pick as
   isolated and disposable, such as `local-stack/stack`, and `launch.sh` builds its own
-  instead, make `launch.sh` call the stack's start command (for `local-stack/stack`:
-  `up --app --stubs --name <run id>`) and `cleanup.sh` its destroy command. Delete the code
-  they replace: its own Compose project, port picking, source copies, app processes and their
-  guards. Isolation is the stack's job from then on, so a leak found later is fixed in the
-  stack. When the stack cannot start something the recipes need, stop and name it.
+  instead, make `launch.sh` call the stack's start command and `cleanup.sh` its destroy
+  command. Start the app in both modes as step 3 of `<generator>/SKILL.md` says. Delete the
+  code the stack replaces: its own Compose project, port picking and source copies.
+  Isolation is the stack's job from then on, so a leak found later is fixed in the stack.
+  When the stack cannot start something the recipes need, stop and name it.
 - **Helpers that read the old runner's files**, such as an `observe.sh` reading
   `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
 - **`# touches:`**: start helper agents, each with up to 6 features, with this prompt:
