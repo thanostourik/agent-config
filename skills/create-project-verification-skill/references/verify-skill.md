@@ -22,7 +22,8 @@ At isolation level `checks-only` there is no live drive: run the focused checks 
 names, and report every feature `blocked: no isolation`. Otherwise:
 
 1. When the code is ready, run `verify up`. It reuses the run's environment when it is
-   already up and restarts only the app. Keep it up for the whole task.
+   already up and restarts only the app. Keep it up for the whole task, and run `verify up`
+   again after every code change, before driving: the app runs the code it started with.
 2. Bring the recipes in line with the change, as part of the change, like tests. For
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh`
    ([Recipes](#recipes)). Before writing a step, open its screen once in a session of your
@@ -66,8 +67,8 @@ each uncovered entry point to recorders ([Recorders](#recorders)): a failing rec
 repaired or its product defect reported, an uncovered entry point gets a recipe or joins an
 existing feature's `# covers:`. Then `verify down`, commit, and report what changed.
 
-A drive can outlast your command timeout. Start `verify` in the background, wait for it,
-and read its output once. Do not poll it or tail its logs.
+A drive can outlast your command timeout. Run `verify` the way your harness runs background
+commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
 
 ## Commands
 
@@ -146,7 +147,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - Optional header lines: `# alone: <the shared state it changes>` when the feature changes
   state other features read, such as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already
-  reported, so its failure reads `(known failure)` and needs no new diagnosis.
+  reported, so its failure reads `known failure at "<step label>"`: report that line as it
+  is, with no new diagnosis.
 - The feature name is the file name. It is never a `verify` command: `up`, `down`, `list`,
   `lint`, `uncovered`, `affected`, `all`, `help`.
 - `step "<label>" "<what it proves>"` before each user action: the second argument is one
