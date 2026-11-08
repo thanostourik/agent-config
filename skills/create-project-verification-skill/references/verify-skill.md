@@ -1,6 +1,6 @@
 ---
 name: verify-<app>
-description: "Drive <app> end to end to prove a change works: drive the features a change affects, write or fix their recipes, or drive every feature. Use before calling any work on <app> done, and when asked to verify, test end to end or record a feature."
+description: "Drive <app> end to end to prove a change works: drive the features a change affects, write or fix their recipes, or drive every feature. Use before calling any work on <app> done, and when asked to verify, test end to end or record a feature. /verify-<app> full drives every feature, repairs the failing ones and records what no recipe covers."
 ---
 
 # Verify <app>
@@ -15,6 +15,14 @@ This file is shipped by `create-project-verification-skill` and is replaced on u
 project's own facts are in `PROJECT.md`: read it once before your first command. Run every
 command from the repository root. `verify` below is `.agents/skills/verify-<app>/bin/verify`,
 and other paths are relative to `.agents/skills/verify-<app>/`.
+
+## Modes
+
+- `/verify-<app>` (default): [Check a change](#check-a-change).
+- `/verify-<app> full`: [Full](#full): drive every feature, repair the failing ones, and
+  record what no recipe covers.
+
+Honor an equivalent request, such as "update the verification map" for `full`.
 
 ## Check a change
 
@@ -56,16 +64,21 @@ Do not drive features the change cannot affect. Run `verify all` only when the u
 after an upgrade of this skill, or when a change touches what every feature uses (launch,
 sign-in, a shared helper) and you cannot name fewer features.
 
-## Keep the map current
+## Full
 
-When the user asks to update or maintain verification, or `verify all` has not passed for a
-while: run `verify up`, `verify all` and `verify uncovered`, and rerun `bin/harvest` into
-`.cache/expect/` for each feature whose tests or docs changed, so `verify lint` names the
-behaviors its recipe no longer cites. `verify uncovered` lists every entry point, action
-and expectation line no recipe covers. Send each failing feature and
-each uncovered entry point to recorders ([Recorders](#recorders)): a failing recipe is
-repaired or its product defect reported, an uncovered entry point gets a recipe or joins an
-existing feature's `# covers:`. Then `verify down`, commit, and report what changed.
+1. Run `bin/areas > .cache/areas.txt`, and rerun `bin/harvest` into `.cache/expect/` for
+   each area whose tests or docs changed, so `verify lint` names the behaviors its recipes
+   no longer cite.
+2. Run `verify all`, which brings the run up on the production build, and
+   `verify uncovered`, which lists every entry point, action and expectation line no recipe
+   covers.
+3. Start a recorder for each area that holds a failing feature or an uncovered item, all at
+   once ([Recorders](#recorders)), and give it the summary lines of its failing features. A
+   failing recipe is repaired, or its product defect marked `# known failure:`. An
+   uncovered item gets a step, or an `# expects:` line marked not driven with its reason.
+4. When every recorder has written its result file, run `verify uncovered` again: it lists
+   nothing. Then `verify down`, commit, and report the features added, the features
+   repaired, and each product defect.
 
 A drive can outlast your command timeout. Run `verify` the way your harness runs background
 commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
@@ -75,7 +88,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment.
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects. It
   exits 1 while the change adds entry points or actions no recipe covers.
-- `verify <feature>...`, `verify all`: drive those features, or every feature.
+- `verify <feature>...`: drive those features on the run's environment.
+- `verify all`: drive every feature on the production build. It brings the run up on that
+  build first, and removes a run on the dev server before that.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue: a
   feature's run starts only while 20% of memory stays free, and one always runs. The user sets another share with `VERIFY_RESERVE=<percent>` or the
@@ -195,8 +210,7 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - A check that something is gone first waits for the dialog or menu that removed it to
   close, then checks that a neighbor the action left alone is visible and the item is
   absent. While a dialog is open or closing, the page behind it is hidden from role
-  queries, so a wait for `detached` or `hidden` passes at once: in trials a delete step
-  passed 2 ms after the click with the card still on screen, and missed a planted bug.
+  queries, so a wait for `detached` or `hidden` passes at once, while the item is still on screen.
 - Make a race impossible instead of racing it: when a job would remove state a step still
   needs, hold that state through a stub mode or the recipe's own data, not a slower job.
 - A save step fills every field the form offers (each input, select, toggle and list
@@ -250,9 +264,7 @@ in as the role that uses it, and save its accessibility snapshot (bin/pw.sh snap
 each of its dialogs and menus open, under .agents/skills/verify-<app>/.cache/snapshots/<area>/;
 and call the API once (bin/api.sh or the project's API helper) for each record a step will
 check. Write every locator from those snapshots and every check against those responses:
-in trials recorders that wrote from the source alone failed two thirds of their first
-drives on wrong names and response shapes, and needed 6 to 10 drives per area instead of
-2 to 5. The snapshots never shrink the inventory: a behavior they do not show, such as an
+names and response shapes read from the source alone are often wrong. The snapshots never shrink the inventory: a behavior they do not show, such as an
 error, an empty state or a refused permission, keeps its line. Write all your recipes,
 .agents/skills/verify-<app>/features/<feature>.sh, with one '# expects:' line per
 inventory line, before driving any. A behavior whose data cannot be made through the app,
@@ -261,8 +273,7 @@ reason. Then drive them together once,
 .agents/skills/verify-<app>/bin/verify <feature> <feature> ..., and fix the failing ones
 together, with small edits rather than rewriting a recipe; after that drive only the
 recipes you edited, together, until each passes: every feature run waits in one queue
-for the whole machine, and in trials recorders that drove their whole area after each
-edit made 493 feature runs for 106 features. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
+for the whole machine, and driving the whole area after each edit fills it. When the pass is marked slow, read the slowest calls in its pw-calls.log or step
 times once and remove what is plainly avoidable; spend no further runs on speed. Before the last drive, run
 .agents/skills/verify-<app>/bin/verify uncovered <area>: it lists your area's entry
 points, actions and expectation lines no recipe covers; cover each with a step, or an
