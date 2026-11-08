@@ -118,7 +118,7 @@ Write and make executable:
   change needs no image build: in trials a web change reached the next drive in 8 s instead
   of 45 to 60 s, and a backend change in 15 s instead of 40. With `VERIFY_APP=build` it runs
   the production build. It is idempotent: when the run's environment already exists, it
-  restarts only what a code change needs, so a second `bin/verify up` takes seconds.
+  restarts the app, so a second `bin/verify up` takes seconds.
   `$VERIFY_RUN_ID` names the run and is stable until `bin/verify down`.
 - `cleanup.sh`: removes only what the run created, on success, failure and interruption,
   and checks that none of it remains. It never checks resources that existed before. With no
