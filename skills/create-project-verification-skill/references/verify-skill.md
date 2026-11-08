@@ -31,7 +31,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    checks from the response, not from the source. A whole new feature can go to a recorder
    ([Recorders](#recorders)).
 3. Run `verify affected`. It drives the features whose `# touches:` line names a changed
-   file, or whose recipe or helper changed, then prints one summary line per feature.
+   file, or a file that names a changed code file by its file name (one level of callers),
+   or whose recipe or helper changed, then prints one summary line per feature with the
+   file that selected it.
 4. It also lists the entry points and actions (`bin/actions.sh`) in changed files that no
    recipe covers: new screens, routes, buttons and handlers the change added, and fails
    while that list is not empty, even when every driven feature passed. Give each a
@@ -40,9 +42,10 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    drive those features. It also lists changed files no feature names. For each one that changes behavior a
    feature covers, drive that feature by name (`verify <feature>`) and add the file to
    its `# touches:` line. Skip files that change no behavior: tests, docs, build files.
-   Then read `verify list` against your diff and drive every other feature the change can
-   affect: the file match misses a feature that depends on a file listed only under
-   another feature, such as a shared service or component.
+   The caller search sees only code that names a changed file. If the change alters
+   behavior reached another way, such as through an interface, an event, a framework that
+   wires classes by type, or more than one call away, find the features that use it with
+   `verify list` and drive them by name.
 5. A failure: the summary line names the step and the failing command. Open the log only
    when that line is not enough. Classify it ([When a drive fails](#when-a-drive-fails)),
    fix it, and rerun only that feature.
