@@ -2,7 +2,7 @@
 name: create-project-verification-skill
 metadata:
   harness: "claude-code, codex, grok, cursor"
-description: "Generate the project's verify skill, committed in the repo or in a separate companion repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive every feature of the real app end to end and prove its work. Use for /create-project-verification-skill or \"set up verification for this repo\"."
+description: "Generate the project's verify skill, committed in the repo or in a separate companion repo, so every developer's agent (Claude Code, Codex, Grok, Cursor) can drive every feature of the real app end to end and prove its work. Use for /create-project-verification-skill, /create-project-verification-skill quick, or \"set up verification for this repo\"."
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,19 @@ per feature, and the shipped runner `bin/verify` that drives them in parallel wi
 Agents then drive the features a change touches before calling work done. You write for the
 next agent, which reads the result cold, mid-task.
 
-Budget: a whole project is recorded in about 30 minutes. Keep your own context small: you
+## Modes
+
+- `/create-project-verification-skill` (default): record every feature. In trials it took
+  2 to 3 hours on projects of 124 and 241 features.
+- `/create-project-verification-skill quick`: steps 1 to 3, steps 4.1 and 4.2, the lifecycle
+  checks of step 5 except `verify uncovered`, and step 6, with no recorders: in trials the
+  same setup took about 20 minutes. The one recipe proves that the environment, sign-in, the
+  browser helper and cleanup work, and agents copy it. Recipes then grow with the code:
+  `verify affected` fails while a change adds a screen, route or action no recipe covers,
+  `verify uncovered` lists the rest, and the skill's Keep the map current section records it
+  when the user asks.
+
+Honor an equivalent request. Do not ask which mode to use. Keep your own context small: you
 write the environment and the first recipe, and recorders write the rest.
 
 When you need me to make a choice before you can continue, use your question tool if you
