@@ -198,6 +198,11 @@ lint() {
       [[ -e "$(resolve "$path")" ]] || report "touches '$path', which does not exist"
     done < <(touches_of "$feature")
     grep -q -E '^# alone[[:space:]]*$' "$file" && report "'# alone' needs its reason: '# alone: <the shared state it changes>'"
+    if grep -q '^# shares' "$file"; then
+      grep -q -E '^# shares: [a-z0-9-]+: [^[:space:]]' "$file" || report "'# shares' needs a group and its reason: '# shares: <group>: <the shared state it changes>'"
+      (($(grep -c '^# shares' "$file") == 1)) || report "more than one '# shares' line; name one group for the state its features take turns on"
+      grep -q '^# alone' "$file" && report "'# alone' and '# shares' together; '# alone' already keeps every other feature off its copy"
+    fi
     grep -q '^step ' "$file" || report "no step"
     grep -n '^step ' "$file" | grep -v -E '^[0-9]+:step "[^"]*" "[^"]+"' | sed "s/^\([0-9]*\):.*/$feature: step on line \1 has no sentence of what it proves (step \"<label>\" \"<action and expected result>\")/" | grep . && problems=1
     if [[ -f "$cache/expect/$feature.txt" ]]; then
@@ -345,6 +350,15 @@ hold_copy() {
   fi
 }
 
+group_of() { header "$1" shares | cut -d: -f1; }
+
+# Features of one '# shares' group take turns on a copy, across every verify on the machine; others run beside them.
+hold_share() {
+  [[ -n "$1" ]] && command -v flock > /dev/null || return 0
+  exec 6> "$cache/drive/.share-$VERIFY_RUN_ID-$1"
+  flock -x 6
+}
+
 take_room() {
   local holder=$1
   can_queue || return 0
@@ -383,6 +397,7 @@ run_feature() {
   take_lock "$feature" || { mkdir -p "$dir"; echo "another verify kept $feature busy too long" > "$dir/error"; echo 1 > "$dir/status"; echo 0 > "$dir/seconds"; echo 1 > "$dir/deadline"; return; }
   start=$SECONDS
   hold_copy "$(grep -q '^# alone' "$skill/features/$feature.sh" && echo alone)"
+  hold_share "$(group_of "$feature")"
   take_room "$BASHPID"
   local waited=$((SECONDS - start))
   start=$SECONDS
@@ -391,13 +406,19 @@ run_feature() {
   echo "$limit" > "$dir/deadline"
   echo "$waited" > "$dir/waited"
   VERIFY_RUNNER=$$ VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
-    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 7>&-
+    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 6>&- 7>&-
   status=$?
+  exec 6>&-
   rm -f "$room_pool/slot-$BASHPID"
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
   line_of "$feature" > "$run/line-$feature"
   echo $? > "$run/rc-$feature"
+  (
+    command -v flock > /dev/null && flock 9
+    echo $(($(cat "$run/printed" 2> /dev/null || echo 0) + 1)) > "$run/printed"
+    echo "[$(cat "$run/printed")/$total] $(cat "$run/line-$feature")"
+  ) 9> "$run/.print"
   rm -rf "$cache/drive/.lock-$feature"
   if ((status)) && [[ ! -e "$run/stop" ]] && ! doctor "$run/doctor.log"; then
     echo "$feature" > "$run/stop"
@@ -436,7 +457,7 @@ line_of() {
 }
 
 drive() {
-  local feature together=() alone=() pids=() started=$SECONDS result=0 lane count
+  local feature together=() alone=() pids=() started=$SECONDS result=0 lane count total=$#
   (($#)) || { echo "verify: no features to drive" >&2; return 2; }
   [[ -f "$cache/run-id" ]] || { echo "verify: no environment; run 'bin/verify up' first" >&2; return 2; }
   export VERIFY_RUN_ID=$(cat "$cache/run-id") VERIFY_LANE=0 VERIFY_APP=$(app_mode 0)
@@ -496,11 +517,23 @@ drive() {
   }
   for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
   add_lanes
-  local together_pids=()
+  local together_pids=() units=() unit group
+  local -A shared=()
   for feature in "${together[@]}"; do
+    group=$(group_of "$feature")
+    if [[ -n "$group" ]]; then shared[$group]+=" $feature"; else units+=("$feature"); fi
+  done
+  run_unit() {
+    local feature
+    for feature in "$@"; do
+      [[ -e "$run/stop" ]] && break
+      run_feature "$feature" 0
+    done
+  }
+  for unit in "${shared[@]}" "${units[@]}"; do
     while (($(jobs -rp | wc -l) >= max_jobs + count + lane_jobs)); do wait -n; done
     [[ -e "$run/stop" ]] && break
-    run_feature "$feature" 0 &
+    run_unit $unit &
     pids+=($!) together_pids+=($!)
   done
   for pid in "${together_pids[@]}"; do wait "$pid"; done

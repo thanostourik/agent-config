@@ -323,7 +323,7 @@ checks in `PROJECT.md`, and go to step 6.
    (such as `sonnet`) when it offers one.
    Start them in the background; never block on a
    foreground command while recorders run, or their returns reach you late. Give a feature its own
-   namespace (schema, prefix, account, data folder) before marking it `# alone`. A
+   namespace (schema, prefix, account, data folder) before marking it `# shares` or `# alone`. A
    recorder's result is the file it writes last, `.cache/results/<area>.txt`, not
    the host's completion notice: notices can be lost. A result file that appears is a
    returned recorder, with or without a notice.

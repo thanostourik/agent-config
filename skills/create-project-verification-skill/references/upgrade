@@ -48,7 +48,7 @@ convert() {
       else steps = steps $0 "\n"
       next
     }
-    /[Rr]uns alone/ { alone = 1 }
+    /[Rr]uns alone/ { alone = 1; reason = $0; sub(/.*[Rr]uns alone[.]?[[:space:]]*/, "", reason) }
     /^Preconditions:/ { label = "Preconditions"; intent = $0; sub(/^Preconditions:[[:space:]]*/, "", intent); pending = 1; next }
     /^- \*\*/ {
       if (pending) missing = 1
@@ -71,7 +71,7 @@ convert() {
       sub(/[.] .*$/, ".", summary)
       print "# " (summary != "" ? summary : title)
       print "# touches:"
-      if (alone) print "# alone: the old recipe ran it alone"
+      if (alone) print "# alone" (reason != "" ? ": " reason : "")
       printf "%s", known
       if (clean != "") printf "\ncleanup() {\n%s}\n", clean
       printf "%s", steps
@@ -124,6 +124,8 @@ stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify|\.cache
 [[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")
 mapfile -t bare < <(grep -l -E '^# alone[[:space:]]*$' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
 ((${#bare[@]})) && todo+=("Give each '# alone' its reason ('# alone: <the shared state it changes>'), or give the feature its own namespace and drop the line, in: ${bare[*]}.")
+mapfile -t alone < <(grep -l '^# alone' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
+((${#alone[@]})) && todo+=("For each '# alone' feature, read what it changes: when only features that change the same state clash with it, replace the line with '# shares: <group>: <that state>', the same group for each of them, so they take turns while other features run beside them. Keep '# alone' only when every feature clashes with it, such as a clock change or a restart. In: ${alone[*]}.")
 mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename)
 ((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
