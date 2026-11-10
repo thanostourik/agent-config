@@ -30,6 +30,7 @@ if [[ -f "$skill/pw-version" ]]; then
   chmod +x "$skill/bin/pw.sh" "$skill/bin/pw-close"
 fi
 sed "s/<app>/$app/g" "$shipped/verify-skill.md" > "$skill/SKILL.md"
+cp "$shipped/recorders.md" "$skill/RECORDERS.md"
 description=$(sed -n 's/^description: //p' "$skill/SKILL.md")
 mkdir -p ".claude/skills/verify-$app"
 sed -e "s/<skill name>/verify-$app/g" -e "s|^description: .*|description: $description|" "$shipped/claude-stub.md" > ".claude/skills/verify-$app/SKILL.md"
