@@ -142,7 +142,7 @@ Until step 7 passes, run the repo's tests only as step 7 does, never on the host
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
 7. **Isolation:** nothing started in a checkout without its own stack reaches another stack, even while the developer's stack holds the usual ports. Work in the `lsproof-b` worktree while `lsproof-b` is up, so its stack file exists; when step 2 was skipped, add the worktree as step 2.1 says. Run both commands below in a container, never on the host:
    - from a stock image of the repo's toolchain, such as `maven:<version>` or `node:<version>`, with the version the build files name;
-   - with the worktree mounted at its own path as the working folder, and the dependency cache mounted, as your own user (`--user "$(id -u):$(id -g)"`);
+   - with the worktree mounted at its own path as the working folder, and the dependency cache mounted, as your own user (`--user "$(id -u):$(id -g)"`). Your user has no home folder in the image, so point the tools at the mounted cache, such as with `HOME` and, for Maven, `MAVEN_CONFIG` and `-Duser.home`;
    - when the tests start throwaway instances through Docker, with the Docker socket mounted and its group added (`--group-add`);
    - with no `--network host`, no `host.docker.internal` and no published port.
 
