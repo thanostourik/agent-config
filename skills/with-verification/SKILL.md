@@ -39,7 +39,7 @@ than one, ask the user with your question tool which companion and app to
 use.
 
 Below, `<skill>` is that skill folder and `APP_<NAME>` is the app name in
-upper case with `-` as `_`, such as `APP_OTIS`.
+upper case with `-` as `_`, such as `APP_SHOP`.
 
 ## 2. Verify from the companion
 
@@ -58,10 +58,11 @@ gone. Delete the lock yourself as the last step, also when the run fails.
 Then read `<skill>/SKILL.md` and follow it. Its paths are relative to `<skill>`. The change
 to verify is this checkout's diff against its base.
 
-Give every `bin/verify` call this checkout, or it builds and diffs the main checkout:
+Set `APP_<NAME>` to this checkout on every `bin/verify` call. Otherwise `bin/verify` builds
+and diffs the main checkout:
 
 ```bash
-APP_OTIS="$(git rev-parse --show-toplevel)" <skill>/bin/verify affected
+APP_SHOP="$(git rev-parse --show-toplevel)" <skill>/bin/verify affected
 ```
 
 ### Recipe changes
