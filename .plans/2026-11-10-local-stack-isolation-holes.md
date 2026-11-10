@@ -19,11 +19,13 @@ usual ports are the developer's stack. The generator said nothing about tests.
 Nothing started in a checkout without its own stack reaches another stack.
 Generic, with framework details only as examples.
 
-1. **No usual-port fallback.** The configuration a local run on the host reads
-   sets no fallback for a value the stack provides. Without the stack file the
+1. **No usual-port fallback.** A local run on the host takes each value the
+   stack provides from the stack file, never from a fallback. Without the stack file the
    process stops at startup, before any connection, with a message naming the
-   file and `local-stack/stack up`. A setup that writes the stack file itself
-   keeps working. The app's container sets every value in `compose.yaml` and
+   file and `local-stack/stack up`. A fallback in configuration other
+   environments may share stays there and is overridden, without a fallback,
+   in configuration only a local run reads. A setup that writes the stack file
+   itself keeps working. The app's container sets every value in `compose.yaml` and
    skips that check.
 2. **Tests are isolated by design.** Tests never read the stack file or the
    local configuration. Each service they need comes from a throwaway instance,
@@ -32,8 +34,8 @@ Generic, with framework details only as examples.
 3. **A proof that cannot repeat the incident.** New proof step 7, "Isolation":
    the whole test suite and an app start without a stack file run in a
    container from a stock toolchain image. Inside it `localhost` is the
-   container itself, so no usual port of the host answers, even while the
-   developer's stack holds them. When that cannot run, the step is not proved;
+   container itself, so neither `localhost` with a usual port nor a stack file
+   address answers, even while the developer's stack holds the usual ports. When that cannot run, the step is not proved;
    it never falls back to the host. Until it passes, the agent runs tests only
    that way. Cleanup moves to step 8.
 4. **Changelog version 15** with these items and their checks, so the update
@@ -53,4 +55,5 @@ Generic, with framework details only as examples.
 - `references/agents-local-stack.md`: one line saying tests need no stack.
 - `references/changelog.md`: version 15.
 
-The script does not change.
+The script changes only its spare-port message, which said the app expects
+the usual ports.
