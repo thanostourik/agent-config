@@ -154,6 +154,12 @@ Write and make executable:
 - Every helper also works when an agent calls it by hand, outside `bin/verify`: it sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
+- A helper's waits follow the wait budgets of the skill's Recipes section, sized for a full
+  drive where every feature runs at once: up to 30 s for a simple action, and for slow work
+  by design, such as a restart, a data load or the first page after a restart, at least
+  twice its time in a full drive. A wait that runs out prints what it waited for, and no
+  helper discards a driver's stderr: a helper that sends Playwright's output to `/dev/null`
+  leaves a failure as a bare "exit 1".
 - A helper that runs a command inside a container passes environment overrides through
   (`bin/cli -e KEY=VALUE <command>`), so a recipe can point one command at its own schema,
   prefix or folder.
@@ -165,9 +171,10 @@ Write and make executable:
   `$VERIFY_RUN_ID-$VERIFY_SESSION`, attaches every session as a context of its own to one
   browser per run, waits in the machine-wide queue before a session opened by hand, closes
   hand sessions idle for 2 minutes, logs each call's duration in `$VERIFY_DIR/pw-calls.log`,
-  and ends every `run-code` with a hidden same-origin frame load, because the CLI otherwise
-  waits up to 5 s for requests Chrome never reports finished. Its header says how to call
-  it. `after-feature.sh` runs `bin/pw-close feature` and `cleanup.sh` runs
+  prints a failed call's error on stderr, and ends every `run-code` with a hidden
+  same-origin frame load, because the CLI otherwise waits up to 5 s for requests Chrome
+  never reports finished. Its header says how to call it. `after-feature.sh` runs
+  `bin/pw-close feature` and `cleanup.sh` runs
   `bin/pw-close run`; no recorder calls it, because other drives share the run's browser.
   Then write:
   - a sign-in helper that saves each account's storage state once per run and loads it in
@@ -335,9 +342,12 @@ Run `bin/verify down` and `bin/verify all`, so every recipe runs once more on th
 build from a fresh environment while the others run in parallel. Send each failing feature back to
 a recorder with its summary line, and at once, while they work, drive every other feature
 again on the same environment (`bin/verify $(bin/verify list | cut -d: -f1 | grep -vxF -f <failing>)`): a
-recipe that fails the second time is not repeatable. A returned recorder has driven its
-feature with others, so drive only the returned features once more at the end, never
-everything again. The runner starts up to as many features at once as the
+recipe that fails the second time is not repeatable. When the recorders return, run
+`bin/verify all` again, with no `--jobs`: a recipe is done only when it has passed while
+every other feature runs beside it, at the suite's real job count, never after a pass alone
+or in a small batch. Send each feature that fails there back to its recorder and repeat,
+until each passes there or fails at a known failure. The runner starts up to as many
+features at once as the
 machine has cores, each only when the machine-wide queue has room; write a `jobs` file only
 when the project needs a lower limit, such as a service with few connections. When `# alone`
 features remain, write into the skill's `lanes` file the most extra copies a drive may

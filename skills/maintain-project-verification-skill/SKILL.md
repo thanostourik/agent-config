@@ -55,6 +55,13 @@ Do only the listed items, in this order:
   code the stack replaces: its own Compose project, port picking and source copies.
   Isolation is the stack's job from then on, so a leak found later is fixed in the stack.
   When the stack cannot start something the recipes need, stop and name it.
+- **Helper waits and errors**, checked on every upgrade even when the script does not list
+  it: each wait in a `bin/` helper follows the wait budgets of the new `SKILL.md`'s Recipes
+  section, sized for a full drive: up to 30 s for a simple action, and for slow work by
+  design, such as a restart, a data load or the first page after a restart, at least twice
+  its time in a full drive, with `# slow: <reason>`. A driver helper prints a failed call's
+  error on stderr, and no helper discards stderr, so a failure names the locator that timed
+  out, never a bare "exit 1".
 - **Helpers that read the old runner's files**, such as an `observe.sh` reading
   `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
 - **`# touches:`**: start helper agents, each with up to 6 features, with this prompt:
@@ -82,16 +89,18 @@ Do only the listed items, in this order:
 ## 3. Prove it
 
 Run `bin/verify lint`, then `bin/verify up` twice: the second call must reuse the
-environment. When recipes were converted or `bin/verify` changed, run `bin/verify all`
-once; it moves the run to the production build. Otherwise drive one feature. Fix the
-environment yourself when `doctor.sh` stops the run.
+environment. When recipes were converted, or a helper or `bin/verify` changed, run
+`bin/verify all` once; it moves the run to the production build. Otherwise drive one
+feature. Fix the environment yourself when `doctor.sh` stops the run.
 
 Every failing feature is repaired before the PR, also one the upgrade did not break: run
 `bin/areas > .cache/areas.txt` when it is missing, and start one recorder for each area
 that holds failing features, all at once, with their summary lines. A recorder repairs the
-recipe, or marks a product defect `# known failure:`. Then drive the features the recorders
-returned once more, together. Go on only when each of them passes or fails at a known
-failure. Then run `bin/verify uncovered` and `bin/verify down`.
+recipe, or marks a product defect `# known failure:`. Then run `bin/verify all` again,
+with no `--jobs`: a repaired feature is done only when it passes while every other feature runs
+beside it, never after a pass alone or in a small batch. Send each feature that fails there
+back to a recorder and repeat. Go on only when each of them passes there or fails at a
+known failure. Then run `bin/verify uncovered` and `bin/verify down`.
 
 ## 4. Ship and report
 
