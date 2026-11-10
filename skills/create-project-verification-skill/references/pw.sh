@@ -2,7 +2,8 @@
 # pw.sh <playwright-cli command> [args]: the Playwright CLI in this feature's browser session ($VERIFY_SESSION).
 # Every session of a run is a context of its own (cookies, storage) in one shared browser. `pw.sh open [url]` attaches
 # one; every run-code function ends by loading a hidden frame of the page's origin, so the CLI stops waiting for requests
-# at once. Output is raw; an error arrives as "### Error" on stdout and exits 1. The Playwright version is in ../pw-version.
+# at once. Output is raw on stdout; a failed call prints its "### Error" text on stderr and exits 1, so the error reaches the
+# feature's log even when the caller pipes or discards stdout. The Playwright version is in ../pw-version.
 # Shipped by create-project-verification-skill; never edit it in the project. bin/pw-close closes sessions.
 set -uo pipefail
 : "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"
@@ -48,14 +49,14 @@ endpoint() {
 
 args=("$@")
 if [[ ${1:-} == run-code ]]; then
-  args=(run-code "async page => { page.setDefaultTimeout(10000); try { return await ($2)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }" "${@:3}")
+  args=(run-code "async page => { page.setDefaultTimeout(30000); try { return await ($2)(page); } finally { await page.evaluate(() => { const frame = document.createElement('iframe'); frame.hidden = true; frame.src = '/favicon.ico?verify-settle=' + Date.now(); document.body.append(frame); }).catch(() => {}); } }" "${@:3}")
 fi
 start=$(date +%s.%N)
 if [[ ${1:-} == open ]]; then
   [[ -z ${VERIFY_FEATURE:-} ]] && "$VERIFY_SKILL/bin/verify" room
   grep -qxF "$session" "$VERIFY_DIR/pw-sessions" 2> /dev/null || echo "$session" >> "$VERIFY_DIR/pw-sessions"
   grep -qxF "$session" "$cache/pw-sessions-$VERIFY_RUN_ID" 2> /dev/null || echo "$session" >> "$cache/pw-sessions-$VERIFY_RUN_ID"
-  ws=$(endpoint) || { echo "$ws"; exit 1; }
+  ws=$(endpoint) || { echo "$ws" >&2; exit 1; }
   out=$(cli_in "$session" attach --endpoint="$ws")
   # attach, unlike open, does not grant clipboard-write; a Copy button's check fails without it
   out+=$'\n'$(cli_in "$session" --raw run-code "async page => page.context().grantPermissions(['clipboard-write'])")
@@ -68,9 +69,9 @@ fi
 [[ -z ${VERIFY_FEATURE:-} ]] && touch "$cache/pw-idle/$session"
 LC_ALL=C printf '%s %.1fs %s\n' "$(date +%T)" "$(echo "$(date +%s.%N) - $start" | bc)" "${args[*]:0:2}" | tr '\n' ' ' | cut -c1-300 >> "$VERIFY_DIR/pw-calls.log"
 echo >> "$VERIFY_DIR/pw-calls.log"
-if [[ ${1:-} == open ]]; then printf '%s\n' "$out" > "$VERIFY_DIR/pw-open.out"; else printf '%s\n' "$out"; fi
-if grep -q '^### Error' <<< "$out"; then
-  [[ ${1:-} == open ]] && cat "$VERIFY_DIR/pw-open.out"
+[[ ${1:-} == open ]] && printf '%s\n' "$out" > "$VERIFY_DIR/pw-open.out"
+if ((status)) || grep -q '^### Error' <<< "$out"; then
+  printf '%s\n' "$out" >&2
   exit 1
 fi
-exit "$status"
+[[ ${1:-} == open ]] || printf '%s\n' "$out"

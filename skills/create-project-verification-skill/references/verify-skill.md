@@ -56,14 +56,20 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    behavior reached another way, such as through an interface, an event, a framework that
    wires classes by type, or more than one call away, find the features that use it with
    `verify list` and drive them by name.
-5. A failure: the summary line names the step and the failing command. Open the log only
-   when that line is not enough. Classify it ([When a drive fails](#when-a-drive-fails)),
-   fix it, and rerun only that feature.
-6. At the end of the task, also after a failure, run `verify down`.
+5. A failure: the summary line names the step, the failing command and the driver's error,
+   such as the locator that timed out. Open the log only when that line is not enough.
+   Classify it ([When a drive fails](#when-a-drive-fails)), fix it, and rerun only that
+   feature.
+6. When the change wrote or edited a recipe or a helper it calls, run `verify all` once
+   after it passes, with no `--jobs`. A recipe is done only when it has passed while every
+   other feature runs beside it: a pass alone or in a small batch proves nothing about its
+   waits.
+7. At the end of the task, also after a failure, run `verify down`.
 
 Do not drive features the change cannot affect. Run `verify all` only when the user asks,
-after an upgrade of this skill, or when a change touches what every feature uses (launch,
-sign-in, a shared helper) and you cannot name fewer features.
+after an upgrade of this skill, when the change wrote or edited a recipe or a helper, or
+when a change touches what every feature uses (launch, sign-in, a shared helper) and you
+cannot name fewer features.
 
 ## Full
 
@@ -77,9 +83,12 @@ sign-in, a shared helper) and you cannot name fewer features.
    once ([Recorders](#recorders)), and give it the summary lines of its failing features. A
    failing recipe is repaired, or its product defect marked `# known failure:`. An
    uncovered item gets a step, or an `# expects:` line marked not driven with its reason.
-4. When every recorder has written its result file, run `verify uncovered` again: it lists
-   nothing. Then `verify down`, commit, and report the features added, the features
-   repaired, and each product defect.
+4. When every recorder has written its result file, run `verify all` again, with no
+   `--jobs`. A new or
+   repaired feature is done only when it passes there or fails at its known failure; send
+   each other one back to its recorder with its summary line, and repeat. Then run
+   `verify uncovered`: it lists nothing. Then `verify down`, commit, and report the
+   features added, the features repaired, and each product defect.
 
 A drive can outlast your command timeout. Run `verify` the way your harness runs background
 commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
@@ -176,12 +185,21 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   when the result is wrong: `test`, `jq -e`, `grep -q` on a saved file, the driver's own
   assertion. A command that only prints proves nothing. Under `set -e`, `! command` never
   fails: use `test` or `if`.
-- Wait for state with `wait_for <seconds> <command...>` or the driver's own waits, 10 s at
-  most; `run-code` waits 10 s by default. A simple action, such as a save, that needs longer
-  is a finding to report, not a longer wait. Only a step that waits for slow work by design,
-  such as a background job, waits longer, with `# slow: <reason>` (`// slow: <reason>` inside
-  JavaScript) on that line; `verify lint` refuses any other wait over 10 s, and a pass names
-  its steps over 10 s. Never `sleep` or `waitForTimeout`.
+- Size every wait for a busy machine, never an idle one: the recipe is accepted in a full
+  drive, where every feature runs at once and a step can take many times its time alone.
+  Wait for state with `wait_for <seconds> <command...>` or the driver's own waits, 30 s at
+  most; `run-code` waits 30 s by default. A simple action, such as a save, that takes over
+  10 s in a drive of a few features is a finding to report, not a reason for a longer wait;
+  a pass names its steps over 10 s. Only a step that waits for slow work by design, such as
+  a background job, a report over production-sized data or a restart, waits longer, with
+  `# slow: <reason>` (`// slow: <reason>` inside JavaScript) on that line. Its budget is at
+  least twice the step's time in a `verify all` pass line, never its time alone; when it
+  timed out there, double the budget and run the full drive again. `verify lint` refuses
+  any other wait over 30 s. Never `sleep` or `waitForTimeout`.
+- A failure names its cause. A driver helper prints a failed call's error on stderr, as
+  `pw.sh` does, and no recipe or helper discards stderr. A step may then send a driver's
+  stdout to `/dev/null` or into `jq`, and the summary line still shows the driver's error,
+  such as the locator that timed out, never "exit 1" or a jq parse error.
 - Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
   otherwise. On a failure, `bin/observe.sh` saves the app's state there.
 - Every name the recipe creates starts with `verify-<feature>-`, dash included, or the
@@ -284,7 +302,10 @@ points, actions and expectation lines no recipe covers; cover each with a step, 
 '# expects:' line marked not driven with its reason, until it lists none. Last, run your features once together with three others that already have a
 result file in .agents/skills/verify-<app>/.cache/results/ (all of them when fewer exist)
 (bin/verify <yours> <others>), because every drive runs features in parallel: check only
-data your recipe created. A step label never contains a comma. The environment is
+data your recipe created. That pass is not acceptance: after you return, a full drive runs
+every feature at once, and a recipe that fails there comes back to you. Size every wait
+for that load, as the Recipes section says. A step label never contains a comma. The
+environment is
 already up and shared: never run verify up, down or all, launch.sh, cleanup.sh or anything
 that stops containers or closes browser sessions other than your own feature's. Never
 restart or reconfigure a shared service by hand, even to explore: only a recipe marked
@@ -332,6 +353,11 @@ or a test), and the actual result. Diagnose before fixing. The failure is one of
   `# known failure: <step label>` to its header. Put that check last, so it hides no other.
 - **Uncertain expectation:** report what you saw and the decision that is missing. Never
   rewrite an expectation just to pass.
+
+If the app works and the recipe fails, the recipe is broken. A feature that passes alone
+and fails in a full drive is a recipe or helper defect, never flakiness: find the wait sized
+for an idle machine or the state another feature changes, fix it, and drive the full suite
+again. A later pass does not excuse the failure.
 
 When `doctor.sh` fails after a feature, the runner stops starting features. Fix the
 environment, or run `verify down` and `verify up`, then rerun what did not run.
