@@ -44,6 +44,7 @@ replace it (delete and generate again) or upgrade it with
 ```
 .agents/skills/verify-<app>/
   SKILL.md            <generator>/references/verify-skill.md, with <app> filled in
+  RECORDERS.md        copied from <generator>/references/recorders.md, unchanged
   PROJECT.md          this project's facts (step 3)
   bin/verify          copied from <generator>/references/verify, unchanged
   bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
