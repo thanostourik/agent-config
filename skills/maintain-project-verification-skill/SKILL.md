@@ -61,8 +61,8 @@ are checked even when the script does not list them.
   checks only recipes, so this is the only check helpers get.
 - **Helpers that read the old runner's files**, such as an `observe.sh` reading
   `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
-- **`# touches:`**: start subagents, as the Recorders section of the new `SKILL.md` says,
-  each with up to 6 features and this prompt:
+- **`# touches:`**: start subagents (in T3 Code `delegate_task` with `mode: "async"`,
+  otherwise your tool's own subagent), each with up to 6 features and this prompt:
 
   ```
   For each feature recipe below in .agents/skills/verify-<app>/features/, list the source

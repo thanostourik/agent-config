@@ -111,8 +111,9 @@ Write and make executable:
   created, and waits until it is ready with a bounded deadline. With `VERIFY_APP=dev` it
   runs the app with its developers' own dev command, such as `next dev` or
   `./mvnw spring-boot:run`, as a process the run records, so a code change needs no image
-  build. With `VERIFY_APP=build` it runs the production build. `bin/verify` passes `dev` for
-  task checks and `build` for `verify all` and lanes. `launch.sh` is idempotent: when the
+  build. With `VERIFY_APP=build` it runs the production build. The run's environment uses `dev`
+  unless its first `bin/verify up` sets `VERIFY_APP=build`; `verify all` and lanes always
+  use `build`. `launch.sh` is idempotent: when the
   run's environment already exists, it restarts the app, so a second `bin/verify up` takes
   seconds. `$VERIFY_RUN_ID` names the run and is stable until `bin/verify down`.
 - `cleanup.sh`: removes only what the run created, on success, failure and interruption,
@@ -206,9 +207,10 @@ Then run `bin/verify up` again, which keeps the production build, and time both.
 Generation uses the production build: a dev server holds far more memory, and with many
 features at once it loses clicks that land before a page is ready. The first `up` measures
 how much memory and time one copy of the environment takes, which the runner needs to decide
-on lanes. Before recorders start, run `bin/verify up --lanes 1`. A feature marked `# alone`
-waits until its copy is free of other features, so on a single copy every other drive stops
-meanwhile; the extra copy lets every drive run its `# alone` features there instead. When
+on lanes (extra copies of the environment for `# alone` features). Before recorders start,
+run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free of
+other features, so on a single copy every other drive stops meanwhile; the extra copy lets
+every drive run its `# alone` features there instead. When
 the build bakes ports into an image (such as `NEXT_PUBLIC_*` URLs), each lane builds its own.
 
 For a CLI or a library there is no process to restart: `launch.sh` prepares the run's data

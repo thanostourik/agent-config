@@ -112,8 +112,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and
   `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue. A feature
-  starts only while 20% of memory stays free, and one always runs. The user sets another
-  share with `VERIFY_RESERVE=<percent>` or the file `~/.config/verify/reserve`. A summary
+  starts only while the reserve, 20% of memory by default, stays free, and one always runs.
+  The user sets another reserve with `VERIFY_RESERVE=<percent>` or the file
+  `~/.config/verify/reserve`. A summary
   line with `waiting for room` says how long features waited; the time a pass shows does
   not include that wait.
 - `verify room`: wait until the machine has room for one more browser session or process.
@@ -122,7 +123,7 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - Lanes run on the production build. `# alone` features take them from one queue, longest
   first. A drive starts lanes itself, up to the number in the skill's `lanes` file, when its
   `# alone` features take at least twice as long as a copy takes to start and the copy fits
-  in memory beside the free 20%. `verify up --lanes N` keeps exactly N.
+  in memory beside the reserve. `verify up --lanes N` keeps exactly N.
 - `verify uncovered [area]`: entry points (routes, screens, commands) no feature's `# covers:`
   names, with the count covered; actions `bin/actions.sh` prints that no `# expects:` line
   cites by file and name; and lines of an area's expectation list (`.cache/expect/<area>.txt`)
@@ -192,15 +193,16 @@ wait_for 10 api GET /notes?title=verify-create-note-1
     reads `known failure at "<step label>"`: report that line as it is, with no new
     diagnosis.
 
-  Before marking a feature `# shares` or `# alone`, give it its own tenant, account, key,
-  workspace, schema, prefix or data folder when that removes the clash.
+  First give the feature its own tenant, account, key, workspace, schema, prefix or data
+  folder. Mark it `# shares` or `# alone` only when the clash remains.
 
 ### Steps
 
 - Write each locator from a snapshot of the real screen and each check from one real API
   response, never from the source alone: names and response shapes read from the source are
-  often wrong. Open the screen once in a session of your own
-  (`VERIFY_SESSION=<feature>-probe`) and save its snapshot (`bin/pw.sh snapshot`).
+  often wrong. Open the screen once in a browser session of your own, named
+  `VERIFY_SESSION=<feature>-probe` (a recorder uses `<area>-probe`), and save its snapshot
+  (`bin/pw.sh snapshot`).
 - `step "<label>" "<what it proves>"` comes before each user action. The second argument is
   one sentence with the action and its expected result; a failing step's summary line
   repeats it, so whoever repairs the recipe knows what the step was meant to prove.
@@ -220,8 +222,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   queries, so a wait for `detached` or `hidden` passes at once, while the item is still on
   screen.
 - Do a multi-step UI action in one driver call (one Playwright `run-code` with several
-  actions and their waits): every call costs about a second. Never use the Playwright CLI's
-  `click` or `press`: each waits 6 to 10 s for the network to go quiet.
+  actions and their waits): every call costs about a second. Act through `run-code` only:
+  the Playwright CLI's `click` and `press` wait 6 to 10 s for the network to go quiet, and
+  do not wait for the element.
 - Use stable handles: roles and accessible names, data attributes, routes, prompt strings.
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
@@ -239,10 +242,11 @@ These rules hold for recipes and for every helper in `bin/`.
 - A simple action, such as a save, that takes over 10 s in a drive of a few features is a
   finding to report, not a reason for a longer wait. A pass line names its steps over 10 s.
 - Only a step that waits for slow work by design, such as a background job, a report over
-  production-sized data or a restart, waits longer, with `# slow: <reason>`
-  (`// slow: <reason>` inside JavaScript) on that line. Its limit is at least twice the
-  step's time in a `verify all` pass line, never its time alone; when it timed out there,
-  double it and run `verify all` again.
+  production-sized data, a restart or the first page after a restart, waits longer, with
+  `# slow: <reason>` (`// slow: <reason>` inside JavaScript) on that line. Its limit is at
+  least twice the step's time in a `verify all` pass line, never its time alone; when it
+  timed out there, double it and run `verify all` again.
+- A wait that runs out says what it waited for.
 - Wait for something to happen, never for a fixed extra time: to prove a job left something
   alone, add an old probe item and stop waiting when the job removes it.
 - Never wait for real time. A job interval, retry delay, rate-limit window or expiry that
@@ -330,9 +334,10 @@ names: another checkout's recipes are not this project's. Below, <skill> stands 
    the example recipe <skill>/features/<example>.sh, and your area's expectation list
    <skill>/.cache/expect/<area>.txt.
 2. Read every file of your area. Write its inventory, <skill>/.cache/behaviors/<area>.txt:
-   one line per behavior the source states, never merged, as the '# expects:' rule in
-   Recipes lists them, plus each button and what it does, and each state (empty, loading,
-   filtered, paging, editing, error).
+   one line per behavior the source states, never merged: each field and its validation
+   message, each button and what it does, each state (empty, loading, filtered, paging,
+   editing, error), each error response the screen handles, each permission rule, each side
+   effect.
 3. Split the inventory into features of 8 to 15 steps by user goal, one behavior per step
    where it can be driven on its own, named <area>-<goal>. A recipe of your area that
    already exists is one of them. Behavior another feature covers is setup here, with no
@@ -351,8 +356,8 @@ names: another checkout's recipes are not this project's. Below, <skill> stands 
    ones together, with small edits rather than rewriting a recipe. After that, drive only
    the recipes you edited, together, until each passes: driving the whole area after each
    edit fills the machine's queue. When a pass is marked slow, read the slowest calls in
-   its pw-calls.log or its step times once and remove what is plainly avoidable; spend no
-   further runs on speed.
+   pw-calls.log next to the feature's log, or its step times, once, and remove what is
+   plainly avoidable; spend no further runs on speed.
 7. Run <skill>/bin/verify uncovered <area>. It lists your area's entry points, actions and
    expectation lines no recipe covers. Cover each with a step, or an '# expects:' line
    marked not driven with its reason, until it lists none.
@@ -372,8 +377,8 @@ Rules:
   own feature's. Never restart or reconfigure a shared service by hand, even to explore:
   only a recipe marked '# alone' does that, through bin/verify, which keeps other drives
   off the copy meanwhile.
-- Drive only your own features. Run each drive in the foreground and read its summary;
-  never end your turn while a drive runs.
+- While iterating, drive only your own features. Run each drive in the foreground and read
+  its summary; never end your turn while a drive runs.
 - Stop a feature after 5 runs, and report it blocked with its last summary line.
 - A product defect: add '# known failure: <step label>' to the recipe's header. Never
   weaken or drop a check to get past it: checking only the response when the stored result
@@ -388,7 +393,8 @@ Rules:
   VERIFY_SESSION=<area>-probe, because recorders that all named theirs probe closed each
   other's browsers.
 - Close every browser session and stop every process you open by hand as soon as you are
-  done with it: an open one holds memory the other drives wait for.
+  done with it: an open one holds memory the other drives wait for. Stop every process your
+  attempts started.
 
 Area: <area>: <n> lines; entry points: <...>; files: <...>
 (with the short prompt: the area's line in .agents/skills/verify-<app>/.cache/areas.txt)
