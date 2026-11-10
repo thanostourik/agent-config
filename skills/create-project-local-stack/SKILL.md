@@ -24,11 +24,12 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
 - **Shared service:** an outside service an agent must not call without permission, because other people use it, or because a call costs money, sends messages, changes data others see or uses up a limit. `--stubs` replaces it.
 - **Stub:** something in the stack that answers in place of an outside service: a local emulator of it, or a small server you write.
 - **Dependency stack:** another repo's stack that this stack starts, through a mode with a `"stack"` key.
+- **Attached stack:** another repo's stack that already runs, such as one a developer started in a worktree of that repo, which `local-stack/stack attach <switch>=<name>` uses in place of a dependency stack. This stack never starts, stops or changes it.
 - **Repo path:** a repo's path in its git remote, such as `my-org/catalog` for `git@github.com:my-org/catalog.git`. A stack names other repos this way, never by a folder.
 - **Main clone:** the folder that holds a repo's `.git` folder. Every worktree of the repo belongs to it.
 - **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file. An app running on the host reads it, and stops when it is missing.
 - **Throwaway instance:** a copy of a service that a test run starts for itself and removes afterwards, such as a Testcontainers container or an in-memory database.
-- **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values and dependency stacks.
+- **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values, dependency stacks and attached stacks.
 
 ## Ask, never guess
 
@@ -120,7 +121,7 @@ Until step 7 passes, run the repo's tests only as step 7 does, never on the host
    1. Add a worktree outside the repo: `git worktree add -b lsproof-b <dir>`.
    2. In it, run `local-stack/stack up --stubs` without `--name`. The stack is that worktree's default stack, `lsproof-b`. It gets the usual ports, or spare ports and a message naming the stack that holds them, such as the developer's own. `--stubs` keeps shared services out of this step; step 4 proves the real ones.
    3. Do what a fresh checkout needs before its first run, such as installing dependencies. Then start the app the way a developer does, with its usual run command and nothing added.
-   4. Run the proof action against the app directly, and once through each service that calls it. Stop the app.
+   4. Check that the app's startup output shows the stack file's `LOCAL_STACK_SUMMARY`, naming `lsproof-b` and the worktree. Run the proof action against the app directly, and once through each service that calls it. Stop the app.
    5. When a later fix changes the stack, commit it and run `git -C <dir> reset --hard <your branch>` before you rerun this step.
 3. **Parallel:** create one item of the app's data in `lsproof-a`, and check that `lsproof-b` does not show it and that `status` shows different ports for the two, with every port of `lsproof-a` at or above the start of the ephemeral range. Run `local-stack/stack down --name lsproof-a`, then `up --app --stubs --name lsproof-a` again, and check that its ports and that item are unchanged.
 4. **Real modes:** for each switch whose default is `real`, call it once only if the user allowed that for this run. Otherwise report it as not proved.
@@ -140,6 +141,8 @@ Until step 7 passes, run the repo's tests only as step 7 does, never on the host
    5. Read `compose logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed: go back to step 3 with it, never stub it silently. Failures to reach a dependency stack are expected, because it is reached through the host; say so in the report.
    6. Run `compose down` before the next `up`.
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
+
+   Then attach `lsproof-a` to those dependency stacks while `lsproof-c` runs: `local-stack/stack attach --app --stubs --name lsproof-a <switch>=<name>`, once for each switch with a `"stack"` mode, where `<name>` is the stack name `status --name lsproof-c` shows for it. Run the proof action through `lsproof-a`. `status --name lsproof-a` names each attached stack, and `LOCAL_STACK_SUMMARY` in `lsproof-a`'s stack file names each one with its checkout. `local-stack/stack attach --name lsproof-a <switch>=lsproof-none` stops and lists that repo's running stacks with their checkouts. `local-stack/stack down --name lsproof-a` deletes `lsproof-a`'s stack file, and `docker ps` still shows every container of the attached stacks running.
 7. **Isolation:** nothing started in a checkout without its own stack reaches another stack, even while the developer's stack holds the usual ports. Work in the `lsproof-b` worktree while `lsproof-b` is up, so its stack file exists; when step 2 was skipped, add the worktree as step 2.1 says. Run both commands below in a container, never on the host:
    - from a stock image of the repo's toolchain, such as `maven:<version>` or `node:<version>`, with the version the build or CI files name;
    - with the worktree mounted at its own path as the working folder, and the dependency cache mounted, as your own user (`--user "$(id -u):$(id -g)"`). Your user has no home folder in the image, so point the tools at the mounted cache, such as with `HOME` and, for Maven, `MAVEN_CONFIG` and `-Duser.home`;
