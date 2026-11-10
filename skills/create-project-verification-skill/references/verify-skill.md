@@ -69,14 +69,11 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    `verify list` and drive them by name.
 5. On a failure, open the log only when the summary line is not enough. Classify it
    ([When a drive fails](#when-a-drive-fails)), fix it, and rerun only that feature.
-6. When the change wrote or edited a recipe or a helper it calls, run `verify all` once
-   after it passes, with no `--jobs` (see [Done](#done)).
-7. At the end of the task, also after a failure, run `verify down`.
+6. At the end of the task, also after a failure, run `verify down`.
 
 Do not drive features the change cannot affect. Run `verify all` only when the user asks,
-after an upgrade of this skill, when the change wrote or edited a recipe or a helper, or
-when a change touches what every feature uses (launch, sign-in, a shared helper) and you
-cannot name fewer features.
+after an upgrade of this skill, or when a change touches what every feature uses (launch,
+sign-in, a shared helper) and you cannot name fewer features.
 
 ## Full
 
@@ -191,7 +188,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
     them.
   - `# alone: <the shared state it changes>` when every other feature would break
     meanwhile, such as a clock change or a service restart. The feature runs by itself.
-  - `# deadline: <seconds>` when the whole feature needs longer than 180 s.
+  - `# deadline: <seconds>` when the whole feature needs longer than 180 s: at least one and
+    a half times its time in a `verify all` pass. The runner marks a pass that used two
+    thirds of its deadline.
   - `# known failure: <step label>` for a product defect already reported. Its failure then
     reads `known failure at "<step label>"`: report that line as it is, with no new
     diagnosis.
@@ -234,7 +233,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
 - Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
-  otherwise. On a failure, `bin/observe.sh` saves the app's state there.
+  otherwise. On a failure, `bin/observe.sh` saves the app's state there, and
+  `bin/server-errors.sh` saves the app's server errors since the failing step began to
+  `server-errors.txt`. The summary line then shows the first of them.
 
 ### Waits and errors
 
@@ -247,10 +248,17 @@ These rules hold for recipes and for every helper in `bin/`.
 - A simple action, such as a save, that takes over 10 s in a drive of a few features is a
   finding to report, not a reason for a longer wait. A pass line names its steps over 10 s.
 - Only a step that waits for slow work by design, such as a background job, a report over
-  production-sized data, a restart or the first page after a restart, waits longer, with
-  `# slow: <reason>` (`// slow: <reason>` inside JavaScript) on that line. Its limit is at
-  least twice the step's time in a `verify all` pass line, never its time alone; when it
-  timed out there, double it and run `verify all` again.
+  production-sized data or a restart, waits longer, with `# slow: <reason>`
+  (`// slow: <reason>` inside JavaScript) on that line. Its limit is at least twice the
+  step's time in a `verify all` pass line, never its time alone; when it timed out there,
+  double it and run `verify all` again.
+- Every Playwright call in a slow step gets that same limit, the click that starts a
+  navigation included, such as with `page.setDefaultTimeout(<ms>)` first in the `run-code`
+  function. Playwright counts the navigation a click starts inside the click's own timeout,
+  so raising only the wait after the click changes nothing.
+- A helper that restarts the app returns only when a real page answers, signed in where
+  the app has sign-in, never only a health check: a server answers its health check before
+  its first page is ready. The steps after a restart then need no longer waits.
 - A wait that runs out says what it waited for.
 - Wait for something to happen, never for a fixed extra time: to prove a job left something
   alone, add an old probe item and stop waiting when the job removes it.
@@ -281,6 +289,11 @@ These rules hold for recipes and for every helper in `bin/`.
 - Other features run at the same time on the same environment. Never assume shared state,
   such as a global counter, a job queue or a list of every user's rows, is quiet: check only
   what this recipe created.
+- A fixture that inserts rows directly, past the app, holds every rule real data holds,
+  such as a finished order always having its line items. Its author checks that against the
+  seed data or the dump. Every feature shares one database at once, and pages that add up
+  every row (reports, dashboards, counts) also read this feature's rows: one row real data
+  never has can break another feature's page.
 
 ### Size
 
@@ -290,9 +303,12 @@ Split a bigger or slower feature in two: the slowest feature sets the end of eve
 
 ### Done
 
-A new or edited recipe is done only when it passes in `verify all` with no `--jobs`, where
-every other feature runs beside it. A pass alone or in a small batch proves nothing about its
-waits.
+In [Full](#full), and when the generator or the maintain skill proves recipes, a new or
+repaired recipe is done only when it passes in `verify all` with no `--jobs`, where every
+other feature runs beside it. A pass alone or in a small batch proves nothing about its
+waits. When you [check a change](#check-a-change), a pass in the features you drive is
+enough: a full drive per change takes too long. Size the recipe's waits for `verify all`
+anyway.
 
 ## Recorders
 
@@ -341,6 +357,9 @@ or a test), and the actual result. Diagnose before fixing. The failure is one of
   `# known failure: <step label>` to its header. Put that check last, so it hides no other.
 - **Uncertain expectation:** report what you saw and the decision that is missing. Never
   rewrite an expectation just to pass.
+
+A summary line with `server errors:` means the app failed while the step ran: read that
+file before the recipe. The error may come from another feature's data.
 
 If the app works and the recipe fails, the recipe is broken. A feature that passes alone
 and fails in `verify all` is a recipe or helper defect, never flakiness: find the wait sized

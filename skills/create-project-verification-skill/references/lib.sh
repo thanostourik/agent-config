@@ -5,10 +5,10 @@ set -Eeuo pipefail
 [[ -n "${VERIFY_RUNNER:-}" ]] || { echo "lib.sh: drive recipes with bin/verify <feature>, which queues them and counts the drive" >&2; exit 2; }
 cd "$VERIFY_ROOT"
 export PATH="$VERIFY_SKILL/bin:$PATH"
-verify_step=Start
+verify_step=Start verify_step_since=$EPOCHSECONDS
 
 step() {
-  verify_step=$1
+  verify_step=$1 verify_step_since=$EPOCHSECONDS
   printf '%s\n' "$1" > "$VERIFY_DIR/step"
   printf '%s\n' "${2:-}" > "$VERIFY_DIR/intent"
   printf '\n== %s: %s (%ss)\n' "$1" "${2:-}" "$SECONDS"
@@ -38,6 +38,10 @@ verify_end() {
   if ((status)); then
     printf 'fail\n' > "$VERIFY_DIR/result"
     [[ -x "$VERIFY_SKILL/bin/observe.sh" ]] && timeout 30 "$VERIFY_SKILL/bin/observe.sh" "$EVIDENCE/failure.txt" > /dev/null 2>&1
+    if [[ -x "$VERIFY_SKILL/bin/server-errors.sh" ]]; then
+      timeout 30 "$VERIFY_SKILL/bin/server-errors.sh" "$verify_step_since" > "$EVIDENCE/server-errors.txt"
+      [[ -s "$EVIDENCE/server-errors.txt" ]] || rm -f "$EVIDENCE/server-errors.txt"
+    fi
   else
     printf 'pass\n' > "$VERIFY_DIR/result"
   fi

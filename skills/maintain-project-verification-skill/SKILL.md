@@ -57,8 +57,10 @@ are checked even when the script does not list them.
   Isolation is the stack's job from then on, so a leak found later is fixed in the stack.
   When the stack cannot start something the recipes need, stop and name it.
 - **Helper waits and errors** (every upgrade): read each `bin/` helper and make its waits
-  and error output follow the "Waits and errors" rules of the new `SKILL.md`. `verify lint`
-  checks only recipes, so this is the only check helpers get.
+  and error output follow the "Waits and errors" rules of the new `SKILL.md`, including how
+  a helper that restarts the app waits for a real page. Check that a helper that inserts
+  rows directly follows the fixture rule in its Data section, against the seed data or the
+  dump. `verify lint` checks only recipes, so this is the only check helpers get.
 - **Helpers that read the old runner's files**, such as an `observe.sh` reading
   `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
 - **`# touches:`**: start subagents (in T3 Code `delegate_task` with `mode: "async"`,
