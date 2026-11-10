@@ -132,7 +132,7 @@ def up(args):
         for switch in attached:
             request = requests.get(switch, {})
             if request.get("modes") or request.get("env"):
-                print(f"stack: {switch} is attached, so its stack runs as it was started, without what this stack's modes ask of it: {describe(request.get('modes', {}))}; env {', '.join(request.get('env', {})) or 'none'}", file=sys.stderr)
+                print(f"stack: {switch} is attached, so its stack keeps running as it was started and does not get what this stack's modes ask of it (modes: {describe(request.get('modes', {}))}; env: {', '.join(request.get('env', {})) or 'none'})", file=sys.stderr)
         records = record.get("needs", [])
         started = []
         dependency_values = {}
