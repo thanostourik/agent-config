@@ -396,7 +396,7 @@ def choose_ports(project, name, recorded, published, spare_from):
         siblings = sorted({describe_holder(port, holders) for port in blocked.values() if is_sibling_stack(holders.get(port))})
         if not siblings:
             raise StackError(f"usual ports are taken: {describe_ports(blocked, PORTS, holders)}; free them and run up again")
-        print(f"stack: the usual ports are held by {', '.join(siblings)}, so this stack uses spare ports; an app whose committed settings expect the usual ports will not reach it", file=sys.stderr)
+        print(f"stack: the usual ports are held by {', '.join(siblings)}, so this stack uses spare ports", file=sys.stderr)
     def unused_by_others(port):
         holder = holders.get(port)
         return not holder or holder["project"] == project

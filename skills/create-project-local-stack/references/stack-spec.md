@@ -16,7 +16,7 @@ local-stack/
 
 A stack may add folders its own services need, such as a certificate generator or a setup script.
 
-Outside `local-stack/`, the design the user approves covers the app's local configuration change and the `AGENTS.md` lines it names. Any other file outside `local-stack/` needs the user's permission first, asked in one short question that names the file, shows the exact change, says in one sentence why the stack needs it, and says what happens without it. Example: "May I add `build/` to `.dockerignore`? Docker otherwise copies that git-ignored folder into the image. Without it, nothing breaks."
+Outside `local-stack/`, the design the user approves covers the changes to the app's local configuration and its test configuration, with the code and dependencies they need, and the `AGENTS.md` lines it names. During an update, the changelog items name them instead. Any other file outside `local-stack/` needs the user's permission first, asked in one short question that names the file, shows the exact change, says in one sentence why the stack needs it, and says what happens without it. Example: "May I add `build/` to `.dockerignore`? Docker otherwise copies that git-ignored folder into the image. Without it, nothing breaks."
 
 ## What `stack` does
 
@@ -25,7 +25,7 @@ The script does all of this by itself; you write nothing for it. The README tell
 - **Name:** the stack name defaults to the current branch; `--name` picks another. Docker groups everything of the stack under the Compose project `<app>-<name>`, such as `orders-main`, and `destroy` removes it all.
 - **Files:** the script writes only git-ignored files in `local-stack/` of its own checkout: the stack file, the record and a lock that lets one command at a time work on a stack. `destroy` deletes them. Nothing goes into the home folder, the system or git settings. The script never saves a folder for a later `up` to use, so every developer runs the same committed files with no setup of their own. The record lists the dependency stacks a stack started, with their folders, only so `down` and `destroy` reach them.
 - **Ports:** while another stack of this repo holds the usual ports, such as a second worktree's default stack, the default stack gets spare ports for every port and says which stack holds the usual ones. Dependency stacks are started with `--name`, so they get spare ports. When something else holds a usual port that a container of the stack binds, `up` stops and names it; a port only the app on the host listens on is not checked. `down` and `up` keep a stack's ports.
-- **Stack file:** it holds every value of the stack, secrets from the user's environment included. Deleting it on `down` means an app never reads a stopped stack's ports.
+- **Stack file:** it holds every value of the stack, secrets from the user's environment included. Deleting it on `down` means an app never reads a stopped stack's ports; it stops instead.
 - **Modes:** `up` uses each switch's default. `--stubs` sets every shared switch to `stub`, `--app` sets every switch that has a `container` mode to `container`, and `--mode <switch>=<mode>` sets one switch. A mode sets its variables and turns on the Compose profile `<switch>-<mode>`, which starts the services marked with it.
 - **Dependency stacks:**
   - **Finding the other repo:** a mode with `"stack": "<repo path>"` names another repo. `up` looks in the folders next to this repo's main clone and takes the main clone with a git remote that ends in that repo path, so it works the same from every worktree. A worktree there never counts, because it is a second checkout of a clone. When there is no such clone, or more than one, `up` stops and says to clone the repo next to this one or to name a clone with `up --use <switch>=<folder>`. `--use` applies to that one `up` and is never saved; the next `up` searches again. When a stack already runs the other repo's stack from a different clone, `up` stops and says to `destroy` it or pick another name, because that clone's stack does not own the running containers.
@@ -91,10 +91,20 @@ A fictional order service with an API, a database, a message queue, a paid payme
 
 ## The app's configuration
 
-- **On the host:** the process reads `local-stack/.stack.env`, resolved from the repo root, when that file exists. It reads it through its framework's own configuration mechanism, in the configuration a local run uses, such as `spring.config.import` with an `optional:file:` location in the local Spring profile, or the Next.js config loading the file. When the framework has no such mechanism, a few lines in the app's own startup code that only a local run reaches read it. Never a wrapper script, an IDE-only setting or a variable the developer has to set: the developer starts the app the framework's standard way, from the IDE or the terminal. Map the stack's names to the app's own settings there, and leave the app's other environments alone.
-- **Without the stack file:** the app starts with its committed settings, whose ports are the usual ports, so it may start before the stack.
+- **On the host:** the process reads `local-stack/.stack.env`, resolved from the repo root. It reads it through its framework's own configuration mechanism, in the configuration a local run uses, such as `spring.config.import` with an `optional:file:` location in the local Spring profile, or the Next.js config loading the file. When the framework has no such mechanism, a few lines in the app's own startup code that only a local run reaches read it. Never a wrapper script, an IDE-only setting or a variable the developer has to set: the developer starts the app the framework's standard way, from the IDE or the terminal. Map the stack's names to the app's own settings there, and leave the app's other environments alone.
+- **Without the stack file:** the process stops at startup, before it opens any connection, with a message that names the missing file and says to run `local-stack/stack up`. A link to a deleted stack file, as `down` leaves it, counts as missing. When the framework's configuration cannot stop with that message, a few lines of startup code that only a local run reaches do it, such as a Spring `EnvironmentPostProcessor` that acts only when the local profile is active. The usual ports belong to the developer's own stack, so an app in another checkout that fell back to them would change that stack's data, such as by running its own migrations there.
+- **No fallback:** a local run takes each value the stack provides from the stack file, never from a fallback, such as `${DB_PORT:5432}` in a Spring profile or `process.env.DB_PORT ?? 5432` in Node. A missing value stops the process. When the fallback sits in configuration that other environments may share, such as a `dev` profile a deployed server could also use, leave it there and set the value again, with no fallback, in configuration only a local run reads, such as the local profile. Another local setup keeps working when it writes the stack file itself; the design names each existing setup that relied on a fallback.
 - **Two copies on the host:** a developer who runs two copies at once uses one worktree each. Each worktree's `up` starts its own default stack, and its `.stack.env` links to that stack's file.
-- **In a container:** the process's service in `compose.yaml` sets the same settings from the `_FROM_CONTAINER` values.
+- **In a container:** the process's service in `compose.yaml` sets the same settings from the `_FROM_CONTAINER` values. It skips the stack file check, such as by leaving out the local profile, because `compose.yaml` sets every value.
+
+## Tests
+
+The test suite is isolated by design, so any test, run from any checkout with or without a stack, cannot reach a stack.
+
+- Tests never read the stack file or the configuration a local run reads. Example: Spring tests run with a test profile that replaces the local one, and the stack file import sits only in the local profile.
+- Each service the stack provides that a test uses comes from a throwaway instance, such as a Testcontainers container, an in-memory database or an emulator the test runner starts. It is set once, in the test configuration every test loads, such as `src/test/resources/application.yml` (it hides the main `application.yml` from tests, so it repeats what tests still need from it), a base class every integration test extends, or the test runner's global setup. A new test is then isolated without doing anything; a setting in each test class is not enough.
+- The test configuration sets no fallback for those services either. A test that finds no throwaway instance fails.
+- When a service has no throwaway instance the tests can start, such as a product with no container image or emulator, ask the user how those tests get it, as `questions.md` says. Never point them at the stack file or a usual port.
 
 ## Stubs
 
@@ -109,7 +119,7 @@ Written for the developers who use the stack. Sections, in this order:
 
 1. What the stack is, in two sentences, and the line `Built with create-project-local-stack version <n>.`, where `<n>` is the newest entry in `changelog.md`.
 2. `## Commands`: `up`, `up --app`, `--stubs`, `--mode`, `--name`, `--use` when the stack starts another repo's stack, `down`, `destroy`, `status`, `env`, `compose`, each with one line.
-3. `## Run the app on your machine`: the exact steps for this app, and how to run a second copy at once: in its own worktree, with its own `up`.
+3. `## Run the app on your machine`: the exact steps for this app, and how to run a second copy at once: in its own worktree, with its own `up`. Say that the app stops without a running stack and names `local-stack/stack up`, and that the tests need no stack.
 4. `## Services`: each service, with what it runs.
 5. `## Switches`: a table of each switch, its modes, its default, whether it is shared, and what each stub does not cover.
 6. `## Needs`: each other repo, by its repo path, and the values used from it. Say that its clone sits next to this repo's clone, or is named for one run with `--use`.

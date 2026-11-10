@@ -6,3 +6,4 @@
 - Read ports and addresses from `local-stack/stack env --name <name>`. Never assume a port.
 - When you are done, run `local-stack/stack destroy --name <name>`, also after a failure.
 - Never run `up`, `down` or `destroy` without `--name`: the default name is the developer's own stack.
+- Tests need no stack: they start throwaway copies of the services they use and never read a stack's settings.
