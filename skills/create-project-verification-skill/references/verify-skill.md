@@ -42,7 +42,8 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 3. Run `verify affected`. It drives the features whose `# touches:` line names a changed
    file, or a file that names a changed code file by its file name (one level of callers),
    or whose recipe or helper changed, then prints one summary line per feature with the
-   file that selected it.
+   file that selected it. Each feature's line also prints the moment it finishes, as
+   `[<done>/<total>] <line>`, so a long drive shows its progress.
 4. It also lists the entry points and actions (`bin/actions.sh`) in changed files that no
    recipe covers: new screens, routes, buttons and handlers the change added, and fails
    while that list is not empty, even when every driven feature passed. Give each a
@@ -159,8 +160,11 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   each error response, each permission rule (who may, and who is refused), each empty,
   loading and limit state, and each side effect (row, mail, file, event) in the feature's
   files is a behavior with its own `# expects:` line.
-- Optional header lines: `# alone: <the shared state it changes>` when the feature changes
-  state other features read, such as global settings, so it runs by itself; `# deadline: <seconds>` when the whole feature
+- Optional header lines: `# shares: <group>: <the shared state it changes>` when the feature
+  changes state that only some other features also change or read, such as the one active API key
+  or one global setting: features of the same group take turns, while every other feature
+  runs beside them; `# alone: <the shared state it changes>` when every other feature would
+  break meanwhile, such as a clock change or a service restart, so it runs by itself; `# deadline: <seconds>` when the whole feature
   needs longer than 180 s; `# known failure: <step label>` for a product defect already
   reported, so its failure reads `known failure at "<step label>"`: report that line as it
   is, with no new diagnosis.
@@ -195,7 +199,7 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - Other features run at the same time on the same environment. Never assume shared state,
   such as a global counter, a job queue or a list of every user's rows, is quiet: check only
   what this recipe created. Give the feature its own tenant, account, key or workspace
-  before marking it `# alone`.
+  before marking it `# shares` or `# alone`.
 - Never wait for real time. A job interval, retry delay, rate-limit window or expiry that
   takes longer than a few seconds is shortened in the run's environment (`PROJECT.md` says
   how), never waited out. Never turn a behavior off to make a recipe faster or pass.
