@@ -16,7 +16,7 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
 
 - **Stack:** one running copy of `local-stack/`, identified by its name. The name defaults to the current branch.
 - **Default stack:** the stack named after the branch. In the developer's checkout it is theirs; agents never use it.
-- **Usual port:** a port's value in `stack.json`, the one the app's committed settings use. The default stack normally gets the usual ports.
+- **Usual port:** a port's value in `stack.json`. The default stack gets the usual ports when no other stack of the repo holds them, so in the developer's checkout they belong to the developer's own stack.
 - **Spare port:** a free port the operating system hands out to any program that asks for one. It comes from the system's ephemeral range, which by default starts at 32768 on Linux (`/proc/sys/net/ipv4/ip_local_port_range`) and 49152 on macOS (`sysctl net.inet.ip.portrange.first`). Stacks started with `--name` get spare ports, so every usual port must sit below that range.
 - **Proof action:** one action you pick from the code that shows the app works end to end: an HTTP call and its response, a command and its output, or a message and the row it writes.
 - **Switch:** an entry in `stack.json` for one thing the stack can run in different ways, such as the app itself or a payment API.
@@ -26,7 +26,8 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
 - **Dependency stack:** another repo's stack that this stack starts, through a mode with a `"stack"` key.
 - **Repo path:** a repo's path in its git remote, such as `my-org/catalog` for `git@github.com:my-org/catalog.git`. A stack names other repos this way, never by a folder.
 - **Main clone:** the folder that holds a repo's `.git` folder. Every worktree of the repo belongs to it.
-- **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file, and an app running on the host reads it.
+- **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file. An app running on the host reads it, and stops when it is missing.
+- **Throwaway instance:** a copy of a service that a test run starts for itself and removes afterwards, such as a Testcontainers container or an in-memory database.
 - **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values and dependency stacks.
 
 ## Ask, never guess
@@ -43,14 +44,14 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
   - **Update:** bring the stack up to the current skill, as "Update an existing stack" below says.
   - **Recreate:** build it again from step 2. Its README's `## Decisions` section holds the user's earlier answers; take them as answered questions.
   - **Stop:** change nothing.
-- Build the stack next to whatever the repo already has for running locally. Never edit or remove that, except for the change to the app's local configuration that the design names.
+- Build the stack next to whatever the repo already has for running locally. Never edit or remove that, except for the changes to the app's local and test configuration that the design names.
 - If the project already runs locally through a tool that manages its whole environment, such as DDEV, Lando, Laravel Sail, a devcontainer, Tilt or a dev compose file, show the user what that tool already provides and ask whether to build a stack anyway or to stop.
 - Keep facts in `local-stack/.facts.md`, one line each: the fact, then its source, such as `config/mail.php:12` or `user, <date>`. Step 7 deletes it.
 
 ## Update an existing stack
 
 1. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged.
-2. Read the skill version the README names; a README without one was built with version 1. Read the newer entries in [`references/changelog.md`](references/changelog.md). List every place where `local-stack/`, the app's local configuration change or the `AGENTS.md` section does not match those entries, [`references/stack-spec.md`](references/stack-spec.md) or this skill. Also list every README sentence those changes make wrong.
+2. Read the skill version the README names; a README without one was built with version 1. Read the newer entries in [`references/changelog.md`](references/changelog.md). List every place where `local-stack/`, the app's local or test configuration or the `AGENTS.md` section does not match those entries, [`references/stack-spec.md`](references/stack-spec.md) or this skill. Also list every README sentence those changes make wrong.
 3. Fix each one and keep the services, switches and Decisions. Ask the user before a fix that changes what the stack runs, a default, or a Decision. When a rule conflicts with a Decision in the README and both would work, ask which to keep; a kept Decision names the rule it departs from. When the rule plainly does not fit this stack, keep what works and report the rule as a skill bug.
 4. Rerun the whole proof of step 6 when the update changes which services run, how the app is configured, or a stack this one starts. Otherwise run the checks the changelog items name. Always end with cleanup.
 5. Set the README's skill version to the newest changelog entry, add the answers the user gave during this update to Decisions, commit, and report what changed and which checks ran.
@@ -64,6 +65,7 @@ Read the whole repo: code, configuration, build files, docs, CI pipelines, test 
 - **Everything it talks to:** every host, URL, port, connection string, SDK client and queue in the configuration and the code. For each, note what the app sends and what it expects back, from the client code.
 - **What talks to it:** proxies, gateways, workers, browsers, devices or other repos that call it, and through which address.
 - **Its data:** schemas, migrations, seed or fixture data, and how an account or tenant comes to exist.
+- **Its tests:** the test command CI runs, the configuration tests load, and for each service the stack provides, how tests get it: a throwaway instance, the local configuration, a committed fallback or a fixed address. Look at every test that starts the app or connects to a service, such as a Spring `@SpringBootTest` class, which loads the default profiles unless the test configuration says otherwise.
 - **Other repos of the project:** docs that describe the project and this repo's job in it, such as a README or `ARCHITECTURE.md`, and clients for services this repo does not contain.
 
 Then sort each thing the app talks to into one of three kinds, and write the kind into the fact file:
@@ -95,7 +97,9 @@ Show the user the design on one screen:
 - the switches, each with its modes, its default, whether it is shared, and what its stub covers and does not;
 - the other repos it starts, each by its repo path;
 - the proof action and the result that shows it worked;
-- the change to the app's local configuration, the `## Local stack` section for `AGENTS.md`, and each existing line in `AGENTS.md` or `CLAUDE.md` you will rewrite;
+- the change to the app's local configuration, and each existing way to run the app locally that relied on a fallback the change removes;
+- the change to the app's test configuration: the throwaway instance for each service, and where it is set;
+- the `## Local stack` section for `AGENTS.md`, and each existing line in `AGENTS.md` or `CLAUDE.md` you will rewrite;
 - the local override files the stack keeps out of images and containers;
 - the open items that stay blocked.
 
@@ -103,11 +107,13 @@ Wait for an explicit go. If the user asks for a change, update the design and sh
 
 ## 5. Build
 
-Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged and make it executable. Commit `local-stack/` and the app's configuration change following the repo's branch and commit conventions, so step 6 can check them out in a worktree.
+Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Copy [`references/stack`](references/stack) to `local-stack/stack` unchanged and make it executable. Commit `local-stack/` and the app's configuration changes following the repo's branch and commit conventions, so step 6 can check them out in a worktree.
 
 ## 6. Prove it
 
 Use only the proof stacks `lsproof-a`, `lsproof-b` and `lsproof-c`, never the developer's own stack, and stop only the processes you started, by process ID, never by name. Before you start, save the output of `docker ps -a`, `docker volume ls` and `docker network ls`. In step 5, `compose` means `local-stack/stack compose --name lsproof-a --`.
+
+Until step 7 passes, run the repo's tests only as step 7 does, never on the host, and never start the app on the host in a checkout without its own running stack. This holds while you build or update the stack too: a test configuration that still falls back to the usual ports changes the developer's stack.
 
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
 2. **App on the host, at the same time:** when no switch has a `host` mode, skip this step and report it as not applicable. Otherwise:
@@ -134,7 +140,17 @@ Use only the proof stacks `lsproof-a`, `lsproof-b` and `lsproof-c`, never the de
    5. Read `compose logs`. Each failed lookup or connection to anything that is not a stack service is a service step 2 missed: go back to step 3 with it, never stub it silently. Failures to reach a dependency stack are expected, because it is reached through the host; say so in the report.
    6. Run `compose down` before the next `up`.
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
-7. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack, `lsproof-b` from its worktree. Then remove the worktree with `git worktree remove <dir>` and its branch with `git branch -D lsproof-b`. Check that no container, volume, network or built image of their projects is left, that no `local-stack/.stack-lsproof-*` file is left, and that the lists you saved before step 1 are unchanged.
+7. **Isolation:** nothing started in a checkout without its own stack reaches another stack, even while the developer's stack holds the usual ports. Work in the `lsproof-b` worktree while `lsproof-b` is up, so its stack file exists; when step 2 was skipped, add the worktree as step 2.1 says. Run both commands below in a container, never on the host:
+   - from a stock image of the repo's toolchain, such as `maven:<version>` or `node:<version>`, with the version the build files name;
+   - with the worktree mounted at its own path as the working folder, and the dependency cache mounted, as your own user (`--user "$(id -u):$(id -g)"`);
+   - when the tests start throwaway instances through Docker, with the Docker socket mounted and its group added (`--group-add`);
+   - with no `--network host`, no `host.docker.internal` and no published port.
+
+   Inside, `localhost` is the container itself, so no usual port of the host answers, and neither does any address in the stack file. A test or a run that reaches for another stack fails there instead of changing it.
+   1. Run the repo's whole test suite, the command CI runs. It passes. A test that fails to reach a `localhost` port or an address of the stack file took that service from the stack file, the local configuration or a fallback: fix the test configuration as `stack-spec.md` says under "Tests", and rerun.
+   2. When a switch has a `host` mode, delete the link `local-stack/.stack.env`, leaving the stack file it points to, and start the app with its usual run command. It stops at startup with a message that names `local-stack/stack up`, and its log shows no attempt to connect to any service.
+   3. When either cannot run this way, report the step as not proved. Never run it on the host instead.
+8. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack, `lsproof-b` from its worktree. Then remove the worktree with `git worktree remove <dir>` and its branch with `git branch -D lsproof-b`. Check that no container, volume, network or built image of their projects is left, that no `local-stack/.stack-lsproof-*` file is left, and that the lists you saved before step 1 are unchanged.
 
 When a step fails, fix the stack and rerun the steps the fix affects. A step you could not run is reported as not proved, never as passed.
 
