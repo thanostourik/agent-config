@@ -2,6 +2,14 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 16
+
+A stack can use another repo's stack that already runs instead of starting one, and the app says at startup which stack it uses. Before, the stack always started its own copy of the other repo's stack, and an app gave no sign of which stack its stack file pointed at.
+
+- **Script:** copy `local-stack/stack` again. The new command `attach <switch>=<name>` works like `up`, but the named switch takes its values from the other repo's stack that already runs under that stack name, in any checkout of that repo, found through Docker. It never starts, stops or changes that stack; `down` here deletes the stack file, which undoes the attach. The stack file now holds `LOCAL_STACK_SUMMARY`, one line naming the stack, each dependency or attached stack with its checkout, and that `local-stack/stack down` stops using it. **Check:** 6, with its new attach part; skip that part when no switch has a `"stack"` mode.
+- **The app says which stack it uses:** when the app on the host loads the stack file, it prints `LOCAL_STACK_SUMMARY` once at startup, as `stack-spec.md` says under "The app's configuration". **Check:** 2.4. Skip it when no switch has a `host` mode.
+- **README:** in `## Run the app on your machine`, say that the app prints at startup which stack it uses. When the stack starts another repo's stack, add `attach` to `## Commands`, add the steps to use a running stack of that repo to `## Run the app on your machine`, and mention `attach` in `## Needs`, as `stack-spec.md` says under "`README.md`". **Check:** none.
+
 ## Version 15
 
 Nothing started in a checkout without its own stack may reach another stack. Before, an app or a test in such a checkout fell back to the usual ports and changed the developer's stack, such as by running a branch's migration on its database. These items change how the app is configured, so update step 4 reruns the whole proof; each item's check names the steps that prove it.
