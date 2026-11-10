@@ -133,6 +133,8 @@ Write and make executable:
   the last command output.
 - `server-errors.sh <epoch seconds>`, for an app with a server: prints the errors the app's
   server logged since that time, each with its stack trace, and nothing when there are none.
+  The summary line shows only the first line, so start each error with the request and the
+  exception.
   It reads them where this stack writes them, such as `docker logs --since` for a container,
   the app server's log file, or the output of the dev process the run records, in the copy
   `$VERIFY_RUN_ID` names. On a failure, `lib.sh` calls it with the time the failing step
