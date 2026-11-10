@@ -34,8 +34,9 @@ file, such as `.agents/skills/verify-shop`.
 8. Run your features once together with three others that already have a result file in
    `<skill>/.cache/results/` (all of them when fewer exist):
    `<skill>/bin/verify <yours> <others>`. Check only data your recipe created. This pass is
-   not acceptance: after you return, `verify all` runs every feature at once, and a recipe
-   that fails there comes back to you. Size every wait for that load.
+   not acceptance: in Full mode and while the skill is generated, `verify all` runs every
+   feature at once after you return, and a recipe that fails there comes back to you. Size
+   every wait for that load.
 9. As your last action, write your result to `<skill>/.cache/results/<area>.txt`, through a
    temporary file and `mv`, then return the same lines: one line per feature (`passed`,
    `product defect: <what>`, or `blocked: <reason>`), and one line per trap that cost you a

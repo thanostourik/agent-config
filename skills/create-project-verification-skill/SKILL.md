@@ -51,7 +51,8 @@ replace it (delete and generate again) or upgrade it with
   bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
-  bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/entrypoints.sh bin/actions.sh
+  bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
+  bin/entrypoints.sh bin/actions.sh
   bin/<driver helpers>
   features/<feature>.sh
   .gitignore          holds .cache/
@@ -130,6 +131,14 @@ Write and make executable:
 - `observe.sh <path>`: saves the app's current state for a failed step: the snapshot or
   screenshot of the feature's browser session (`$VERIFY_SESSION`), the last HTTP response, or
   the last command output.
+- `server-errors.sh <epoch seconds>`, for an app with a server: prints the errors the app's
+  server logged since that time, each with its stack trace, and nothing when there are none.
+  It reads them where this stack writes them, such as `docker logs --since` for a container,
+  the app server's log file, or the output of the dev process the run records, in the copy
+  `$VERIFY_RUN_ID` names. On a failure, `lib.sh` calls it with the time the failing step
+  began and saves its output as evidence, so a UI timeout caused by a server error explains
+  itself. Check it once by causing a server error, such as a request the app answers with
+  HTTP 500.
 - `entrypoints.sh`: prints every entry point, one per line, as `<entry point><TAB><file>`:
   a route with its method (`POST /api/notes`), a screen's path, a command (`todo add`), a
   job or message handler. It searches the source, such as route annotations or a router
@@ -153,7 +162,8 @@ Write and make executable:
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and defaults the other `VERIFY_*`
   variables it reads.
 - A helper's waits and error output follow the "Waits and errors" rules in the shipped
-  `SKILL.md`. `verify lint` checks only recipes, so check helpers yourself.
+  `SKILL.md`, and a helper that inserts rows directly follows its fixture rule in Data.
+  `verify lint` checks only recipes, so check helpers yourself.
 - A helper that runs a command inside a container passes environment overrides through
   (`bin/cli -e KEY=VALUE <command>`), so a recipe can point one command at its own schema,
   prefix or folder.
@@ -243,9 +253,10 @@ Build the environment for speed, because every recipe pays for it on every run:
   interrupted run never blocks the next one.
 - Lanes share one build: build images or artifacts once, under a lock, and let every lane
   start from them.
-- Restarting the app, such as for a clock shift, polls readiness every half second and
-  never runs the whole doctor. `cleanup.sh` stops throwaway containers without a grace
-  period (`docker compose down -t 1`).
+- `launch.sh` and every helper that restarts the app, such as for a clock shift, wait until
+  a real page answers, signed in where the app has sign-in, as "Waits and errors" says.
+  They poll every half second and never run the whole doctor. `cleanup.sh` stops throwaway
+  containers without a grace period (`docker compose down -t 1`).
 - `doctor.sh` retries each probe a few times with a 30 s limit, so a loaded machine never
   stops a drive with a false failure.
 
