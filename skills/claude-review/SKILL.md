@@ -49,7 +49,7 @@ REVIEW_SANDBOX=$(jq -nc --arg repo "$REVIEW_REPO" \
   --arg git "$(git rev-parse --path-format=absolute --git-common-dir)" \
   '{sandbox: {enabled: true, failIfUnavailable: true,
     autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
-    filesystem: {denyWrite: [$repo, $git]}}}')
+    filesystem: {denyWrite: [$repo, $git]}}}') &&
 claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   --allowedTools "Read,Glob,Grep" --settings "$REVIEW_SANDBOX" \
   --permission-mode dontAsk --strict-mcp-config --no-session-persistence \
@@ -88,8 +88,9 @@ sandbox to make the invocation work.
 
 ## Assess the result
 
-The report is the `result` field of `result.json`. Its `permission_denials`
-field lists every action Claude refused. Any entry there means the review is
+Read the report with `jq -r .result "$REVIEW_DIR/result.json"` and the
+denials with `jq .permission_denials "$REVIEW_DIR/result.json"`. The denials
+list every action Claude refused. Any entry there means the review is
 incomplete: report it as failed, with the denied actions, and never as clean.
 
 Read the report and verify substantive findings against the source before
