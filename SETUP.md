@@ -21,9 +21,10 @@ with a message naming any that is missing.
    `~/.local/bin/mcp-atlassian-start --unlock`, so the vault is open before the
    first thread. Then restart the coding tools.
 5. When an instance sets `"gate": true`, the user adds a Bitwarden login whose
-   URI is that Jira URL plus `/basic-auth-gate`. Its username and password are
-   the Apache gate, not the Jira account. When the gate is removed, set
-   `"gate": false` and run `./sync --apply` again.
+   URI is that Jira URL plus `/auth-gate`. Its username is the Authentik
+   username and its password an Authentik app password, not the Jira account.
+   When Authentik no longer sits in front of Jira, set `"gate": false` and run
+   `./sync --apply` again.
 
 ## Stacked PRs
 

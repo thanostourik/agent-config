@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Local stand-in for Jira while Apache basic auth sits in front of it.
+"""Local stand-in for Jira while Authentik sits in front of it.
 
-Apache keeps the Authorization header and deletes it, so Jira never sees a
-basic-auth login. This process sends the Apache password in that header, logs
-in to Jira with the normal username and password, and forwards every request
-with the session cookie. mcp-atlassian talks only to this process. It exists
-so the gate can be removed by deleting this file and the --gate path.
+Authentik takes the Authorization header for its own login and deletes it, so
+Jira never sees a login in that header. This process sends the Authentik
+username and app password in that header, logs in to Jira with the normal
+username and password, and forwards every request with the session cookie.
+mcp-atlassian talks only to this process.
 """
 
 import base64
@@ -105,9 +105,8 @@ class Gate:
         text = payload.decode("utf-8", "replace")
         if reason == "AUTHENTICATED_FAILED" or "Login failed" in text:
             return "Jira rejected the username or password from Bitwarden."
-        authenticate = found.get("www-authenticate", "")
-        if "basic" in authenticate.lower() and "html" in found.get("content-type", ""):
-            return "The Apache gate rejected the Bitwarden login for the basic-auth-gate item."
+        if status == 401 and found.get("x-powered-by", "").lower() == "authentik":
+            return "Authentik rejected the Bitwarden login for the auth-gate item."
         return f"Jira login failed ({status})."
 
     def login(self):

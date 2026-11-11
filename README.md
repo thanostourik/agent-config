@@ -208,7 +208,7 @@ checkouts:
 | `squash-merge-pr` | Does every git and `gh` step of the squash merge. Needs `git`, a logged-in `gh`, and `jq`. |
 | `usage-report` | Prints what Codex and Claude Code sessions and their subagents cost in tokens. Needs only Python. |
 | `mcp-atlassian-start` | Starts the Jira MCP server with the login read from Bitwarden. |
-| `jira-gate-proxy` | Helps `mcp-atlassian-start --gate` reach a Jira behind Apache basic auth. |
+| `jira-gate-proxy` | Helps `mcp-atlassian-start --gate` reach a Jira behind Authentik. |
 
 ## Setup and ownership rules
 
