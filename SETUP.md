@@ -26,6 +26,12 @@ with a message naming any that is missing.
    When Authentik no longer sits in front of Jira, set `"gate": false` and run
    `./sync --apply` again.
 
+## Claude review
+
+`claude-review` runs the reviewer in Claude Code's sandbox. On Linux that
+needs `bwrap` (package `bubblewrap`) and `socat`; it also needs `jq`. Without
+them the review exits at startup with an error.
+
 ## Stacked PRs
 
 Needs `gh` installed and logged in (`gh auth login`).

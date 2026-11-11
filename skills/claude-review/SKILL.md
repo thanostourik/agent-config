@@ -45,11 +45,16 @@ directory:
 
 ```bash
 cd "$REVIEW_REPO"
+REVIEW_SANDBOX=$(jq -nc --arg repo "$REVIEW_REPO" \
+  --arg git "$(git rev-parse --path-format=absolute --git-common-dir)" \
+  '{sandbox: {enabled: true, failIfUnavailable: true,
+    autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
+    filesystem: {denyWrite: [$repo, $git]}}}')
 claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
-  --allowedTools "Read,Glob,Grep,Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*)" \
+  --allowedTools "Read,Glob,Grep" --settings "$REVIEW_SANDBOX" \
   --permission-mode dontAsk --strict-mcp-config --no-session-persistence \
-  --output-format text "/code-review $REVIEW_EFFORT $REVIEW_TARGET" \
-  </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
+  --output-format json "/code-review $REVIEW_EFFORT $REVIEW_TARGET" \
+  </dev/null >"$REVIEW_DIR/result.json" 2>"$REVIEW_DIR/run.log"
 ```
 
 For a custom question, such as whether given proof files show criteria
@@ -57,11 +62,17 @@ working, write a self-contained `prompt.md` and replace the last argument,
 `"/code-review $REVIEW_EFFORT $REVIEW_TARGET"`, with
 `"$(cat "$REVIEW_DIR/prompt.md")"`. Keep every other flag.
 
-The allowed tools let the reviewer read files and run read-only git commands;
-`dontAsk` rejects everything else. Never add `--fix`, which edits files,
-`--comment` or `--post`, which publish findings, or `ultra`, which starts a
-billed cloud review. This is a static review: the caller remains responsible
-for tests.
+The reviewer may run any shell command, but only inside Claude Code's sandbox,
+where the repository and its git directory are read-only. A worktree's git
+directory sits in the main checkout, so it is named separately.
+`failIfUnavailable` makes Claude exit at startup when the sandbox cannot start,
+instead of running commands unsandboxed. `dontAsk` rejects every other tool
+that could write. Do not go back to an allow-list of shell commands: it denies
+ordinary forms such as `git diff $(git merge-base …)` or `cd src && git diff`,
+and the reviewer then reviews without the diff. Never add `--fix`, which edits
+files, `--comment` or `--post`, which publish findings, or `ultra`, which
+starts a billed cloud review. This is a static review: the caller remains
+responsible for tests.
 
 Wait until the review finishes, then report.
 
@@ -72,10 +83,14 @@ and keep monitoring when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
-Do not silently switch models or effort, or loosen the allowed tools to make
-the invocation work.
+Do not silently switch models or effort, or loosen the allowed tools or the
+sandbox to make the invocation work.
 
 ## Assess the result
+
+The report is the `result` field of `result.json`. Its `permission_denials`
+field lists every action Claude refused. Any entry there means the review is
+incomplete: report it as failed, with the denied actions, and never as clean.
 
 Read the report and verify substantive findings against the source before
 presenting them. Distinguish confirmed issues from unresolved concerns, name
