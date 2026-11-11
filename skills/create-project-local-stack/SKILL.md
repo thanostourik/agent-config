@@ -16,7 +16,7 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
 
 - **Stack:** one running copy of `local-stack/`, identified by its name. The name defaults to the current branch.
 - **Default stack:** the stack named after the branch. In the developer's checkout it is theirs; agents never use it.
-- **Usual port:** a port's value in `stack.json`. The default stack gets the usual ports when no other stack of the repo holds them, so in the developer's checkout they belong to the developer's own stack.
+- **Usual port:** a port's value in `stack.json`. The default stack gets the usual ports when they are free, and spare ports when anything else holds them, so in the developer's checkout they usually belong to the developer's own stack.
 - **Spare port:** a free port the operating system hands out to any program that asks for one. It comes from the system's ephemeral range, which by default starts at 32768 on Linux (`/proc/sys/net/ipv4/ip_local_port_range`) and 49152 on macOS (`sysctl net.inet.ip.portrange.first`). Stacks started with `--name` get spare ports, so every usual port must sit below that range.
 - **Proof action:** one action you pick from the code that shows the app works end to end: an HTTP call and its response, a command and its output, or a message and the row it writes.
 - **Switch:** an entry in `stack.json` for one thing the stack can run in different ways, such as the app itself or a payment API.
@@ -119,7 +119,7 @@ Until step 7 passes, run the repo's tests only as step 7 does, never on the host
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
 2. **App on the host, at the same time:** when no switch has a `host` mode, skip this step and report it as not applicable. Otherwise:
    1. Add a worktree outside the repo: `git worktree add -b lsproof-b <dir>`.
-   2. In it, run `local-stack/stack up --stubs` without `--name`. The stack is that worktree's default stack, `lsproof-b`. It gets the usual ports, or spare ports and a message naming the stack that holds them, such as the developer's own. `--stubs` keeps shared services out of this step; step 4 proves the real ones.
+   2. In it, run `local-stack/stack up --stubs` without `--name`. The stack is that worktree's default stack, `lsproof-b`. It gets the usual ports, or spare ports and a message naming what holds them, such as the developer's own stack or another repo's. `--stubs` keeps shared services out of this step; step 4 proves the real ones.
    3. Do what a fresh checkout needs before its first run, such as installing dependencies. Then start the app the way a developer does, with its usual run command and nothing added.
    4. Check that the app's startup output shows the stack file's `LOCAL_STACK_SUMMARY`, naming `lsproof-b` and the worktree. Run the proof action against the app directly, and once through each service that calls it. Stop the app.
    5. When a later fix changes the stack, commit it and run `git -C <dir> reset --hard <your branch>` before you rerun this step.

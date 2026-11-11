@@ -2,6 +2,13 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 19
+
+A default stack starts on spare ports whenever something holds its usual ports. Before, it moved to spare ports only for another stack of the same repo and refused for anything else, so a worktree's `up` failed while another repo's stack with the same usual ports, such as 5432, was running.
+
+- **Script:** copy `local-stack/stack` again. When something holds a usual port, `up` on the default stack now picks spare ports for every port and names what holds the usual ones, instead of stopping. **Check:** 2, while another repo's stack or any other process holds at least one usual port, when one does.
+- **README:** replace any sentence saying `up` stops when something other than a stack of this repo holds the usual ports with one saying it then uses spare ports, as `stack-spec.md` says under "Ports". **Check:** none.
+
 ## Version 18
 
 `attach` takes the other stack's name exactly as that stack's `up` and `status` print it, and nothing else. Before, it needed `<switch>=<name>` with the bare stack name, so `attach backend-main`, copied from the backend's `status`, failed.

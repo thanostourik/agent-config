@@ -163,8 +163,6 @@ def up(args):
                 lost = lost_ports(project, ports, published)
                 if not lost or attempt == PORT_ATTEMPTS:
                     raise
-                if any(ports[key] < spare_from for key in lost):
-                    raise StackError(f"usual ports taken while the stack started: {describe_ports(lost, ports)}; free them and run up again")
                 print(f"stack: ports taken before the stack could bind them: {describe_ports(lost, ports)}; picking new ones", file=sys.stderr)
                 ports = {**ports, **spare_ports(list(lost), set(ports.values()) | set(port_holders()))}
         if active:
@@ -433,10 +431,7 @@ def choose_ports(project, name, recorded, published, spare_from):
         blocked = {key: PORTS[key] for key in published if not available(PORTS[key])}
         if not blocked:
             return dict(PORTS)
-        siblings = sorted({describe_holder(port, holders) for port in blocked.values() if is_sibling_stack(holders.get(port))})
-        if not siblings:
-            raise StackError(f"usual ports are taken: {describe_ports(blocked, PORTS, holders)}; free them and run up again")
-        print(f"stack: the usual ports are held by {', '.join(siblings)}, so this stack uses spare ports", file=sys.stderr)
+        print(f"stack: usual ports are taken: {describe_ports(blocked, PORTS, holders)}; this stack uses spare ports, which `local-stack/stack status` shows", file=sys.stderr)
     def unused_by_others(port):
         holder = holders.get(port)
         return not holder or holder["project"] == project
@@ -444,16 +439,6 @@ def choose_ports(project, name, recorded, published, spare_from):
     kept = {key: port for key, port in recorded.items() if key in PORTS and port >= spare_from and (available(port) if key in published else unused_by_others(port))}
     picked = spare_ports([key for key in PORTS if key not in kept], set(kept.values()) | set(holders))
     return {key: kept.get(key, picked.get(key)) for key in PORTS}
-
-
-def is_sibling_stack(holder):
-    if not holder or not holder["working_dir"]:
-        return False
-    config = Path(holder["working_dir"]) / "stack.json"
-    try:
-        return json.loads(config.read_text()).get("app") == APP
-    except (OSError, ValueError):
-        return False
 
 
 def spare_ports(keys, avoid):
