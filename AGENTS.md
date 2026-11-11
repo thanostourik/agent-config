@@ -40,20 +40,19 @@ Two things to keep as they are:
   `usage-report` reads the Codex and Claude Code session logs and prints what
   each session and its subagents cost in tokens. It needs only Python.
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
-  password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` only
-  while Apache basic auth sits in front of that Jira and deletes the
-  Authorization header. The flag starts `jira-gate-proxy`, which sends the
-  Apache password in that header, logs in to Jira with the normal Bitwarden
+  password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` when
+  Authentik sits in front of that Jira. Authentik takes the Authorization
+  header for its own login and deletes it. The flag starts `jira-gate-proxy`,
+  which sends the Authentik username and app password in that header, logs in to Jira with the normal Bitwarden
   login, and keeps the session cookie. mcp-atlassian talks to the proxy on
   localhost, and its output goes through `sed`, which turns the proxy's
   localhost links back into Jira links. The proxy answers only when the
   request carries that same Jira login, so another account on this computer
   cannot use the session. The
-  Apache username and password are a second Bitwarden login
-  whose URI is the Jira URL plus `/basic-auth-gate`. Sync adds `--gate` when
+  Authentik username and app password are a second Bitwarden login
+  whose URI is the Jira URL plus `/auth-gate`. Sync adds `--gate` when
   the instance sets `"gate": true`. Set it back to `false` and run sync to
-  connect directly again. Delete `bin/jira-gate-proxy` and the `--gate` path
-  in `mcp-atlassian-start` once that direct connection works.
+  connect directly again.
   `mcp-atlassian-start` asks a `bw serve`
   agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
   the vault unlocked in memory, and starts and unlocks that agent when needed.
