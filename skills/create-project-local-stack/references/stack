@@ -80,8 +80,8 @@ def parse_args():
 
     up_parser = command("up", up, "start the stack, or update a running one")
     up_parser.set_defaults(attach=[])
-    attach_parser = command("attach", up, "like up, but each named switch uses another repo's stack that already runs, found by its stack name; never starts, stops or changes that stack; down here undoes it")
-    attach_parser.add_argument("attach", nargs="+", metavar="SWITCH=NAME", help="a switch with a stack mode and the name of the other repo's running stack")
+    attach_parser = command("attach", up, "like up, but use another repo's stack that already runs instead of starting one; never starts, stops or changes it; down here undoes it")
+    attach_parser.add_argument("attach", nargs="+", metavar="STACK", help="the other repo's running stack, as its up or status prints it, such as backend-main")
     for sub in (up_parser, attach_parser):
         sub.add_argument("--app", action="store_true", help="also run the app in a container: every switch with a container mode")
         sub.add_argument("--stubs", action="store_true", help="stub every shared service, here and in dependency stacks")
@@ -100,13 +100,12 @@ def parse_args():
 def up(args):
     name = stack_name(args.name)
     project = f"{APP}-{name}"
-    attachments = chosen_attachments(args.attach)
-    modes = chosen_modes(args, attachments)
+    attached = attached_stacks(args.attach)
+    modes = chosen_modes(args, attached)
     clones = chosen_clones(args.use)
-    both = sorted(set(clones) & set(attachments))
+    both = sorted(set(clones) & set(attached))
     if both:
         raise StackError(f"--use and attach both name {', '.join(both)}; an attached switch starts no clone")
-    attached = {switch: find_attached(switch, SWITCHES[switch]["modes"][modes[switch]]["stack"], attached_name) for switch, attached_name in attachments.items()}
     with stack_lock(name):
         check_owner(project)
         spare_from = spare_ports_start()
@@ -116,8 +115,8 @@ def up(args):
         dependencies = {switch: dependency_record(switch, SWITCHES[switch]["modes"][mode]["stack"], project, clones) for switch, mode in modes.items() if SWITCHES[switch]["modes"][mode].get("stack") and switch not in attached}
         record = read_record(name)
         for switch, other in attached.items():
-            if other in record.get("needs", []):
-                raise StackError(f"stack {other['name']} in {other['checkout']} is a dependency stack this stack started; run `local-stack/stack up`, which uses it already")
+            if any(need["checkout"] == other["checkout"] and need["name"] == other["name"] for need in record.get("needs", [])):
+                raise StackError(f"stack {other['project']} in {other['checkout']} is a dependency stack this stack started; run `local-stack/stack up`, which uses it already")
         for switch, dependency in dependencies.items():
             elsewhere = [other["checkout"] for other in record.get("needs", []) if other["switch"] == switch and other["checkout"] != dependency["checkout"]]
             if elsewhere:
@@ -175,7 +174,7 @@ def up(args):
                 run_dependency(dependency, "down")
     print(f"Stack {project} is up. Modes: {describe(modes)}.", file=sys.stderr)
     for switch, other in attached.items():
-        print(f"Attached {switch}: stack {other['name']} of {other['checkout']}, which this stack never starts, stops or changes", file=sys.stderr)
+        print(f"Attached {switch}: stack {other['project']} of {other['checkout']}, which this stack never starts, stops or changes", file=sys.stderr)
     print(f"Stack file: {path}", file=sys.stderr)
 
 
@@ -190,8 +189,8 @@ def stack_values(project, name, summary, modes, values):
 
 
 def stack_summary(project, dependencies, attached):
-    others = [f"{switch} from stack {other['name']} of {other['checkout']}" for switch, other in dependencies.items()]
-    others += [f"{switch} from stack {other['name']} of {other['checkout']} (attached)" for switch, other in attached.items()]
+    others = [f"{switch} from stack {other_project(other)} of {other['checkout']}" for switch, other in dependencies.items()]
+    others += [f"{switch} from stack {other['project']} of {other['checkout']} (attached)" for switch, other in attached.items()]
     return f"Local stack {', '.join([f'{project} of {CHECKOUT}', *others])}. Run local-stack/stack down to stop using it."
 
 
@@ -247,7 +246,7 @@ def status(args):
     for dependency in record.get("needs", []):
         print(f"Dependency {dependency['switch']}: {dependency['checkout']}, stack name {dependency['name']}")
     for other in record.get("attached", []):
-        print(f"Attached {other['switch']}: {other['checkout']}, stack name {other['name']}")
+        print(f"Attached {other['switch']}: stack {other['project']} of {other['checkout']}")
     sys.stdout.flush()
     run_compose(project, saved_values(name, record), ["*"], ["ps", "--all"])
 
@@ -326,23 +325,11 @@ def write_record(name, record):
     temporary.replace(path)
 
 
-def chosen_attachments(attach):
-    attachments = {}
-    for choice in attach:
-        switch, _, name = choice.partition("=")
-        if not stack_modes(switch):
-            raise StackError(f"attach {choice}: {switch!r} is not a switch with a stack mode")
-        if not name:
-            raise StackError(f"attach {choice}: name the other repo's running stack, such as {switch}=main")
-        attachments[switch] = stack_name(name)
-    return attachments
-
-
 def stack_modes(switch):
     return [mode for mode, spec in SWITCHES.get(switch, {}).get("modes", {}).items() if "stack" in spec]
 
 
-def chosen_modes(args, attachments):
+def chosen_modes(args, attached):
     modes = {switch: spec["default"] for switch, spec in SWITCHES.items()}
     if args.stubs:
         modes.update({switch: "stub" for switch, spec in SWITCHES.items() if spec.get("shared")})
@@ -355,7 +342,7 @@ def chosen_modes(args, attachments):
         if mode not in SWITCHES[switch]["modes"]:
             raise StackError(f"switch {switch!r} has no mode {mode!r}; modes: {', '.join(SWITCHES[switch]['modes'])}")
         modes[switch] = mode
-    for switch in attachments:
+    for switch in attached:
         if modes[switch] not in stack_modes(switch):
             if len(stack_modes(switch)) > 1:
                 raise StackError(f"switch {switch!r} has several stack modes: {', '.join(stack_modes(switch))}; pick one with --mode {switch}=<mode>")
@@ -638,9 +625,36 @@ def dependency_requests(modes, values):
     return requests
 
 
-def find_attached(switch, repo, name):
-    found = {}
-    for line in set(docker("ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}').splitlines()):
+def attached_stacks(names):
+    if not names:
+        return {}
+    switches = {}
+    for switch in SWITCHES:
+        for mode in stack_modes(switch):
+            switches.setdefault(SWITCHES[switch]["modes"][mode]["stack"], set()).add(switch)
+    running = running_stacks(switches)
+    attached = {}
+    for given in names:
+        wanted = stack_name(given)
+        matches = [stack for stack in running if wanted in (stack["project"], stack["name"])]
+        if not matches:
+            listed = ", ".join(f"{stack['project']} in {stack['checkout']}" for stack in running) or "none"
+            raise StackError(f"no running stack {given} of {', '.join(sorted(switches)) or 'another repo'}; running ones: {listed}. Start it with `local-stack/stack up` in its checkout")
+        if len(matches) > 1:
+            raise StackError(f"{given} matches several running stacks: {', '.join(stack['project'] for stack in matches)}; attach one by its full name")
+        stack = matches[0]
+        if len(switches[stack["repo"]]) > 1:
+            raise StackError(f"switches {', '.join(sorted(switches[stack['repo']]))} all start {stack['repo']}, so attach cannot tell which one {stack['project']} is for")
+        switch = next(iter(switches[stack["repo"]]))
+        if switch in attached:
+            raise StackError(f"{attached[switch]['project']} and {stack['project']} are both stacks of {stack['repo']}; attach one")
+        attached[switch] = {"switch": switch, "checkout": stack["checkout"], "name": stack["name"], "project": stack["project"]}
+    return attached
+
+
+def running_stacks(switches):
+    stacks = []
+    for line in sorted(set(docker("ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}').splitlines())):
         project, _, working_dir = line.partition("\t")
         if not working_dir:
             continue
@@ -649,12 +663,14 @@ def find_attached(switch, repo, name):
         except (OSError, ValueError, KeyError, TypeError):
             continue
         checkout = Path(working_dir).parent
-        if project.startswith(f"{app}-") and is_clone(checkout, repo):
-            found[project.removeprefix(f"{app}-")] = checkout
-    if name in found:
-        return {"switch": switch, "checkout": str(found[name]), "name": name}
-    running = ", ".join(f"{other} in {checkout}" for other, checkout in sorted(found.items())) or "none"
-    raise StackError(f"no stack {name} of {repo} is running; its running stacks: {running}. Start it with `local-stack/stack up` in its checkout, or attach a running one")
+        repo = next((repo for repo in switches if is_clone(checkout, repo)), None)
+        if project.startswith(f"{app}-") and repo:
+            stacks.append({"project": project, "name": project.removeprefix(f"{app}-"), "checkout": str(checkout), "repo": repo})
+    return stacks
+
+
+def other_project(record):
+    return f"{json.loads((Path(record['checkout']) / 'local-stack' / 'stack.json').read_text())['app']}-{record['name']}"
 
 
 def start_dependency(switch, record, stubs, request):
