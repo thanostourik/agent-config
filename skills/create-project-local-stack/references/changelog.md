@@ -2,6 +2,13 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 18
+
+`attach` takes the other stack's name exactly as that stack's `up` and `status` print it, and nothing else. Before, it needed `<switch>=<name>` with the bare stack name, so `attach backend-main`, copied from the backend's `status`, failed.
+
+- **Script:** copy `local-stack/stack` again. `attach <stack>` now takes the running stack as its `up` and `status` print it, such as `backend-main`, or its bare stack name, `main`. The switch comes from the repo that stack belongs to. `<switch>=<name>` is gone. **Check:** 6, with its attach part, copying each name from that stack's own `status`.
+- **README:** replace each `attach <switch>=<name>` with `attach <stack>`, and say the name is the one that stack's `up` or `status` prints, such as `backend-main`, as `stack-spec.md` says under "`README.md`". Remove any sentence saying `status` prints a stack name that `attach` takes without its prefix. **Check:** none.
+
 ## Version 17
 
 An app on the host starts without a stack file again, with its committed settings and the usual ports. Version 15 made it stop, which broke a developer's own runs, such as starting the app from the IDE against services they run themselves. Version 15's isolated tests stay, and agents still never start the app on the host without their own stack. These items change how the app is configured, so update step 4 reruns the whole proof.
