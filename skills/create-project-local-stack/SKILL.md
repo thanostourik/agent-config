@@ -27,7 +27,7 @@ The script [`references/stack`](references/stack) handles names, ports, modes, d
 - **Attached stack:** another repo's stack that already runs, such as one a developer started in a worktree of that repo, which `local-stack/stack attach <switch>=<name>` uses in place of a dependency stack. This stack never starts, stops or changes it.
 - **Repo path:** a repo's path in its git remote, such as `my-org/catalog` for `git@github.com:my-org/catalog.git`. A stack names other repos this way, never by a folder.
 - **Main clone:** the folder that holds a repo's `.git` folder. Every worktree of the repo belongs to it.
-- **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file. An app running on the host reads it, and stops when it is missing.
+- **Stack file:** `local-stack/.stack-<name>.env`, the `KEY=value` file `up` writes and `down` deletes. `local-stack/.stack.env` links to the checked-out branch's stack file. An app running on the host reads it, and uses its committed settings when it is missing.
 - **Throwaway instance:** a copy of a service that a test run starts for itself and removes afterwards, such as a Testcontainers container or an in-memory database.
 - **Record:** `local-stack/.stack-<name>.json`, where the script keeps a stack's modes, ports, values, dependency stacks and attached stacks.
 
@@ -98,7 +98,7 @@ Show the user the design on one screen:
 - the switches, each with its modes, its default, whether it is shared, and what its stub covers and does not;
 - the other repos it starts, each by its repo path;
 - the proof action and the result that shows it worked;
-- the change to the app's local configuration, and each existing way to run the app locally that relied on a fallback the change removes;
+- the change to the app's local configuration;
 - the change to the app's test configuration: the throwaway instance for each service, and where it is set;
 - the `## Local stack` section for `AGENTS.md`, and each existing line in `AGENTS.md` or `CLAUDE.md` you will rewrite;
 - the local override files the stack keeps out of images and containers;
@@ -114,7 +114,7 @@ Write the files [`references/stack-spec.md`](references/stack-spec.md) lists. Co
 
 Use only the proof stacks `lsproof-a`, `lsproof-b` and `lsproof-c`, never the developer's own stack, and stop only the processes you started, by process ID, never by name. Before you start, save the output of `docker ps -a`, `docker volume ls` and `docker network ls`. In step 5, `compose` means `local-stack/stack compose --name lsproof-a --`.
 
-Until step 7 passes, run the repo's tests only as step 7 does, never on the host, and never start the app on the host in a checkout without its own running stack. This holds while you build or update the stack too: a test configuration that still falls back to the usual ports changes the developer's stack.
+Until step 7 passes, run the repo's tests only as step 7 does, never on the host, and never start the app on the host in a checkout without its own running stack. This holds while you build or update the stack too: a test configuration that still falls back to the usual ports, or an app without a stack file, reaches the usual ports and changes the developer's stack.
 
 1. **App in a container:** with no `lsproof-a` stack present, run `local-stack/stack up --app --stubs --name lsproof-a`. Run the proof action and check its result.
 2. **App on the host, at the same time:** when no switch has a `host` mode, skip this step and report it as not applicable. Otherwise:
@@ -143,15 +143,15 @@ Until step 7 passes, run the repo's tests only as step 7 does, never on the host
 6. **Dependencies:** start `lsproof-c` with `local-stack/stack up --app --stubs --name lsproof-c`, adding `--mode <switch>=<mode>` for every mode with a `"stack"` key, even when it is not the default, and for every mode with `dependencies`. Run the proof action. `local-stack/stack status --name lsproof-c` names each dependency stack, and that stack's own status shows its shared switches in `stub` mode and the modes the `dependencies` asked for.
 
    Then attach `lsproof-a` to those dependency stacks while `lsproof-c` runs: `local-stack/stack attach --app --stubs --name lsproof-a <switch>=<name>`, once for each switch with a `"stack"` mode, where `<name>` is the stack name `status --name lsproof-c` shows for it. Run the proof action through `lsproof-a`. `status --name lsproof-a` names each attached stack, and `LOCAL_STACK_SUMMARY` in `lsproof-a`'s stack file names each one with its checkout. `local-stack/stack attach --name lsproof-a <switch>=lsproof-none` stops and lists that repo's running stacks with their checkouts. `local-stack/stack down --name lsproof-a` deletes `lsproof-a`'s stack file, and `docker ps` still shows every container of the attached stacks running.
-7. **Isolation:** nothing started in a checkout without its own stack reaches another stack, even while the developer's stack holds the usual ports. Work in the `lsproof-b` worktree while `lsproof-b` is up, so its stack file exists; when step 2 was skipped, add the worktree as step 2.1 says. Run both commands below in a container, never on the host:
+7. **Isolation:** no test reaches a stack, even while the developer's stack holds the usual ports, and the app on the host uses its committed settings without a stack file. Work in the `lsproof-b` worktree while `lsproof-b` is up, so its stack file exists; when step 2 was skipped, add the worktree as step 2.1 says. Run both commands below in a container, never on the host:
    - from a stock image of the repo's toolchain, such as `maven:<version>` or `node:<version>`, with the version the build or CI files name;
    - with the worktree mounted at its own path as the working folder, and the dependency cache mounted, as your own user (`--user "$(id -u):$(id -g)"`). Your user has no home folder in the image, so point the tools at the mounted cache, such as with `HOME` and, for Maven, `MAVEN_CONFIG` and `-Duser.home`;
    - when the tests start throwaway instances through Docker, with the Docker socket mounted and its group added (`--group-add`);
    - with no `--network host`, no `host.docker.internal` and no published port.
 
-   Inside, `localhost` is the container itself, so neither `localhost` with a usual port nor any address in the stack file answers. A test or a run that reaches for another stack the way a broken configuration does fails there instead of changing it. Stacks still answer on the Docker gateway address, but only a configuration that names that address could reach them.
+   Inside, `localhost` is the container itself, so neither `localhost` with a usual port nor any address in the stack file answers. A test that reaches for a stack the way a broken configuration does fails there instead of changing it, and an app that falls back to the usual ports reaches nothing. Stacks still answer on the Docker gateway address, but only a configuration that names that address could reach them.
    1. Run the repo's whole test suite, the command CI runs. It passes. A test that fails to reach a `localhost` port or an address of the stack file took that service from the stack file, the local configuration or a fallback: fix the test configuration as `stack-spec.md` says under "Tests", and rerun.
-   2. When a switch has a `host` mode, delete the link `local-stack/.stack.env`, leaving the stack file it points to, and start the app with its usual run command. It stops at startup with a message that names `local-stack/stack up`, and its log shows no attempt to connect to any service.
+   2. When a switch has a `host` mode, delete the link `local-stack/.stack.env`, leaving the stack file it points to, and start the app with its usual run command. It prints no `LOCAL_STACK_SUMMARY`, and its log shows it trying the services at `localhost` on the usual ports, its committed settings, and failing there.
    3. When either cannot run this way, report the step as not proved. Never run it on the host instead.
 8. **Cleanup:** run `local-stack/stack destroy --name <name>` for each proof stack, `lsproof-b` from its worktree. Then remove the worktree with `git worktree remove <dir>` and its branch with `git branch -D lsproof-b`. Check that no container, volume, network or built image of their projects is left, that no `local-stack/.stack-lsproof-*` file is left, and that the lists you saved before step 1 are unchanged.
 

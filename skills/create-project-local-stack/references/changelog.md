@@ -2,6 +2,18 @@
 
 Each version lists what an existing stack must change to match it. A stack's README names the version it was built or last updated with. Each item says what to change and, after **Check:**, which proof steps of `SKILL.md` step 6 prove it. A new version adds small items in this shape; it never rewrites an earlier version.
 
+## Version 17
+
+An app on the host starts without a stack file again, with its committed settings and the usual ports. Version 15 made it stop, which broke a developer's own runs, such as starting the app from the IDE against services they run themselves. Version 15's isolated tests stay, and agents still never start the app on the host without their own stack. These items change how the app is configured, so update step 4 reruns the whole proof.
+
+- **Undo the stop without a stack file:** remove what version 15's item **No fallback to the usual ports** added, so a local run on the host without `local-stack/.stack.env` starts with its committed settings, as `stack-spec.md` says under "The app's configuration". The commit that built the stack or updated it to version 15 shows each piece:
+  - Remove the startup check that stops the process when the stack file is missing, and the code added only for it, such as a Spring `EnvironmentPostProcessor` and its registration.
+  - Put back each fallback to a usual port it removed from configuration only a local run reads, such as `${DB_PORT:5432}`, and remove each value it set again with no fallback in the local profile, so the shared configuration's fallback applies.
+  - Leave the app's service in `compose.yaml`, the test configuration and the stack file import with its `LOCAL_STACK_SUMMARY` as they are.
+
+  When you update from a version before 15, skip that item of version 15 instead. **Check:** 2 and 7. Skip 2 and 7.2 when no switch has a `host` mode.
+- **README:** in `## Run the app on your machine`, replace the sentence saying the app stops without a stack and names `local-stack/stack up` with one saying it then uses its committed settings, with the usual ports, as `stack-spec.md` says under "`README.md`". **Check:** none.
+
 ## Version 16
 
 A stack can use another repo's stack that already runs instead of starting one, and the app says at startup which stack it uses. Before, the stack always started its own copy of the other repo's stack, and an app gave no sign of which stack its stack file pointed at.
