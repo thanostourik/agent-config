@@ -131,10 +131,16 @@ merged=yes
 merge_commit=$(field mergeCommit.oid)
 
 step "updating $base"
+# Not a pull, and retried: another tool's background fetch in this repository adds its own
+# entries to the FETCH_HEAD a pull merges, and fails a fetch that updates origin/$base with it.
+for _ in 1 2 3; do
+  git fetch origin "$base" && break
+  sleep 2
+done
 if [ -n "$base_worktree" ]; then
-  git -C "$base_worktree" pull --ff-only origin "$base"
+  git -C "$base_worktree" merge --ff-only "refs/remotes/origin/$base"
 else
-  git fetch origin "$base:$base"
+  git fetch . "refs/remotes/origin/$base:refs/heads/$base"
 fi
 [ "$linked" = yes ] || git switch "$base"
 [ "$(git rev-parse "refs/heads/$base")" = "$(git rev-parse "refs/remotes/origin/$base")" ] || die "local $base differs from origin/$base"
