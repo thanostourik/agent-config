@@ -30,7 +30,7 @@ file, such as `.agents/skills/verify-shop`.
    plainly avoidable; spend no further runs on speed.
 7. Run `<skill>/bin/verify uncovered <area>`. It lists your area's entry points, actions and
    expectation lines no recipe covers. Cover each with a step, or an `# expects:` line
-   marked not driven with its reason, until it lists none.
+   marked not driven for a reason the Recipes section allows, until it lists none.
 8. Run your features once together with three others that already have a result file in
    `<skill>/.cache/results/` (all of them when fewer exist):
    `<skill>/bin/verify <yours> <others>`. Check only data your recipe created. This pass is
@@ -55,7 +55,8 @@ file, such as `.agents/skills/verify-shop`.
 - A product defect: add `# known failure: <step label>` to the recipe's header. Never weaken
   or drop a check to get past it: checking only the response when the stored result is
   wrong hides the defect. Keep the check, last in its step.
-- A defect in a helper: fix it when the fix is small and cannot break other features, by
+- A defect in a helper, or a helper or stub that cannot yet return the data or the failure
+  a step needs: fix it when the fix is small and cannot break other features, by
   writing a copy and moving it over the helper with `mv` (other drives are running it, and
   bash reads a script while it runs), and name it in your result. Otherwise report
   `blocked: helper <name>: <defect>`.

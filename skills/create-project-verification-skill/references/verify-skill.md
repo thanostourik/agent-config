@@ -52,7 +52,7 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    file, or a file that names a changed code file by its file name (one level of callers),
    or whose recipe or helper changed. Each feature's summary line prints as soon as it
    finishes, as `[<done>/<total>] <line>`, with the file that selected it.
-4. `verify affected` also prints two lists:
+4. `verify affected` also prints three lists:
    - Entry points and actions (`bin/actions.sh`) in changed files that no recipe covers:
      the screens, routes, buttons and handlers the change added. It fails while this list is
      not empty, even when every driven feature passed. Give each a step and an `# expects:`
@@ -62,6 +62,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    - Changed files no feature names. For each one that changes behavior a feature covers,
      drive that feature by name (`verify <feature>`) and add the file to its `# touches:`
      line. Skip files that change no behavior: tests, docs, build files.
+   - `# expects:` lines marked not driven that the change added or edited, also the ones
+     another author of the branch wrote. Hold each reason against [Header](#header). Give a
+     line whose reason does not hold a step, and drive its feature.
 
    The selection sees only code that names a changed file. When the change reaches behavior
    another way, such as through an interface, an event, a framework that wires classes by
@@ -102,7 +105,8 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   environment runs the app on its dev server unless the first `verify up` set
   `VERIFY_APP=build`.
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects. It
-  exits 1 while the change adds entry points or actions no recipe covers.
+  exits 1 while the change adds entry points or actions no recipe covers. It ends with the
+  `# expects:` lines marked not driven that the change added or edited.
 - `verify <feature>...`: drive those features on the run's environment.
 - `verify all`: drive every feature on the production build. It brings the run up on that
   build first, and removes a run on the dev server before that.
@@ -171,11 +175,29 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   `.cache/expect/` without its `- `, such as `web/test/editor.test.ts: opens blank` or
   `README.md: ## Notes`. A behavior taken from the source code cites its file and function,
   as `<file name>: <function>` (`NoteEditor.tsx: handleSave`): `verify uncovered` counts an
-  action covered only when a line names both. Join several labels with `, `. A behavior the
-  run cannot reach, such as one whose data cannot be made through the app, its API or a
-  documented helper, gets `-> not driven: <reason>`.
+  action covered only when a line names both. Join several labels with `, `.
+- A behavior no step of the recipe drives gets `-> not driven: <reason>`. Only three
+  reasons hold:
+  - Another feature drives it: `covered by <feature>`.
+  - The app can never receive that input. The reason names what stops it, such as a unique
+    index or the filter of an earlier layer.
+  - Nothing the run owns could make it happen, even after you extend its stubs, helpers
+    and fixtures. The reason names what it would take, such as a charge at the real
+    payment provider, or a second request landing between two statements of the first.
+
+  These are not reasons:
+  - A stub, fake or helper that does not yet return the data, or cannot yet fail on
+    demand. It is the project's own tooling: extend it, or start a listener of the
+    feature's own, as part of writing the recipe.
+  - A shared service the step would have to stop or reconfigure. Mark the feature
+    `# alone`.
+  - A unit test that covers the behavior. A unit test runs on input its author typed, so
+    it proves nothing about what the running app receives.
 - Read the feature's tests and docs for these lines before writing steps; they are the
-  recipe's depth. Then always take the rest from the source, one behavior per line, never
+  recipe's depth. Read each test's body, not only its name: the expectation list holds one
+  line per test, and a test that checks several cases, such as a loop over rejected values
+  or one date at each edge of a period, gives one `# expects:` line per case, each citing
+  that test. Then always take the rest from the source, one behavior per line, never
   merged: each field and its validation message, each button and what it does, each state
   (empty, loading, filtered, paging, editing, error, limit), each error response, each
   permission rule (who may, and who is refused), and each side effect (row, mail, file,
@@ -380,7 +402,8 @@ At level `shared`, pass `--jobs 1` and write only to fixtures named `verify-<fea
 
 Start from the summary lines. One line per driven feature: **pass**, **fail** (with the step
 and the failure kind), or **blocked** (with what was tried). Name the changed files you
-skipped and why. Link evidence with Markdown links to absolute paths, and check that each
+skipped and why. List every `# expects:` line the change left marked not driven, with its
+reason. Link evidence with Markdown links to absolute paths, and check that each
 linked file exists after `verify down`. Report a failed `verify down` separately: a
 passing feature does not mean cleanup succeeded. For isolation level `shared`, label the
 report `lower confidence: shared <resources>`.
