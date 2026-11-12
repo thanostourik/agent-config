@@ -17,17 +17,18 @@ do not post findings or edit the reviewed files.
 Identify the repository and exact review target from the request: uncommitted
 changes, a branch against its base, a commit, a plan, or selected files. Record
 the current commit and `git status --short`. Create a unique directory under
-`.plans/scratch/` for the prompt, report, log, and Cursor config; exclude it from
+`.plans/scratch/` for the prompt, result, log, and Cursor config; exclude it from
 review. Do not include unrelated user changes unless they are part of the
 requested target.
 
-Write a self-contained `prompt.md` with the exact target and the git command
-that shows it (`git diff HEAD` plus untracked files, `git diff <base>...HEAD`,
+Write a self-contained `prompt.md` with the absolute repository path, an
+instruction to run every command from there, the exact target, and the git
+command that shows it (`git diff HEAD` plus untracked files, `git diff <base>...HEAD`,
 or `git show <sha>`), relevant project instructions, and requirements. Ask for
 concrete bugs, regressions, and requirements mismatches with severity, file and
 line, failure scenario, and fix direction. For plans, ask about feasibility and
 missing decisions. Request an explicit statement if no substantive issues are
-found, and instruct it to review without edits, tests, or other commands.
+found, and instruct it to review without edits or tests.
 
 Write `$REVIEW_DIR/cursor-config/cli-config.json`:
 
@@ -37,26 +38,21 @@ Write `$REVIEW_DIR/cursor-config/cli-config.json`:
   "editor": { "vimMode": false },
   "approvalMode": "allowlist",
   "permissions": {
-    "allow": [
-      "Read(**)",
-      "Shell(git diff)",
-      "Shell(git log)",
-      "Shell(git show)",
-      "Shell(git status)"
-    ],
+    "allow": ["Read(**)"],
     "deny": ["Write(**)"]
   }
 }
 ```
 
-The user's own Cursor config may approve every tool, and print mode then
-ignores `--mode ask`. This separate config is what keeps the reviewer read-only:
-file writes and every shell command except read-only git are rejected. Cursor
-also writes session files into this directory, so use a new one for every run.
+The user's own Cursor config may approve every tool, so this separate config
+replaces it: the file-write tool is rejected and the file-read tool may read
+anywhere. Cursor also writes session files into this directory, so use a new
+one for every run.
 
 ## Review a branch against a base
 
-Cursor has no built-in review. `prompt.md` holds only the target and
+Cursor has no built-in review. `prompt.md` holds only the absolute repository
+path, the instruction to run every command from there, the target, and
 `git diff <base>...<branch>`. A custom prompt replaces it.
 
 ## Run and monitor
@@ -71,13 +67,25 @@ absolute repository path, selected model, selected effort, and artifact
 directory:
 
 ```bash
+REVIEW_WORKSPACE=$(mktemp -d) &&
 CURSOR_CONFIG_DIR="$REVIEW_DIR/cursor-config" cursor-agent -p --trust \
-  --model "$REVIEW_MODEL-$REVIEW_EFFORT" --workspace "$REVIEW_REPO" \
-  --output-format text "$(cat "$REVIEW_DIR/prompt.md")" \
-  </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
+  --sandbox enabled --workspace "$REVIEW_WORKSPACE" \
+  --model "$REVIEW_MODEL-$REVIEW_EFFORT" \
+  --output-format json "$(cat "$REVIEW_DIR/prompt.md")" \
+  </dev/null >"$REVIEW_DIR/result.json" 2>"$REVIEW_DIR/run.log"
 ```
 
-This is a static review: the caller remains responsible for tests.
+The reviewer may run any shell command, but only inside Cursor's sandbox,
+which lets it write to its workspace and temp directories only and blocks
+network access. The workspace is an empty temp directory outside the
+repository, so the repository and its git directory stay read-only. Keep
+`json` output: `text` output keeps only the reviewer's last message, and a
+short message after the report replaces it. Do not go back to an
+allow-list of shell commands: Cursor rejects ordinary forms such as
+`git diff $(git merge-base …)`, `cd src && git diff`, or a pipe to `head`, and
+the reviewer then reviews without the diff. Do not use `--mode ask` either: in
+print mode it removes the shell tool. This is a static review: the caller
+remains responsible for tests.
 
 Wait until the review finishes, then report. If the calling tool notifies you
 when a background command exits, end your turn and wait for that notice. Never
@@ -91,10 +99,14 @@ and keep waiting when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
-Do not silently switch models or effort, or loosen the Cursor config to make
-the invocation work.
+Do not silently switch models or effort, or loosen the Cursor config or drop
+the sandbox to make the invocation work.
 
 ## Assess the result
+
+Read the report with `jq -r .result "$REVIEW_DIR/result.json"`; it holds every
+message the reviewer wrote. A report that does not show the reviewer read the
+target is incomplete: report it as failed, never as clean.
 
 Read the report and verify substantive findings against the source before
 presenting them. Distinguish confirmed issues from unresolved concerns, name
