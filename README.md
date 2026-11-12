@@ -19,6 +19,7 @@ each tool's configuration folder.
   - [Verification](#verification)
 - [Scripts](#scripts)
 - [Setup and ownership rules](#setup-and-ownership-rules)
+- [Credits](#credits)
 
 ## Use
 
@@ -226,3 +227,8 @@ replace or delete content it did not write unless you pass `--replace-existing`,
 saves it under `~/.config/agent-config/backups/<timestamp>/` first. See
 [AGENTS.md](AGENTS.md) for the ownership rules, folder layout, install locations, and
 tests.
+
+## Credits
+
+`create-project-verification-skill` and `maintain-project-verification-skill` started
+from poteto's `create-verification-skill` and `maintain-verification-skill` in pstack.
