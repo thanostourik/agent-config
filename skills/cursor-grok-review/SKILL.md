@@ -51,7 +51,8 @@ one for every run.
 
 ## Review a branch against a base
 
-Cursor has no built-in review. `prompt.md` holds only the target and
+Cursor has no built-in review. `prompt.md` holds only the absolute repository
+path, the instruction to run every command from there, the target, and
 `git diff <base>...<branch>`. A custom prompt replaces it.
 
 ## Run and monitor
