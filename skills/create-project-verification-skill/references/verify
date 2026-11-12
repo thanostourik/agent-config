@@ -3,7 +3,7 @@
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
-# verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers
+# verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
 # verify all                drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
@@ -75,11 +75,16 @@ default_branch() {
   return 1
 }
 
+merge_base() {
+  local ref
+  ref=${base:-$(default_branch "$1")} || { echo "verify: no default branch in $1; pass --base <ref>" >&2; return 1; }
+  git -C "$1" merge-base "$ref" HEAD 2> /dev/null || { echo "verify: no merge base of $ref in $1; pass --base <ref>" >&2; return 1; }
+}
+
 changed_in() {
-  local dir=$1 ref merge
-  ref=${base:-$(default_branch "$dir")} || { echo "verify: no default branch in $dir; pass --base <ref>" >&2; return 1; }
-  merge=$(git -C "$dir" merge-base "$ref" HEAD 2> /dev/null) || { echo "verify: no merge base of $ref in $dir; pass --base <ref>" >&2; return 1; }
-  { git -C "$dir" diff --name-only "$merge"; git -C "$dir" ls-files -o --exclude-standard; } | sort -u
+  local merge
+  merge=$(merge_base "$1") || return 1
+  { git -C "$1" diff --name-only "$merge"; git -C "$1" ls-files -o --exclude-standard; } | sort -u
 }
 
 changed_files() {
@@ -177,6 +182,17 @@ select_affected() {
     echo "In changed files, covered by no recipe (give each a step and an '# expects:' line, or an '# expects:' line marked not driven):"
     awk -F '\t' '{ print "  " $1 ": " $2 " (" $3 ")" }' "$work/new"
   fi
+}
+
+not_driven_by_change() {
+  local merge file
+  merge=$(merge_base "$root") || return 1
+  while IFS= read -r file; do
+    [[ -f "$root/$file" ]] || continue
+    grep -E '^# expects:.* -> not driven' "$root/$file" \
+      | grep -v -x -F -f <(git -C "$root" show "$merge:$file" 2> /dev/null) \
+      | sed "s|^# expects: |  $(basename "$file" .sh): |"
+  done < <(grep -E "^$skill_rel/features/[^/]+[.]sh$" "$work/changed")
 }
 
 lint() {
@@ -676,6 +692,11 @@ case $command in
     select_affected || exit 2
     result=0
     [[ -s "$work/affected" && -z "$dry" ]] && { drive $(cut -f1 "$work/affected" | sort -u); result=$?; }
+    not_driven_by_change > "$work/not-driven"
+    [[ -s "$work/not-driven" ]] && {
+      echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"
+      cat "$work/not-driven"
+    }
     [[ -s "$work/new" ]] && { echo "verify: the change adds entry points or actions no recipe covers (listed above)" >&2; ((result)) || result=1; }
     exit $result ;;
   all)
