@@ -89,28 +89,38 @@ are checked even when the script does not list them.
 ## 3. Prove it
 
 Run `bin/verify lint`, then `bin/verify up` twice: the second call must reuse the
-environment. When recipes were converted, or a helper or `bin/verify` changed, run
-`bin/verify all` once; it moves the run to the production build. Otherwise drive one
-feature. Fix the environment yourself when `doctor.sh` stops the run.
+environment. Then drive only what the upgrade can break. Never run `bin/verify all`: an
+upgrade mostly changes rules, and a rule change breaks no feature.
 
-Every failing feature is repaired before the PR, also one the upgrade did not break. So is
-every `# expects:` line marked not driven for a reason the new rules do not allow: recipes
-keep reasons that were written under older rules. `bin/verify uncovered` ends with every
-such reason and its features; hold each against the Header rules in the new `SKILL.md`'s
-Recipes section. Run `bin/areas > .cache/areas.txt` when it is missing, and start one
-recorder for each area that holds failing features or a reason that does not hold, all at
-once, with their summary lines and those reasons. A recorder repairs the recipe, or marks
-a product defect `# known failure:`, and gives each line whose reason does not hold a
-step. Then run `bin/verify all` again, with no `--jobs` (the Done rule in the new
-`SKILL.md`'s Recipes section says why). Send each feature that fails there back to a
-recorder and repeat. Go on only when each of them passes there or fails at a known
-failure. Then run `bin/verify uncovered` and `bin/verify down`.
+- Run `bin/verify affected --base <the commit before step 1's commit>`. It drives every
+  converted or changed recipe and every feature that uses a changed helper. Changes to
+  `SKILL.md`, `PROJECT.md` and the other rules select nothing.
+- When `bin/verify`, `bin/lib.sh`, `launch.sh`, `doctor.sh` or `cleanup.sh` changed, also
+  drive a few features by name, as a smoke test of the runner and the environment: one
+  plain feature, one marked `# alone`, and one marked `# shares`, each when one exists.
+- When neither selects a feature, drive nothing: `bin/verify lint` was the check.
+
+Fix the environment yourself when `doctor.sh` stops the run. A driven feature that fails is
+repaired before the PR. So is every `# expects:` line marked not driven for a reason the new
+rules do not allow: recipes keep reasons that were written under older rules.
+`bin/verify uncovered` ends with every such reason and its features; hold each against the
+Header rules in the new `SKILL.md`'s Recipes section. Run `bin/areas > .cache/areas.txt`
+when it is missing, and start one recorder for each area that holds failing features or a
+reason that does not hold, all at once, with their summary lines and those reasons. A
+recorder repairs the recipe, or marks a product defect `# known failure:`, and gives each
+line whose reason does not hold a step. Then drive the features the recorders changed,
+together in one `bin/verify <feature>...`. Send each feature that fails there back to a
+recorder and repeat, until each passes or fails at a known failure. Features the upgrade
+cannot break are not driven, and their old failures are not this skill's work. Then run
+`bin/verify uncovered` and `bin/verify down`.
 
 ## 4. Ship and report
 
 Commit and open one PR as the repository's conventions say. Report: what the script
-changed, what you did from its list, how long `bin/verify all` took, the features the
-recorders repaired, the expectations that now have a step, and each known failure. When
+changed, what you did from its list, each drive with its command, number of features and
+time, the features the recorders repaired, the expectations that now have a step, and each
+known failure. Say that only the features the upgrade could break were driven, and that
+`/verify-<app> full` drives every feature. When
 `bin/verify uncovered` listed anything as not covered, end the report with this line, the
 count filled in: "<n> entry points and actions have no
 recipe. Run `/verify-<app> full` to record them."

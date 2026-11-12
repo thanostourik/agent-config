@@ -171,7 +171,7 @@ stops and asks whether to replace or upgrade it.
 
 | Skill | What it does |
 |---|---|
-| `verify-<app>` | Agents run it on their own before they call work done. `bin/verify affected` drives only the features a change touches, `bin/verify all` drives every feature, and every run on the machine shares one queue that keeps 20% of memory free. You can also ask for it by name. |
+| `verify-<app>` | Agents run it on their own before they call work done. `bin/verify affected` drives only the features a change touches, `bin/verify all` drives every feature, `bin/verify all --failed` reruns only what did not pass or what a change since then selects, and every run on the machine shares one queue that keeps 20% of memory free. You can also ask for it by name. |
 | `with-verification` | Add "with verify" to any request, in any repository. The agent finds the project's `verify-<app>` skill and runs it before it calls the work done. |
 
 **Keep up with this repository.** When the generator here changes, run `./sync --apply`,
