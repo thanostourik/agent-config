@@ -30,7 +30,10 @@ file, such as `.agents/skills/verify-shop`.
    plainly avoidable; spend no further runs on speed.
 7. Run `<skill>/bin/verify uncovered <area>`. It lists your area's entry points, actions and
    expectation lines no recipe covers. Cover each with a step, or an `# expects:` line
-   marked not driven for a reason the Recipes section allows, until it lists none.
+   marked not driven for a reason the Recipes section allows, until none is left. It ends
+   with your area's not-driven reasons. Hold each against the Recipes section's Header
+   rules, also in recipes written before you, and give each line whose reason does not
+   hold a step.
 8. Run your features once together with three others that already have a result file in
    `<skill>/.cache/results/` (all of them when fewer exist):
    `<skill>/bin/verify <yours> <others>`. Check only data your recipe created. This pass is

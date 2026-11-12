@@ -44,6 +44,10 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 1. When the code is ready, run `verify up`. It reuses the run's environment when it is
    already up and restarts only the app. Keep it up for the whole task, and run `verify up`
    again after every code change, before driving: the app runs the code it started with.
+   The environment also keeps what earlier code did to it, such as the migrations it
+   applied. When a change or a rebase alters one of those (edits, renames or renumbers an
+   applied migration, or adds one before it), run `verify down` first, so `verify up`
+   starts from the new code.
 2. Bring the recipes in line with the change, as part of the change, like tests. For
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh` as
    [Recipes](#recipes) says. A whole new feature can go to a recorder
@@ -85,16 +89,22 @@ sign-in, a shared helper) and you cannot name fewer features.
    no longer cite.
 2. Run `verify all`, which brings the run up on the production build, and
    `verify uncovered`, which lists every entry point, action and expectation line no recipe
-   covers.
-3. Start a recorder for each area that holds a failing feature or an uncovered item, all at
-   once ([Recorders](#recorders)), and give it the summary lines of its failing features. A
-   failing recipe is repaired, or its product defect marked `# known failure:`. An
+   covers. It ends with every reason an `# expects:` line is marked not driven, with its
+   features. Hold each reason against [Header](#header): recipes keep reasons that were
+   written under older rules.
+3. Start a recorder for each area that holds a failing feature, an uncovered item or a
+   not-driven reason that does not hold, all at once ([Recorders](#recorders)). Give it the
+   summary lines of its failing features, and those reasons with their features. A feature
+   belongs to the area its name starts with, else to the area that lists its `# touches:`
+   files. A failing recipe is repaired, or its product defect marked `# known failure:`. An
    uncovered item gets a step, or an `# expects:` line marked not driven with its reason.
+   A line whose reason does not hold gets a step.
 4. When every recorder has written its result file, run `verify all` again, with no
    `--jobs`. Send each new or repaired feature that neither passes nor fails at its known
    failure back to its recorder with its summary line, and repeat. Then run
-   `verify uncovered`: it lists nothing. Then `verify down`, commit, and report the
-   features added, the features repaired, and each product defect.
+   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds. Then
+   `verify down`, commit, and report the features added, the features repaired, the
+   expectations that now have a step, and each product defect.
 
 A drive can outlast your command timeout. Run `verify` the way your harness runs background
 commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
@@ -103,7 +113,8 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 
 - `verify up` / `verify down`: start or reuse, and remove, the run's environment. The run's
   environment runs the app on its dev server unless the first `verify up` set
-  `VERIFY_APP=build`.
+  `VERIFY_APP=build`. A failed `verify up` prints the launch output of each copy that did
+  not start, and the errors its app logged meanwhile (`bin/server-errors.sh`).
 - `verify affected [--dry] [--base <ref>]`: select and drive; `--dry` only selects. It
   exits 1 while the change adds entry points or actions no recipe covers. It ends with the
   `# expects:` lines marked not driven that the change added or edited.
@@ -123,12 +134,15 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `verify lint [feature...]`: check the recipe rules the runner enforces.
 - Lanes run on the production build. `# alone` features take them from one queue, longest
   first. A drive starts lanes itself, up to the number in the skill's `lanes` file, when its
-  `# alone` features take at least twice as long as a copy takes to start and the copy fits
-  in memory beside the reserve. `verify up --lanes N` keeps exactly N.
+  `# alone` features take at least twice as long as a copy takes to start and the copy,
+  with a feature running on it, fits in memory beside the reserve. `verify up --lanes N`
+  keeps exactly N. The summary line of a feature that ran on a lane names it (`lane 1`).
 - `verify uncovered [area]`: entry points (routes, screens, commands) no feature's `# covers:`
   names, with the count covered; actions `bin/actions.sh` prints that no `# expects:` line
   cites by file and name; and lines of an area's expectation list (`.cache/expect/<area>.txt`)
-  no recipe of that area cites. With an area of `.cache/areas.txt`, only that area's.
+  no recipe of that area cites. With an area of `.cache/areas.txt`, only that area's. It
+  ends with every reason an `# expects:` line is marked not driven, most used first, with
+  the count of its lines and its features.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
   drives another checkout of that app, such as a worktree.
 
@@ -316,6 +330,10 @@ These rules hold for recipes and for every helper in `bin/`.
   seed data or the dump. Every feature shares one database at once, and pages that add up
   every row (reports, dashboards, counts) also read this feature's rows: one row real data
   never has can break another feature's page.
+- A row that several features insert directly comes from one fixture helper in `bin/`, such
+  as `fixture user verify-notes-1 editor`, never from the same `insert` in each recipe. The
+  table's columns and the rules of real data then sit in one place. A schema change needs
+  one edit there, and `verify affected` drives every feature that uses a changed helper.
 
 ### Size
 
@@ -368,7 +386,9 @@ their traps to `PROJECT.md`'s Gotchas when they hold for other features.
 ## When a drive fails
 
 Record the action, the expected result and its basis (the request, a documented contract
-or a test), and the actual result. Diagnose before fixing. The failure is one of:
+or a test), and the actual result. Diagnose before fixing. In the log, each step's line
+ends with the time since the recipe began, such as `(at 21s)`: a step took the difference
+to the next line. The failure is one of:
 
 - **Recipe or helper defect:** a command, locator or wait is wrong. Fix it without changing
   the expected behavior, and rerun the feature.
@@ -383,10 +403,12 @@ or a test), and the actual result. Diagnose before fixing. The failure is one of
 A summary line with `server errors:` means the app failed while the step ran: read that
 file before the recipe. The error may come from another feature's data.
 
-If the app works and the recipe fails, the recipe is broken. A feature that passes alone
-and fails in `verify all` is a recipe or helper defect, never flakiness: find the wait sized
-for an idle machine or the state another feature changes, fix it, and run `verify all`
-again. A later pass does not excuse the failure.
+If the app works and the recipe fails, the recipe is broken. A feature that fails in one
+drive and passes in another on the same code, such as alone after `verify all`, or on a
+second try on a busy machine, is a recipe or helper defect, never flakiness or machine
+load: find the wait sized for an idle machine or the state another feature changes, fix it,
+and drive it again the way it failed, with `verify all` when it failed there. A later pass
+does not excuse the failure.
 
 When `doctor.sh` fails after a feature, the runner stops starting features. Fix the
 environment, or run `verify down` and `verify up`, then rerun what did not run.
@@ -400,7 +422,9 @@ At level `shared`, pass `--jobs 1` and write only to fixtures named `verify-<fea
 
 ## Report
 
-Start from the summary lines. One line per driven feature: **pass**, **fail** (with the step
+Start from the summary lines. Name each drive by its command and its number of features,
+such as "`verify affected`, 5 features". Only `verify all` drives every feature, so call
+no other drive full. One line per driven feature: **pass**, **fail** (with the step
 and the failure kind), or **blocked** (with what was tried). Name the changed files you
 skipped and why. List every `# expects:` line the change left marked not driven, with its
 reason. Link evidence with Markdown links to absolute paths, and check that each
