@@ -21,13 +21,14 @@ the current commit and `git status --short`. Create a unique directory under
 review. Do not include unrelated user changes unless they are part of the
 requested target.
 
-Write a self-contained `prompt.md` with the exact target and the git command
-that shows it (`git diff HEAD` plus untracked files, `git diff <base>...HEAD`,
+Write a self-contained `prompt.md` with the absolute repository path, an
+instruction to run every command from there, the exact target, and the git
+command that shows it (`git diff HEAD` plus untracked files, `git diff <base>...HEAD`,
 or `git show <sha>`), relevant project instructions, and requirements. Ask for
 concrete bugs, regressions, and requirements mismatches with severity, file and
 line, failure scenario, and fix direction. For plans, ask about feasibility and
 missing decisions. Request an explicit statement if no substantive issues are
-found, and instruct it to review without edits, tests, or other commands.
+found, and instruct it to review without edits or tests.
 
 Write `$REVIEW_DIR/cursor-config/cli-config.json`:
 
@@ -37,22 +38,16 @@ Write `$REVIEW_DIR/cursor-config/cli-config.json`:
   "editor": { "vimMode": false },
   "approvalMode": "allowlist",
   "permissions": {
-    "allow": [
-      "Read(**)",
-      "Shell(git diff)",
-      "Shell(git log)",
-      "Shell(git show)",
-      "Shell(git status)"
-    ],
+    "allow": ["Read(**)"],
     "deny": ["Write(**)"]
   }
 }
 ```
 
-The user's own Cursor config may approve every tool, and print mode then
-ignores `--mode ask`. This separate config is what keeps the reviewer read-only:
-file writes and every shell command except read-only git are rejected. Cursor
-also writes session files into this directory, so use a new one for every run.
+The user's own Cursor config may approve every tool, so this separate config
+replaces it: the file-write tool is rejected and the file-read tool may read
+anywhere. Cursor also writes session files into this directory, so use a new
+one for every run.
 
 ## Review a branch against a base
 
@@ -71,13 +66,23 @@ absolute repository path, selected model, selected effort, and artifact
 directory:
 
 ```bash
+mkdir -p "$REVIEW_DIR/workspace" &&
 CURSOR_CONFIG_DIR="$REVIEW_DIR/cursor-config" cursor-agent -p --trust \
-  --model "$REVIEW_MODEL-$REVIEW_EFFORT" --workspace "$REVIEW_REPO" \
+  --sandbox enabled --workspace "$REVIEW_DIR/workspace" \
+  --model "$REVIEW_MODEL-$REVIEW_EFFORT" \
   --output-format text "$(cat "$REVIEW_DIR/prompt.md")" \
   </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
 ```
 
-This is a static review: the caller remains responsible for tests.
+The reviewer may run any shell command, but only inside Cursor's sandbox,
+which lets it write to its workspace and temp directories only and blocks
+network access. The workspace is an empty directory, not the repository, so
+the repository and its git directory stay read-only. Do not go back to an
+allow-list of shell commands: Cursor rejects ordinary forms such as
+`git diff $(git merge-base …)`, `cd src && git diff`, or a pipe to `head`, and
+the reviewer then reviews without the diff. Do not use `--mode ask` either: in
+print mode it removes the shell tool. This is a static review: the caller
+remains responsible for tests.
 
 Wait until the review finishes, then report. If the calling tool notifies you
 when a background command exits, end your turn and wait for that notice. Never
@@ -91,8 +96,8 @@ and keep waiting when the evidence is inconclusive.
 
 When the task exits, check its exit code and report. Report failures promptly
 and identify any partial output; never present an incomplete review as clean.
-Do not silently switch models or effort, or loosen the Cursor config to make
-the invocation work.
+Do not silently switch models or effort, or loosen the Cursor config or drop
+the sandbox to make the invocation work.
 
 ## Assess the result
 
