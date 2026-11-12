@@ -89,16 +89,22 @@ sign-in, a shared helper) and you cannot name fewer features.
    no longer cite.
 2. Run `verify all`, which brings the run up on the production build, and
    `verify uncovered`, which lists every entry point, action and expectation line no recipe
-   covers.
-3. Start a recorder for each area that holds a failing feature or an uncovered item, all at
-   once ([Recorders](#recorders)), and give it the summary lines of its failing features. A
-   failing recipe is repaired, or its product defect marked `# known failure:`. An
+   covers. It ends with every reason an `# expects:` line is marked not driven, with its
+   features. Hold each reason against [Header](#header): recipes keep reasons that were
+   written under older rules.
+3. Start a recorder for each area that holds a failing feature, an uncovered item or a
+   not-driven reason that does not hold, all at once ([Recorders](#recorders)). Give it the
+   summary lines of its failing features, and those reasons with their features. A feature
+   belongs to the area its name starts with, else to the area that lists its `# touches:`
+   files. A failing recipe is repaired, or its product defect marked `# known failure:`. An
    uncovered item gets a step, or an `# expects:` line marked not driven with its reason.
+   A line whose reason does not hold gets a step.
 4. When every recorder has written its result file, run `verify all` again, with no
    `--jobs`. Send each new or repaired feature that neither passes nor fails at its known
    failure back to its recorder with its summary line, and repeat. Then run
-   `verify uncovered`: it lists nothing. Then `verify down`, commit, and report the
-   features added, the features repaired, and each product defect.
+   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds. Then
+   `verify down`, commit, and report the features added, the features repaired, the
+   expectations that now have a step, and each product defect.
 
 A drive can outlast your command timeout. Run `verify` the way your harness runs background
 commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
@@ -134,7 +140,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `verify uncovered [area]`: entry points (routes, screens, commands) no feature's `# covers:`
   names, with the count covered; actions `bin/actions.sh` prints that no `# expects:` line
   cites by file and name; and lines of an area's expectation list (`.cache/expect/<area>.txt`)
-  no recipe of that area cites. With an area of `.cache/areas.txt`, only that area's.
+  no recipe of that area cites. With an area of `.cache/areas.txt`, only that area's. It
+  ends with every reason an `# expects:` line is marked not driven, most used first, with
+  the count of its lines and its features.
 - In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
   drives another checkout of that app, such as a worktree.
 
@@ -322,6 +330,10 @@ These rules hold for recipes and for every helper in `bin/`.
   seed data or the dump. Every feature shares one database at once, and pages that add up
   every row (reports, dashboards, counts) also read this feature's rows: one row real data
   never has can break another feature's page.
+- A row that several features insert directly comes from one fixture helper in `bin/`, such
+  as `fixture user verify-notes-1 editor`, never from the same `insert` in each recipe. The
+  table's columns and the rules of real data then sit in one place. A schema change needs
+  one edit there, and `verify affected` drives every feature that uses a changed helper.
 
 ### Size
 

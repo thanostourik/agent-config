@@ -93,18 +93,24 @@ environment. When recipes were converted, or a helper or `bin/verify` changed, r
 `bin/verify all` once; it moves the run to the production build. Otherwise drive one
 feature. Fix the environment yourself when `doctor.sh` stops the run.
 
-Every failing feature is repaired before the PR, also one the upgrade did not break: run
-`bin/areas > .cache/areas.txt` when it is missing, and start one recorder for each area
-that holds failing features, all at once, with their summary lines. A recorder repairs the
-recipe, or marks a product defect `# known failure:`. Then run `bin/verify all` again,
-with no `--jobs` (the Done rule in the new `SKILL.md`'s Recipes section says why). Send each
-feature that fails there back to a recorder and repeat. Go on only when each of them passes
-there or fails at a known failure. Then run `bin/verify uncovered` and `bin/verify down`.
+Every failing feature is repaired before the PR, also one the upgrade did not break. So is
+every `# expects:` line marked not driven for a reason the new rules do not allow: recipes
+keep reasons that were written under older rules. `bin/verify uncovered` ends with every
+such reason and its features; hold each against the Header rules in the new `SKILL.md`'s
+Recipes section. Run `bin/areas > .cache/areas.txt` when it is missing, and start one
+recorder for each area that holds failing features or a reason that does not hold, all at
+once, with their summary lines and those reasons. A recorder repairs the recipe, or marks
+a product defect `# known failure:`, and gives each line whose reason does not hold a
+step. Then run `bin/verify all` again, with no `--jobs` (the Done rule in the new
+`SKILL.md`'s Recipes section says why). Send each feature that fails there back to a
+recorder and repeat. Go on only when each of them passes there or fails at a known
+failure. Then run `bin/verify uncovered` and `bin/verify down`.
 
 ## 4. Ship and report
 
 Commit and open one PR as the repository's conventions say. Report: what the script
 changed, what you did from its list, how long `bin/verify all` took, the features the
-recorders repaired, and each known failure. When `bin/verify uncovered` listed anything,
-end the report with this line, the count filled in: "<n> entry points and actions have no
+recorders repaired, the expectations that now have a step, and each known failure. When
+`bin/verify uncovered` listed anything as not covered, end the report with this line, the
+count filled in: "<n> entry points and actions have no
 recipe. Run `/verify-<app> full` to record them."

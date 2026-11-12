@@ -305,6 +305,8 @@ checks in `PROJECT.md`, and go to step 6.
    starts, so no recorder pays for the same trap. Also write the setup helpers several
    features need, such as signing in as each role, creating an account with a role,
    provisioning a subscription or workspace, adding a member, or reading the run's mail.
+   A row several features insert directly, such as a user, gets its fixture helper here
+   too (the Data section's rule), before any recorder writes that insert into a recipe.
    Call each once the way a recipe calls it, after deleting its cached state (such as saved
    sign-ins), so its slow path runs too: a cache can hide a wrong argument until the first
    fresh drive.
@@ -332,7 +334,9 @@ divided by the longest parallel feature.
 Then check the lifecycle once:
 
 - `bin/verify lint` and `bin/verify uncovered`. Send each area with an uncovered entry
-  point, action or expectation line back to its recorder; it lists nothing when done.
+  point, action or expectation line back to its recorder, until none is left. It ends with
+  every reason a line is marked not driven: hold each against the Header rules of the
+  copied `SKILL.md`, and send each area with a reason that does not hold back too.
 - Commit, change one file a feature touches, and check that
   `bin/verify affected --dry --base HEAD` selects it. Without `--base HEAD` on this branch,
   every new recipe counts as changed. Undo the change. In a companion, change a copy of the

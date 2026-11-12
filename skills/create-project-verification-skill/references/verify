@@ -7,7 +7,7 @@
 # verify all                drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
-# verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers
+# verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers; ends with every reason an expects line is marked not driven
 # verify room               wait until the machine has room for one more browser session or process
 # Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
 # Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
@@ -297,6 +297,22 @@ uncovered_items() {
       grep -q -F -- "$source" "$work/cited" || printf 'expectation\t%s\t%s\n' "$source" "$name"
     done
   done
+}
+
+# Every reason an '# expects:' line is marked not driven, most used first, with its features; of one area when $1 names it.
+not_driven_reasons() {
+  local feature total=0
+  for feature in $(all_features); do
+    if [[ -n "${1:-}" && "$feature" != "$1" && "$feature" != "$1"-* ]]; then
+      touches_of "$feature" | grep -q -x -F -f "$work/area-files" || continue
+    fi
+    total=$((total + $(grep -c '^# expects:' "$skill/features/$feature.sh")))
+    sed -n "s/^# expects:.* -> not driven:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1\t$feature/p" "$skill/features/$feature.sh"
+  done > "$work/reasons"
+  [[ -s "$work/reasons" ]] || return 0
+  echo "Marked not driven: $(wc -l < "$work/reasons") of $total expectations (hold each reason against the skill's Header rules):"
+  awk -F '\t' '{ lines[$1]++; if (!seen[$0]++) features[$1] = features[$1] " " $2 } END { for (reason in lines) print lines[reason] "\t" reason "\t" features[reason] }' "$work/reasons" \
+    | sort -t $'\t' -k1,1nr -k2,2 | awk -F '\t' '{ print "  " $1 "  " $2 "  [" substr($3, 2) "]" }'
 }
 
 area_files() { sed -n "s/^\(split: \)\{0,1\}$1: .*; files: //p" "$cache/areas.txt" 2> /dev/null | tr ' ' '\n'; }
@@ -695,6 +711,7 @@ case $command in
       echo "Not covered (give each a step and an '# expects:' line, or an '# expects:' line marked not driven):"
       awk -F '\t' '{ print "  " $1 ": " $2 " (" $3 ")" }' "$work/uncovered"
     }
+    not_driven_reasons "$@"
     exit 0 ;;
   affected)
     while (($#)); do
