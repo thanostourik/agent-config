@@ -139,7 +139,9 @@ Write and make executable:
   the app server's log file, or the output of the dev process the run records, in the copy
   `$VERIFY_RUN_ID` names. On a failure, `lib.sh` calls it with the time the failing step
   began and saves its output as evidence, so a UI timeout caused by a server error explains
-  itself. Check it once by causing a server error, such as a request the app answers with
+  itself. A failed `bin/verify up` calls it too, with the time the launch began, so it also
+  works on a run whose app never became ready, such as one that stopped at a migration.
+  Check it once by causing a server error, such as a request the app answers with
   HTTP 500.
 - `entrypoints.sh`: prints every entry point, one per line, as `<entry point><TAB><file>`:
   a route with its method (`POST /api/notes`), a screen's path, a command (`todo add`), a

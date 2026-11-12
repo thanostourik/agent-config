@@ -11,7 +11,7 @@ step() {
   verify_step=$1 verify_step_since=$EPOCHSECONDS
   printf '%s\n' "$1" > "$VERIFY_DIR/step"
   printf '%s\n' "${2:-}" > "$VERIFY_DIR/intent"
-  printf '\n== %s: %s (%ss)\n' "$1" "${2:-}" "$SECONDS"
+  printf '\n== %s: %s (at %ss)\n' "$1" "${2:-}" "$SECONDS"
 }
 
 wait_for() {
@@ -45,7 +45,7 @@ verify_end() {
   else
     printf 'pass\n' > "$VERIFY_DIR/result"
   fi
-  printf '\n== Clean up (%ss)\n' "$SECONDS"
+  printf '\n== Clean up (at %ss)\n' "$SECONDS"
   (set -e; cleanup)
   cleanup_status=$?
   if [[ -x "$VERIFY_SKILL/bin/after-feature.sh" ]]; then

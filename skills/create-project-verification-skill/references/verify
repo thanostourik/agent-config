@@ -428,7 +428,7 @@ run_feature() {
   rm -f "$room_pool/slot-$BASHPID"
   echo $((SECONDS - start)) > "$dir/seconds"
   echo "$status" > "$dir/status"
-  line_of "$feature" > "$run/line-$feature"
+  line_of "$feature" "$lane" > "$run/line-$feature"
   echo $? > "$run/rc-$feature"
   (
     command -v flock > /dev/null && flock 9
@@ -444,7 +444,8 @@ run_feature() {
 }
 
 line_of() {
-  local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds verdict
+  local feature=$1 dir=$cache/drive/$1 step="" result="" status seconds verdict where=""
+  (($2)) && where=", lane $2"
   status=$(cat "$dir/status") seconds=$(cat "$dir/seconds")
   [[ -e "$dir/step" ]] && step=$(cat "$dir/step")
   [[ -e "$dir/result" ]] && result=$(head -n 1 "$dir/result")
@@ -455,15 +456,15 @@ line_of() {
   if ((status == 0)) && [[ "$result" == pass ]]; then
     local slow="" step_slow
     ((seconds > budget)) && slow=", slow: over ${budget}s, split or speed it up"
-    step_slow=$(awk '/^== / && match($0, /\(([0-9]+)s\)$/) { t = substr($0, RSTART + 1, RLENGTH - 3) + 0; if (label != "" && t - start > 10) { out = out sep "\"" label "\" " (t - start) "s"; sep = ", " }; label = ($0 ~ /^== Clean up/) ? "" : substr($0, 4, index($0, ":") - 4); start = t } END { printf "%s", out }' "$dir/log" 2> /dev/null)
+    step_slow=$(awk '/^== / && match($0, /\(at ([0-9]+)s\)$/) { t = substr($0, RSTART + 4, RLENGTH - 6) + 0; if (label != "" && t - start > 10) { out = out sep "\"" label "\" " (t - start) "s"; sep = ", " }; label = ($0 ~ /^== Clean up/) ? "" : substr($0, 4, index($0, ":") - 4); start = t } END { printf "%s", out }' "$dir/log" 2> /dev/null)
     [[ -n "$step_slow" ]] && slow+=", steps over 10 s: $step_slow"
     limit=$(cat "$dir/deadline")
     ((seconds * 3 >= limit * 2)) && slow+=", used two thirds of its ${limit}s deadline, raise '# deadline:' or split it"
-    echo "$feature: pass (${seconds}s$slow)$tail"
+    echo "$feature: pass (${seconds}s$where$slow)$tail"
     [[ -z "$tail" ]]
     return
   elif ((status == 124 || status == 137)) && ((seconds >= $(cat "$dir/deadline"))); then
-    echo "$feature: timeout after ${seconds}s at \"$step\" ($dir/log)$server$tail"
+    echo "$feature: timeout after ${seconds}s at \"$step\" ($dir/log$where)$server$tail"
   else
     verdict="fail"
     header "$feature" "known failure" | grep -q -x -F "$step" && verdict="known failure"
@@ -471,7 +472,7 @@ line_of() {
     command=$(head -n 1 "$dir/error" 2> /dev/null | cut -c 1-120)
     said=$(sed -e '/^== Clean up/,$d' -e 's/\x1b\[[0-9;]*m//g' "$dir/log" | awk '/^== / { error = ""; open = 0; next } /^### Error/ { error = ""; open = 1; next } /^###/ || (open && !NF && error != "") { open = 0 } open && NF && !/^Call log:/ { sub(/^[[:space:]-]+/, ""); error = error (error == "" ? "" : " ") $0 } END { printf "%s", error }' | cut -c 1-300)
     [[ -n "$said" ]] || said=$(sed '/^== Clean up/,$d' "$dir/log" | grep -v -e '^== ' -e '^[[:space:]]*$' | tail -n 1 | cut -c 1-200)
-    echo "$feature: $verdict at \"$step\"$intent: ${command:-?} -> ${said:-no output} (${seconds}s, $dir/log)$server$tail"
+    echo "$feature: $verdict at \"$step\"$intent: ${command:-?} -> ${said:-no output} (${seconds}s$where, $dir/log)$server$tail"
   fi
   return 1
 }
@@ -517,7 +518,7 @@ drive() {
       (flock 8 && (($(lane_count) == lane)) && echo $((lane - 1)) > "$cache/lanes") 8> "$cache/.lanes-lock"
     fi
   }
-  # A lane pays off only when the '# alone' work is well over the time a copy takes to start, and only while the copy fits beside the reserve.
+  # A lane pays off only when the '# alone' work is well over the time a copy takes to start, and only while the copy and the feature it runs fit beside the reserve.
   add_lanes() {
     local most launch stack want lane
     can_queue && stack=$(cat "$cache/stack-mb" 2> /dev/null) || return 0
@@ -528,7 +529,7 @@ drive() {
     ((want > most)) && want=$most
     ((want > ${#alone[@]} - 1)) && want=$((${#alone[@]} - 1))
     for ((lane = count + 1; lane <= want; lane++)); do
-      (($(meminfo MemAvailable) - (lane - count) * stack >= $(reserve_mb))) || break
+      (($(meminfo MemAvailable) - (lane - count) * (stack + browser_mb) >= $(reserve_mb))) || break
       (flock 8 && (($(lane_count) == lane - 1)) && echo "$lane" > "$cache/lanes") 8> "$cache/.lanes-lock" || break
       start_lane "$lane" &
       pids+=($!)
@@ -591,8 +592,16 @@ drive() {
   return $result
 }
 
+# What the app logged while a copy failed to start: launch.sh only knows that the app did not answer.
+launch_errors() {
+  local errors
+  [[ -x "$skill/bin/server-errors.sh" ]] || return 0
+  errors=$(on_lane "$1" timeout 30 "$skill/bin/server-errors.sh" "$2" 2> /dev/null < /dev/null | head -n 20)
+  [[ -z "$errors" ]] || printf 'verify: the app of %s logged while starting:\n%s\n' "$(lane_id "$1")" "$errors" >&2
+}
+
 up_env() {
-  local previous count failed=0 before="" began used lane
+  local previous count before="" began since used lane pids=() broken=()
   [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; echo "${VERIFY_APP:-dev}" > "$cache/app-mode"; }
   previous=$(lane_count)
   echo "${lanes:-$previous}" > "$cache/lanes"
@@ -601,17 +610,23 @@ up_env() {
   done
   count=$(lane_count)
   [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
-  began=$SECONDS
+  began=$SECONDS since=$EPOCHSECONDS
   if ((count == 0)); then
-    on_lane 0 "$skill/bin/launch.sh" "$@" || failed=1
+    on_lane 0 "$skill/bin/launch.sh" "$@" || broken+=(0)
   else
     for ((lane = 0; lane <= count; lane++)); do
       on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 &
+      pids+=($!)
     done
-    for ((lane = 0; lane <= count; lane++)); do wait -n || failed=1; done
-    ((failed == 0)) || tail -n 20 "$cache"/launch-*.log >&2
+    for ((lane = 0; lane <= count; lane++)); do
+      wait "${pids[lane]}" && continue
+      broken+=("$lane")
+      echo "verify: $(lane_id "$lane") did not start ($cache/launch-$lane.log):" >&2
+      tail -n 20 "$cache/launch-$lane.log" >&2
+    done
   fi
-  ((failed == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; return 1; }
+  for lane in "${broken[@]}"; do launch_errors "$lane" "$since"; done
+  ((${#broken[@]} == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; return 1; }
   for ((lane = 0; lane <= count; lane++)); do
     on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; return 1; }
   done
