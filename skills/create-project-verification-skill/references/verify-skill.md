@@ -75,12 +75,13 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    type, or a call more than one step away, find the features that use it with
    `verify list` and drive them by name.
 5. On a failure, open the log only when the summary line is not enough. Classify it
-   ([When a drive fails](#when-a-drive-fails)), fix it, and rerun only that feature.
+   ([When a drive fails](#when-a-drive-fails)), fix it, and rerun only the failed features,
+   together in one `verify <feature>...`.
 6. At the end of the task, also after a failure, run `verify down`.
 
-Do not drive features the change cannot affect. Run `verify all` only when the user asks,
-after an upgrade of this skill, or when a change touches what every feature uses (launch,
-sign-in, a shared helper) and you cannot name fewer features.
+Do not drive features the change cannot affect. Never run `verify all` to check a change,
+unless the user asks for it. A change to a helper many features use, such as sign-in, is no
+exception: drive what `verify affected` selects.
 
 ## Full
 
@@ -99,10 +100,12 @@ sign-in, a shared helper) and you cannot name fewer features.
    files. A failing recipe is repaired, or its product defect marked `# known failure:`. An
    uncovered item gets a step, or an `# expects:` line marked not driven with its reason.
    A line whose reason does not hold gets a step.
-4. When every recorder has written its result file, run `verify all` again, with no
-   `--jobs`. Send each new or repaired feature that neither passes nor fails at its known
-   failure back to its recorder with its summary line, and repeat. Then run
-   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds. Then
+4. When every recorder has written its result file, run `verify all --failed`. It drives
+   only the features that did not pass in the last run, and those the files changed since
+   then select. Send each feature that neither passes nor fails at its known failure back
+   to its recorder with its summary line, and repeat until it passes. Then run `verify all`
+   once more, with no `--jobs`, as the final proof. When a feature fails there, send it
+   back and go on with `verify all --failed`. Then run `verify uncovered`: nothing is left uncovered, and every not-driven reason holds. Then
    `verify down`, commit, and report the features added, the features repaired, the
    expectations that now have a step, and each product defect.
 
@@ -121,6 +124,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `verify <feature>...`: drive those features on the run's environment.
 - `verify all`: drive every feature on the production build. It brings the run up on that
   build first, and removes a run on the dev server before that.
+- `verify all --failed`: the same, but drive only the features that did not pass in the
+  last `verify all` or `verify all --failed`, plus those the files changed since that run
+  started select, the way `verify affected` selects them.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and
   `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue. A feature
@@ -287,7 +293,7 @@ These rules hold for recipes and for every helper in `bin/`.
   production-sized data or a restart, waits longer, with `# slow: <reason>`
   (`// slow: <reason>` inside JavaScript) on that line. Its limit is at least twice the
   step's time in a `verify all` pass line, never its time alone; when it timed out there,
-  double it and run `verify all` again.
+  double it and drive it again with `verify all --failed`.
 - Every Playwright call in a slow step gets that same limit, the click that starts a
   navigation included, such as with `page.setDefaultTimeout(<ms>)` first in the `run-code`
   function. Playwright counts the navigation a click starts inside the click's own timeout,
@@ -343,12 +349,13 @@ Split a bigger or slower feature in two: the slowest feature sets the end of eve
 
 ### Done
 
-In [Full](#full), and when the generator or the maintain skill proves recipes, a new or
-repaired recipe is done only when it passes in `verify all` with no `--jobs`, where every
-other feature runs beside it. A pass alone or in a small batch proves nothing about its
-waits. When you [check a change](#check-a-change), a pass in the features you drive is
-enough: a full drive per change takes too long. Size the recipe's waits for `verify all`
-anyway.
+In [Full](#full), and when the generator proves recipes, a new or repaired recipe is done
+only when it passes in the final `verify all` with no `--jobs`, where every other feature
+runs beside it. A pass in `verify all --failed`, alone or in a small batch, proves nothing
+about its waits; it only saves full drives until the final one. When you
+[check a change](#check-a-change), and when the maintain skill proves an upgrade, a pass in
+the features you drive is enough: a full drive per change takes too long. Size the recipe's
+waits for `verify all` anyway.
 
 ## Recorders
 
@@ -407,8 +414,8 @@ If the app works and the recipe fails, the recipe is broken. A feature that fail
 drive and passes in another on the same code, such as alone after `verify all`, or on a
 second try on a busy machine, is a recipe or helper defect, never flakiness or machine
 load: find the wait sized for an idle machine or the state another feature changes, fix it,
-and drive it again the way it failed, with `verify all` when it failed there. A later pass
-does not excuse the failure.
+and drive it again with the other failed features, with `verify all --failed` when it failed
+in `verify all`. A later pass does not excuse the failure.
 
 When `doctor.sh` fails after a feature, the runner stops starting features. Fix the
 environment, or run `verify down` and `verify up`, then rerun what did not run.
@@ -423,8 +430,8 @@ At level `shared`, pass `--jobs 1` and write only to fixtures named `verify-<fea
 ## Report
 
 Start from the summary lines. Name each drive by its command and its number of features,
-such as "`verify affected`, 5 features". Only `verify all` drives every feature, so call
-no other drive full. One line per driven feature: **pass**, **fail** (with the step
+such as "`verify affected`, 5 features". Only `verify all` without `--failed` drives every
+feature, so call no other drive full. One line per driven feature: **pass**, **fail** (with the step
 and the failure kind), or **blocked** (with what was tried). Name the changed files you
 skipped and why. List every `# expects:` line the change left marked not driven, with its
 reason. Link evidence with Markdown links to absolute paths, and check that each

@@ -4,7 +4,8 @@
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
 # verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
-# verify all                drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
+# verify all [--failed]     drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
+#                           --failed drives only the features the last all did not pass, plus those the files changed since it select
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
 # verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers; ends with every reason an expects line is marked not driven
@@ -93,11 +94,33 @@ changed_files() {
     while read -r name path; do
       [[ -n "$name" ]] || continue
       variable=$(app_variable "$name")
+      if [[ -n "$base" ]] && ! git -C "${!variable}" rev-parse -q --verify "$base^{commit}" > /dev/null; then
+        echo "verify: $base is not in the $name checkout; its changes select nothing" >&2
+        continue
+      fi
       changed_in "${!variable}" | sed "s|^|$name/|" || return 1
     done < "$skill/apps"
   fi
   changed_in "$root" || return 1
 }
+
+fingerprint_of() {
+  git -C "$1" ls-files -c -o --exclude-standard -z | (cd "$1" && xargs -0 -r sha1sum 2> /dev/null) | sed "s|^\([0-9a-f]*\)  |\1  $2|"
+}
+
+fingerprint() {
+  local name path variable
+  if [[ -f "$skill/apps" ]]; then
+    while read -r name path; do
+      [[ -n "$name" ]] || continue
+      variable=$(app_variable "$name")
+      fingerprint_of "${!variable}" "$name/"
+    done < "$skill/apps"
+  fi
+  fingerprint_of "$root" ""
+}
+
+changed_since() { comm -3 <(sort -u "$1") <(sort -u "$2") | sed -e 's/^\t//' -e 's/^[0-9a-f]*  //' | sort -u; }
 
 skill_rel=${skill#"$root"/}
 
@@ -142,7 +165,6 @@ select_affected() {
   for feature in "${features[@]}"; do touches_of "$feature" | sed "s|^|$feature	|"; done > "$work/touches"
   : > "$work/affected"
   : > "$work/new"
-  changed_files > "$work/changed" || return 1
   while IFS= read -r file; do
     hit=""
     case $file in
@@ -588,13 +610,13 @@ drive() {
   for feature in "$@"; do
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
-      (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || result=1
+      (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || { result=1 not_passed+=("$feature"); }
     elif [[ -s "$run/stop" ]]; then
       echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $cache/doctor-failed.log)"
-      result=1
+      result=1 not_passed+=("$feature")
     else
       echo "$feature: not run"
-      result=1
+      result=1 not_passed+=("$feature")
     fi
   done
   local driven=0 skipped=0
@@ -678,6 +700,7 @@ work=$(mktemp -d "$cache/work.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 export VERIFY_SKILL=$skill VERIFY_ROOT=$root
 export_apps || exit 2
+not_passed=()
 command=${1:-}
 [[ $# -gt 0 ]] && shift
 
@@ -721,6 +744,7 @@ case $command in
         *) echo "verify: affected takes --dry and --base <ref>" >&2; exit 2 ;;
       esac
     done
+    changed_files > "$work/changed" || exit 2
     select_affected || exit 2
     result=0
     [[ -s "$work/affected" && -z "$dry" ]] && { drive $(cut -f1 "$work/affected" | sort -u); result=$?; }
@@ -732,14 +756,34 @@ case $command in
     [[ -s "$work/new" ]] && { echo "verify: the change adds entry points or actions no recipe covers (listed above)" >&2; ((result)) || result=1; }
     exit $result ;;
   all)
+    [[ $# -eq 0 || ( $# -eq 1 && $1 == --failed ) ]] || { echo "verify: all takes only --failed" >&2; exit 2; }
+    [[ $# -eq 0 || -f "$cache/all/failed" ]] || { echo "verify: no earlier 'verify all' to rerun the failures of; run it first" >&2; exit 2; }
+    fingerprint > "$work/files"
+    if (($#)); then
+      [[ -s "$cache/all/failed" ]] && echo "Did not pass in the last run: $(tr '\n' ' ' < "$cache/all/failed")"
+      changed_since "$cache/all/files" "$work/files" > "$work/changed"
+      select_affected || exit 2
+      for feature in $({ cat "$cache/all/failed"; cut -f1 "$work/affected"; } | sort -u); do
+        [[ -f "$skill/features/$feature.sh" ]] && echo "$feature"
+      done > "$work/rerun"
+      [[ -s "$work/rerun" ]] || { echo "all --failed: every feature passed in the last run and no change since selects one; run 'verify all' for the final proof"; exit 0; }
+    else
+      all_features > "$work/rerun"
+    fi
     if [[ -f "$cache/run-id" && "$(app_mode 0)" != build ]]; then
       echo "all: restarting the run on the production build"
       down_env || exit
     fi
     VERIFY_APP=build up_env || exit
-    drive $(all_features) ;;
+    drive $(cat "$work/rerun")
+    result=$?
+    ((result == 2)) && exit 2
+    mkdir -p "$cache/all"
+    mv "$work/files" "$cache/all/files"
+    for feature in "${not_passed[@]}"; do echo "$feature"; done > "$cache/all/failed"
+    exit $result ;;
   "" | -h | help)
-    sed -n '2,13s/^# \{0,1\}//p' "$0" ;;
+    sed -n '2,14s/^# \{0,1\}//p' "$0" ;;
   *)
     for feature in "$command" "$@"; do
       [[ -f "$skill/features/$feature.sh" ]] || { echo "verify: no features/$feature.sh (verify list shows the features)" >&2; exit 2; }

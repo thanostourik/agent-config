@@ -318,12 +318,14 @@ checks in `PROJECT.md`, and go to step 6.
 
 Run `bin/verify down` and `bin/verify all`, so every recipe runs once more on the production
 build, from a fresh environment, with every other feature beside it. Send each failing
-feature back to its recorder with its summary line. While they work, drive every feature
-that passed once more on the same environment (`bin/verify <feature> ...`): a recipe that
-fails the second time is not repeatable, so send it back too. When the recorders return,
-run `bin/verify all` again, with no `--jobs` (the Done rule in Recipes says why). Send each
-feature that fails there back to its recorder and repeat, until each passes there or fails
-at a known failure.
+feature back to its recorder with its summary line. When the recorders return, run
+`bin/verify all --failed`: it drives only the features that did not pass, and those the
+recorders' changes select. Send each feature that fails there back and repeat until it
+passes. Then run `bin/verify all` once more, with no `--jobs`, as the final proof (the Done
+rule in Recipes says why). Every feature then runs on an environment where it already ran,
+which also proves each recipe repeats. When a feature fails there, send it back and go on
+with `bin/verify all --failed`, until each feature passes in a final `bin/verify all` or
+fails at a known failure.
 
 The runner starts up to as many features at once as the machine has cores, each only when
 the machine-wide queue has room. Write a `jobs` file only when the project needs a lower
