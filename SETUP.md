@@ -31,7 +31,8 @@ with a message naming any that is missing.
 `claude-review` runs the reviewer in Claude Code's sandbox. On Linux that
 needs `bwrap` (package `bubblewrap`) and `socat`; without them Claude refuses
 to start. The command also needs `jq`; without it the command stops before
-Claude starts.
+Claude starts. `cursor-grok-review` needs `jq` to read its report; Cursor
+brings its own sandbox.
 
 ## Stacked PRs
 

@@ -44,9 +44,9 @@ absolute repository path, selected model, selected effort, and artifact
 directory:
 
 ```bash
-cd "$REVIEW_REPO"
-REVIEW_SANDBOX=$(jq -nc --arg repo "$REVIEW_REPO" \
-  --arg git "$(git rev-parse --path-format=absolute --git-common-dir)" \
+cd "$REVIEW_REPO" &&
+REVIEW_GIT_DIR=$(git rev-parse --path-format=absolute --git-common-dir) &&
+REVIEW_SANDBOX=$(jq -nc --arg repo "$REVIEW_REPO" --arg git "$REVIEW_GIT_DIR" \
   '{sandbox: {enabled: true, failIfUnavailable: true,
     autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
     filesystem: {denyWrite: [$repo, $git]}}}') &&
@@ -92,6 +92,7 @@ Read the report with `jq -r .result "$REVIEW_DIR/result.json"` and the
 denials with `jq .permission_denials "$REVIEW_DIR/result.json"`. The denials
 list every action Claude refused. Any entry there means the review is
 incomplete: report it as failed, with the denied actions, and never as clean.
+A report that does not show the reviewer read the target is incomplete too.
 
 Read the report and verify substantive findings against the source before
 presenting them. Distinguish confirmed issues from unresolved concerns, name

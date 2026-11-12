@@ -17,7 +17,7 @@ do not post findings or edit the reviewed files.
 Identify the repository and exact review target from the request: uncommitted
 changes, a branch against its base, a commit, a plan, or selected files. Record
 the current commit and `git status --short`. Create a unique directory under
-`.plans/scratch/` for the prompt, report, log, and Cursor config; exclude it from
+`.plans/scratch/` for the prompt, result, log, and Cursor config; exclude it from
 review. Do not include unrelated user changes unless they are part of the
 requested target.
 
@@ -66,18 +66,20 @@ absolute repository path, selected model, selected effort, and artifact
 directory:
 
 ```bash
-mkdir -p "$REVIEW_DIR/workspace" &&
+REVIEW_WORKSPACE=$(mktemp -d) &&
 CURSOR_CONFIG_DIR="$REVIEW_DIR/cursor-config" cursor-agent -p --trust \
-  --sandbox enabled --workspace "$REVIEW_DIR/workspace" \
+  --sandbox enabled --workspace "$REVIEW_WORKSPACE" \
   --model "$REVIEW_MODEL-$REVIEW_EFFORT" \
-  --output-format text "$(cat "$REVIEW_DIR/prompt.md")" \
-  </dev/null >"$REVIEW_DIR/report.md" 2>"$REVIEW_DIR/run.log"
+  --output-format json "$(cat "$REVIEW_DIR/prompt.md")" \
+  </dev/null >"$REVIEW_DIR/result.json" 2>"$REVIEW_DIR/run.log"
 ```
 
 The reviewer may run any shell command, but only inside Cursor's sandbox,
 which lets it write to its workspace and temp directories only and blocks
-network access. The workspace is an empty directory, not the repository, so
-the repository and its git directory stay read-only. Do not go back to an
+network access. The workspace is an empty temp directory outside the
+repository, so the repository and its git directory stay read-only. Keep
+`json` output: `text` output keeps only the reviewer's last message, and a
+short message after the report replaces it. Do not go back to an
 allow-list of shell commands: Cursor rejects ordinary forms such as
 `git diff $(git merge-base …)`, `cd src && git diff`, or a pipe to `head`, and
 the reviewer then reviews without the diff. Do not use `--mode ask` either: in
@@ -100,6 +102,10 @@ Do not silently switch models or effort, or loosen the Cursor config or drop
 the sandbox to make the invocation work.
 
 ## Assess the result
+
+Read the report with `jq -r .result "$REVIEW_DIR/result.json"`; it holds every
+message the reviewer wrote. A report that does not show the reviewer read the
+target is incomplete: report it as failed, never as clean.
 
 Read the report and verify substantive findings against the source before
 presenting them. Distinguish confirmed issues from unresolved concerns, name
