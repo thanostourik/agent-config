@@ -422,7 +422,25 @@ hold_copy() {
   fi
 }
 
-# A drive that is starting a lane holds its copy alone until launch.sh and doctor.sh pass, or until it has removed the lane.
+# A lane is recorded only while fd 5 holds its copy alone. Whoever starts the lane keeps that lock until launch.sh and doctor.sh pass, or until it has removed the lane.
+claim_lane() {
+  command -v flock > /dev/null || { echo "$1" > "$cache/lanes"; return; }
+  mkdir -p "$cache/drive"
+  exec 5> "$cache/drive/.copy-$(lane_id "$1")"
+  flock -x 5
+  (flock 8 && (($(lane_count) == $1 - 1)) && echo "$1" > "$cache/lanes") 8> "$cache/.lanes-lock" && return
+  exec 5>&-
+  return 1
+}
+
+# Exits 1 when launch.sh fails and 2 when doctor.sh fails. Neither gets fd 5, so a server launch.sh leaves running cannot keep a starting lane locked.
+start_copy() {
+  local lane=$1
+  shift
+  on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 < /dev/null 5>&- || return 1
+  on_lane "$lane" doctor "$cache/doctor-$lane.log" 5>&- || return 2
+}
+
 lane_ready() {
   command -v flock > /dev/null && flock -s "$cache/drive/.copy-$(lane_id "$1")" true
   (($1 <= $(lane_count)))
@@ -571,7 +589,7 @@ drive() {
   }
   start_lane() {
     local lane=$1 began=$SECONDS
-    if on_lane "$lane" "$skill/bin/launch.sh" > "$cache/launch-$lane.log" 2>&1 < /dev/null 5>&- && on_lane "$lane" doctor "$cache/doctor-$lane.log" 5>&-; then
+    if start_copy "$lane"; then
       echo $((SECONDS - began)) > "$cache/lane-seconds"
       exec 5>&-
       run_lane "$lane"
@@ -593,9 +611,7 @@ drive() {
     ((want > ${#alone[@]} - 1)) && want=$((${#alone[@]} - 1))
     for ((lane = count + 1; lane <= want; lane++)); do
       (($(meminfo MemAvailable) - (lane - count) * (stack + browser_mb) >= $(reserve_mb))) || break
-      exec 5> "$cache/drive/.copy-$(lane_id "$lane")"
-      flock -x 5
-      (flock 8 && (($(lane_count) == lane - 1)) && echo "$lane" > "$cache/lanes") 8> "$cache/.lanes-lock" || { exec 5>&-; break; }
+      claim_lane "$lane" || break
       start_lane "$lane" &
       exec 5>&-
       pids+=($!)
@@ -667,35 +683,43 @@ launch_errors() {
 }
 
 up_env() {
-  local previous count before="" began since used lane pids=() broken=()
+  local previous count before="" began since used lane pids=() broken=() unhealthy=()
   [[ -f "$cache/run-id" ]] || { echo "verify-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')" > "$cache/run-id"; : > "$cache/run-id.unmeasured"; echo "${VERIFY_APP:-dev}" > "$cache/app-mode"; }
-  previous=$(lane_count)
-  echo "${lanes:-$previous}" > "$cache/lanes"
-  for ((lane = previous; lane > $(lane_count); lane--)); do
-    on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; return 1; }
-  done
-  count=$(lane_count)
+  previous=$(lane_count) count=${lanes:-$(lane_count)}
+  if ((count < previous)); then
+    echo "$count" > "$cache/lanes"
+    for ((lane = previous; lane > count; lane--)); do
+      on_lane "$lane" "$skill/bin/cleanup.sh" || { echo "verify: cleanup.sh failed for lane $lane" >&2; return 1; }
+    done
+  fi
   [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
   began=$SECONDS since=$EPOCHSECONDS
   if ((count == 0)); then
     on_lane 0 "$skill/bin/launch.sh" "$@" || broken+=(0)
   else
     for ((lane = 0; lane <= count; lane++)); do
-      on_lane "$lane" "$skill/bin/launch.sh" "$@" > "$cache/launch-$lane.log" 2>&1 &
+      ((lane <= previous)) || claim_lane "$lane" || { echo "verify: another verify changed the lanes; run up again" >&2; wait; return 1; }
+      start_copy "$lane" "$@" &
+      exec 5>&-
       pids+=($!)
     done
     for ((lane = 0; lane <= count; lane++)); do
-      wait "${pids[lane]}" && continue
-      broken+=("$lane")
-      echo "verify: $(lane_id "$lane") did not start ($cache/launch-$lane.log):" >&2
-      tail -n 20 "$cache/launch-$lane.log" >&2
+      wait "${pids[lane]}"
+      case $? in
+        0) ;;
+        1)
+          broken+=("$lane")
+          echo "verify: $(lane_id "$lane") did not start ($cache/launch-$lane.log):" >&2
+          tail -n 20 "$cache/launch-$lane.log" >&2 ;;
+        *) unhealthy+=("$lane") ;;
+      esac
     done
   fi
   for lane in "${broken[@]}"; do launch_errors "$lane" "$since"; done
   ((${#broken[@]} == 0)) || { echo "verify: launch.sh failed; run 'bin/verify down' to remove what it started" >&2; return 1; }
-  for ((lane = 0; lane <= count; lane++)); do
-    on_lane "$lane" doctor "$cache/doctor-$lane.log" || { echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; return 1; }
-  done
+  ((count)) || on_lane 0 doctor "$cache/doctor-0.log" || unhealthy+=(0)
+  for lane in "${unhealthy[@]}"; do echo "verify: doctor.sh failed after launch on lane $lane, see $cache/doctor-$lane.log" >&2; done
+  ((${#unhealthy[@]} == 0)) || return 1
   if [[ -f "$cache/run-id.unmeasured" && -n "$before" ]]; then
     used=$(((before - $(meminfo MemAvailable)) / (count + 1)))
     ((used > 0)) && echo "$used" > "$cache/stack-mb"
