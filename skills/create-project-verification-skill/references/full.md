@@ -7,9 +7,11 @@ gives.
 
 ## Full
 
-1. Run `bin/areas > .cache/areas.txt`. Rerun `bin/harvest` into `.cache/expect/` for each
-   area whose tests or docs changed, so `verify uncovered` lists the behaviors no recipe of
-   that area cites.
+1. Run `bin/areas > .cache/areas.txt`. When the recipes of an area start with another name
+   than the file gives that area, because the area was renamed when the skill was
+   generated, give the area that name in the file. Then write the expectation list of each
+   area that has none, or whose tests or docs changed
+   ([Expectation lists](#expectation-lists)).
 2. Run `verify all`, which brings the run up on the production build. Then run
    `verify uncovered`. Check each not-driven reason it prints against the Header rules:
    recipes keep reasons that were written under older rules.
@@ -31,6 +33,21 @@ gives.
    `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
 6. Run `verify down`, commit, and report the features added, the features repaired, the
    expectations that now have a step, and each product defect.
+
+## Expectation lists
+
+An area's expectation list holds the behaviors its tests and docs state. Write it with
+`bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt`.
+
+- It lists every test name in the test files, and the docs headings that match the words,
+  with the lines under them. When no docs heading matches the area, the list holds only its
+  tests, and the recorder takes the rest from the source.
+- Give each area only its own test files. Then delete from the list the tests that belong
+  to another area (from a test file two areas share) and tests of internals (pure
+  functions, formatting, chart math).
+- Every line left is a behavior that one of the area's recipes must cite in an `# expects:`
+  line. `verify uncovered <area>` lists each line none cites, so recorders never search for
+  behavior and never skip it.
 
 ## Recorders
 

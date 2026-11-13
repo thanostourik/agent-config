@@ -19,7 +19,7 @@ of one area of the app.
 
 - `/create-project-verification-skill` (default): record every feature.
 - `/create-project-verification-skill quick`: write the environment and one recipe, with no
-  recorders. Do steps 1 to 3, steps 4.1 and 4.2, the lifecycle checks of step 5, and
+  recorders. Do steps 1 to 3, steps 4.1 and 4.3, the lifecycle checks of step 5, and
   step 6. The one recipe proves that the environment, sign-in, the browser helper and
   cleanup work, and agents copy it. The other recipes grow with the code: `verify affected`
   fails while a change adds a screen, route or action no recipe covers, `verify uncovered`
@@ -260,7 +260,8 @@ Write `PROJECT.md`, about 10 KB, with these sections:
 
 1. Copy the shipped files as the tree above shows, and write the Claude stub and
    `.gitignore`.
-2. Run `VERIFY_APP=build bin/verify up` in the background, and do step 4.1 while it builds.
+2. Run `VERIFY_APP=build bin/verify up` in the background. While it builds, do the parts of
+   step 4 that come before the first recipe.
 3. Run `bin/verify up` again, which keeps the production build. Time both calls.
 
 Generation uses the production build. A dev server holds far more memory, and with many
@@ -334,19 +335,9 @@ checks in `PROJECT.md`, and go to step 6.
 
    Do not name features. Each recorder lists every behavior of its area from the source and
    splits that list into features itself.
-
-   Then write each area's expectation list:
-   `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt`.
-   - It lists every test name in the test files, and the docs headings that match the
-     words, with the lines under them. When no docs heading matches the area, the list
-     holds only its tests, and the recorder takes the rest from the source.
-   - Give each area only its own test files. Then delete from the list the tests that
-     belong to another area (from a test file two areas share) and tests of internals
-     (pure functions, formatting, chart math).
-   - Every line left is a behavior that one of the area's recipes must cite in an
-     `# expects:` line. `bin/verify uncovered <area>` lists each line none cites, so
-     recorders never search for behavior and never skip it.
-2. Write the first recipe yourself, for the simplest feature. Follow the Recipes section of
+2. Write each area's expectation list, as the Expectation lists section of the copied
+   `FULL.md` says.
+3. Write the first recipe yourself, for the simplest feature. Follow the Recipes section of
    the copied `SKILL.md`, and name the recipe `<area>-<goal>` after its area. That area's
    recorder keeps it. Run `bin/verify <feature>` until it passes. Every recorder copies
    this recipe as its example, so make it clean. Then:
@@ -363,12 +354,12 @@ checks in `PROJECT.md`, and go to step 6.
    - Call each helper once the way a recipe calls it, after deleting its cached state (such
      as saved sign-ins), so its slow path runs too. A cache can hide a wrong argument until
      the first fresh drive.
-3. Run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free
+4. Run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
    copy, every drive runs its `# alone` features there instead. Then start recorders as the
    Recorders section of the copied `FULL.md` says: one per area, every area at once,
    heaviest first.
-4. Read only their result files. Add their traps to `PROJECT.md`'s Gotchas.
+5. Read only their result files. Add their traps to `PROJECT.md`'s Gotchas.
 
 ## 5. Prove it
 
