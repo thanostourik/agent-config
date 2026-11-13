@@ -40,8 +40,9 @@ It is safe to run again. Commit its result before anything else.
 
 ## 2. Do what it lists
 
-Do the listed items, in this order, and nothing else. Two items, marked "every upgrade",
-are checked even when the script does not list them.
+Do the items the script lists, in the order it lists them, and nothing else. An item with
+no entry below is done as its line says. Two more items, marked "every upgrade", are
+checked even when the script does not list them. Do them after the `launch.sh` items.
 
 - **`PROJECT.md`**: write it from `.cache/upgrade/SKILL.md` and `.cache/upgrade/README.md`,
   with the sections step 3 of `<generator>/SKILL.md` names.
@@ -69,8 +70,9 @@ are checked even when the script does not list them.
   - Check that a helper that inserts rows directly follows the fixture rule in the new
     `SKILL.md`'s Data section, against the seed data or the dump.
   - `verify lint` checks only recipes, so this is the only check helpers get.
-- **Helpers that read the old runner's files**, such as an `observe.sh` reading
-  `.cache/drive/<feature>/steps/`: point them at `$VERIFY_DIR/log` and `$EVIDENCE`.
+- **References to the removed scripts**: remove them. A helper that reads the old runner's
+  files, such as an `observe.sh` reading `.cache/drive/<feature>/steps/`, reads
+  `$VERIFY_DIR/log` and `$EVIDENCE` instead.
 - **`# touches:`**: start subagents (in T3 Code `delegate_task` with `mode: "async"`,
   otherwise your tool's own subagent), each with up to 6 features and this prompt:
 
@@ -86,8 +88,9 @@ are checked even when the script does not list them.
   Features: <feature> <feature> ...
   ```
 
-- **`entrypoints.sh`**, **`actions.sh`**, stale references in helpers, and the
-  `## Verification` section of `AGENTS.md` (and `CLAUDE.md`) from
+- **`entrypoints.sh`** and **`actions.sh`**: write them as step 3 of `<generator>/SKILL.md`
+  says.
+- **`AGENTS.md`**: write its `## Verification` section (and the one in `CLAUDE.md`) from
   `<generator>/references/agents-verification.md`.
 - **Features the script could not convert**: run `bin/areas > .cache/areas.txt`. Then send
   each area that holds such a feature to a recorder, as the Recorders section of the new
@@ -145,3 +148,6 @@ Say that only the features the upgrade could break were driven, and that
 `/verify-<app> full` drives every feature. When `bin/verify uncovered` listed anything as
 not covered, end the report with this line, the count filled in: "<n> entry points and
 actions have no recipe. Run `/verify-<app> full` to record them."
+
+Then delete `.cache/upgrade/`. A later upgrade on this machine would otherwise take its old
+files for its own and list their work again.

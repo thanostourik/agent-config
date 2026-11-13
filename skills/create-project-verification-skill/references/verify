@@ -76,9 +76,12 @@ default_branch() {
   return 1
 }
 
+has_base() { git -C "$1" rev-parse -q --verify "$base^{commit}" > /dev/null; }
+
 merge_base() {
-  local ref
-  ref=${base:-$(default_branch "$1")} || { echo "verify: no default branch in $1; pass --base <ref>" >&2; return 1; }
+  local ref=$base
+  [[ -n "$ref" && -f "$skill/apps" && "$1" == "$root" ]] && ! has_base "$1" && ref=""
+  ref=${ref:-$(default_branch "$1")} || { echo "verify: no default branch in $1; pass --base <ref>" >&2; return 1; }
   git -C "$1" merge-base "$ref" HEAD 2> /dev/null || { echo "verify: no merge base of $ref in $1; pass --base <ref>" >&2; return 1; }
 }
 
@@ -89,17 +92,22 @@ changed_in() {
 }
 
 changed_files() {
-  local name path variable
+  local name path variable found=""
   if [[ -f "$skill/apps" ]]; then
     while read -r name path; do
       [[ -n "$name" ]] || continue
       variable=$(app_variable "$name")
-      if [[ -n "$base" ]] && ! git -C "${!variable}" rev-parse -q --verify "$base^{commit}" > /dev/null; then
+      if [[ -n "$base" ]] && ! has_base "${!variable}"; then
         echo "verify: $base is not in the $name checkout; its changes select nothing" >&2
         continue
       fi
+      found=1
       changed_in "${!variable}" | sed "s|^|$name/|" || return 1
     done < "$skill/apps"
+    if [[ -n "$base" ]] && ! has_base "$root"; then
+      [[ -n "$found" ]] || { echo "verify: $base is in no checkout; pass another --base <ref>" >&2; return 1; }
+      echo "verify: $base is not in this repo; its own changes are compared with its default branch" >&2
+    fi
   fi
   changed_in "$root" || return 1
 }
@@ -226,7 +234,7 @@ lint() {
     report() { echo "$feature: $1"; problems=1; }
     [[ "$(head -n 1 "$file")" == "# "?* ]] || report "line 1 is not a '# <summary>' comment"
     awk '!/^#/ { bad = /[^[:space:]]/; exit } END { exit bad }' "$file" || report "the '#' header lines must end with a blank line"
-    case $feature in up | down | list | lint | uncovered | affected | all | help) report "'$feature' is a verify command; rename the feature" ;; esac
+    case $feature in up | down | list | lint | uncovered | affected | all | room | help) report "'$feature' is a verify command; rename the feature" ;; esac
     for other in "${names[@]}"; do
       [[ "$other" == "$feature"-* ]] && report "its name starts '$other': cleanup by 'verify-$feature-' would delete that feature's data; rename one"
     done

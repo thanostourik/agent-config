@@ -114,7 +114,12 @@ and port from `env.sh`, never `localhost:<default>`.
 
 ## 3. Write the environment and `PROJECT.md`
 
-Write the scripts below into `bin/` and make each one executable.
+At level `checks-only` the app cannot run, so there is no environment to write. Do only
+this, then go to step 6: write `PROJECT.md` with the focused checks, copy the shipped files
+as the tree above shows, and write the Claude stub and `.gitignore`. Write no environment
+scripts and no recipes, and launch nothing.
+
+At the other levels, write the scripts below into `bin/` and make each one executable.
 
 ### Environment scripts
 
@@ -290,10 +295,8 @@ Every recipe waits on the environment in every run.
 - Keep each copy small so lanes fit in memory. Cap worker counts and heap sizes: a JVM
   without `-Xmx` takes a quarter of the machine. Start the project's own JVM apps with
   `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`, which shortens startup.
-- Give every service of the run a memory limit, third-party ones included.
-  - Use a container limit (`mem_limit`) of about one and a half times what the service
-    uses after a busy run: the example recipe's flow plus a few hundred sign-ins, 30 at a
-    time. Read the use with `docker stats`. Never size the limit from an idle stack.
+- Give every service of the run a memory limit (`mem_limit` for a container), third-party
+  ones included. Step 4.3 sizes it, once the example recipe passes.
   - A runtime that sizes its heap from the container, such as a JVM, then stays inside it.
   - Change only the limit of a third-party service, never its startup flags. Keycloak's
     start script picks a garbage collector that clashes with `UseSerialGC`, and then
@@ -312,9 +315,6 @@ Every recipe waits on the environment in every run.
   (`docker compose down -t 1`).
 - `doctor.sh` retries each probe a few times with a 30 s limit, so a loaded machine never
   stops a drive with a false failure.
-
-At level `checks-only`, skip launching and recording: write no recipes, put the focused
-checks in `PROJECT.md`, and go to step 6.
 
 ## 4. Record every feature
 
@@ -354,6 +354,10 @@ checks in `PROJECT.md`, and go to step 6.
    - Call each helper once the way a recipe calls it, after deleting its cached state (such
      as saved sign-ins), so its slow path runs too. A cache can hide a wrong argument until
      the first fresh drive.
+   - Size each service's memory limit: about one and a half times what the service uses
+     after a busy run. A busy run is the example recipe's flow plus a few hundred sign-ins,
+     30 at a time. Read the use with `docker stats`. Never size the limit from an idle
+     stack.
 4. Run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
    copy, every drive runs its `# alone` features there instead. Then start recorders as the

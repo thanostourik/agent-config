@@ -46,6 +46,18 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    - one line per feature: `passed`, `product defect: <what>`, or `blocked: <reason>`;
    - one line per trap that cost you a run, for `PROJECT.md`'s Gotchas.
 
+## When the area already has recipes
+
+Do not record the area again when the prompt names failing features or not-driven reasons,
+or when your area already has recipes besides the example. Do step 1, then:
+
+1. Fix each failing feature the prompt names. Read its summary line, and its log when the
+   line is not enough. Classify the failure as "When a drive fails" says. Then fix the
+   recipe, or mark a product defect as the Rules below say.
+2. Give each not-driven line the prompt names a step.
+3. Go on from step 6, and drive only the recipes you edited. In step 7, a screen or route
+   that has no recipe at all gets steps 2 to 5, for that part only.
+
 ## Rules
 
 - The environment is already up and shared. Never run `verify up`, `down` or `all`,

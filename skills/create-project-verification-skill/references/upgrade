@@ -119,24 +119,24 @@ echo "Upgraded $skill to the current generator."
 echo
 echo "Left for an agent:"
 [[ -f "$skill/PROJECT.md" ]] || todo+=("Write $skill/PROJECT.md from $keep/SKILL.md and $keep/README.md, as the generator's step 3 describes.")
-((${#unconverted[@]})) && todo+=("No bash blocks to convert in: ${unconverted[*]}. Send them to recorders, then delete $skill/features/README.md.")
-mapfile -t empty < <(grep -L -E '^# touches:[[:space:]]*[^[:space:]]' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
-((${#empty[@]})) && todo+=("Fill '# touches:' from the source of: ${empty[*]}.")
+for script in launch.sh cleanup.sh doctor.sh; do
+  [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
+done
+[[ -f "$skill/bin/launch.sh" ]] && ! grep -q VERIFY_APP "$skill/bin/launch.sh" && todo+=("Give $skill/bin/launch.sh the two app modes of the generator's step 3: the developers' dev command when VERIFY_APP=dev, the runner's default, and the production build when VERIFY_APP=build.")
+[[ -f "$keep/SKILL.md" ]] && todo+=("Make bin/launch.sh idempotent if it is not: a second bin/verify up reuses the run's environment and restarts only the app.")
+[[ -x "$skill/bin/server-errors.sh" ]] || todo+=("Write $skill/bin/server-errors.sh (the generator's step 3) when the app has a server log, so a failure's evidence holds the server errors behind it.")
 stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify|\.cache/record|drive/[^ ]*/steps' "$skill"/bin/* "$skill"/PROJECT.md 2> /dev/null | grep -v -E '/bin/(verify|lib\.sh)$' || true)
 [[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")
+mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename)
+((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
+mapfile -t empty < <(grep -L -E '^# touches:[[:space:]]*[^[:space:]]' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
+((${#empty[@]})) && todo+=("Fill '# touches:' from the source of: ${empty[*]}.")
 mapfile -t bare < <(grep -l -E '^# alone[[:space:]]*$' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
 ((${#bare[@]})) && todo+=("Give each '# alone' its reason ('# alone: <the shared state it changes>'), or give the feature its own namespace and drop the line, in: ${bare[*]}.")
 mapfile -t alone < <(grep -l '^# alone' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
 ((${#alone[@]})) && todo+=("For each '# alone' feature, read what it changes: when only features that change the same state clash with it, replace the line with '# shares: <group>: <that state>', the same group for each of them, so they take turns while other features run beside them. Keep '# alone' only when every feature clashes with it, such as a clock change or a restart. In: ${alone[*]}.")
-mapfile -t joined < <(grep -l -E '\$PWD/\$\{?(evidence|EVIDENCE)' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename)
-((${#joined[@]})) && todo+=("These recipes join \$PWD to an evidence path, which is absolute now: ${joined[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
-[[ -f "$skill/bin/launch.sh" ]] && ! grep -q VERIFY_APP "$skill/bin/launch.sh" && todo+=("Give $skill/bin/launch.sh the two app modes of the generator's step 3: the developers' dev command when VERIFY_APP=dev, the runner's default, and the production build when VERIFY_APP=build.")
-[[ -x "$skill/bin/server-errors.sh" ]] || todo+=("Write $skill/bin/server-errors.sh (the generator's step 3) when the app has a server log, so a failure's evidence holds the server errors behind it.")
 [[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3).")
-for script in launch.sh cleanup.sh doctor.sh; do
-  [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
-done
-[[ -f "$keep/SKILL.md" ]] && todo+=("Make bin/launch.sh idempotent if it is not: a second bin/verify up reuses the run's environment and restarts only the app.")
 grep -q -s 'maintain-verify' AGENTS.md CLAUDE.md && todo+=("Replace the ## Verification section of AGENTS.md (and CLAUDE.md) with the generator's references/agents-verification.md.")
+((${#unconverted[@]})) && todo+=("No bash blocks to convert in: ${unconverted[*]}. Send them to recorders, then delete $skill/features/README.md.")
 if ((${#todo[@]})); then printf -- '- %s\n' "${todo[@]}"; else echo "- nothing"; fi

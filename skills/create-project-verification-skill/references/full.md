@@ -78,6 +78,10 @@ You are a recorder for verify-<app>. Follow
 .agents/skills/verify-<app>/.cache/areas.txt.
 ```
 
-A recorder has returned when its result file `.cache/results/<area>.txt` appears, with or
-without the host's completion notice: notices can be lost. Read only that file's lines. Add
-their traps to `PROJECT.md`'s Gotchas when they hold for other features.
+Before you start a recorder, or send work back to one, delete its result file
+`.cache/results/<area>.txt`. A file left from an earlier round looks like a recorder that
+already finished.
+
+A recorder has returned when its result file appears, with or without the host's completion
+notice: notices can be lost. Read only that file's lines. Add their traps to `PROJECT.md`'s
+Gotchas when they hold for other features.
