@@ -95,6 +95,10 @@ Two things to keep as they are:
 - `SETUP.md`: extra machine-setup steps for anything sync installs. Sync does
   not copy this file. Add a section when a tool needs something besides
   `./sync`.
+- `README.md` and `docs/`: the guide for people. The README stays short and
+  links to `docs/skills.md`, `docs/configuration.md`, and
+  `docs/verification.md` for the details. Sync does not copy them. When you
+  add a skill or script, add it to the README's table and to `docs/skills.md`.
 - `sync`: the install script. Plain Python with no extra packages.
 - `tests/test_sync.py`: tests for the install script.
 

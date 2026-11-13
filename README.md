@@ -1,232 +1,83 @@
 # agent-config
 
 My personal instructions, skills, and settings for Claude Code, Codex, Grok, Cursor,
-and OpenCode, kept in one place. I edit the files here, then `./sync` copies them into
+and OpenCode, kept in one place. I edit the files here. Then `./sync` copies them into
 each tool's configuration folder.
 
-## Contents
+## Install
 
-- [Use](#use)
-  - [Instructions](#instructions)
-- [Configuration](#configuration)
-- [Restricted repositories](#restricted-repositories)
-- [Skills](#skills)
-  - [Skill destinations](#skill-destinations)
-  - [Pull requests](#pull-requests)
-  - [Reviews](#reviews)
-  - [Planning and writing](#planning-and-writing)
-  - [Coordination and tickets](#coordination-and-tickets)
-  - [Verification](#verification)
-- [Scripts](#scripts)
-- [Setup and ownership rules](#setup-and-ownership-rules)
-- [Credits](#credits)
-
-## Use
+You need Python 3.11 or newer. There is nothing else to install.
 
 ```
-./sync                                # show what would change, write nothing
-./sync --check                        # same, but exit 1 when changes are pending
-./sync --apply                        # make each tool's config folder match this repository
-./sync --apply --replace-existing     # also replace content sync did not write, keeping a backup
-./sync --clean-backups                # delete the backups sync has saved
-./sync --home /tmp/test --apply       # install into another folder, for testing
+git clone https://github.com/thanostourik/agent-config
+cd agent-config
+./sync            # show what would change, write nothing
+./sync --apply    # write the changes
 ```
 
-### Instructions
+Run `./sync --apply` again after every edit or `git pull`.
 
-`instructions/common.md` holds the preferences for every tool. `instructions/<tool>.md`
-adds preferences for one tool and may be empty. Sync joins the two, common part first,
-and installs the result as that tool's global instructions file: `~/.claude/CLAUDE.md`,
-`~/.codex/AGENTS.md`, `~/.grok/AGENTS.md`, `~/.config/opencode/AGENTS.md`, and
-`~/.cursor/rules/agent-config.mdc`.
+Sync changes only the files it installed. If a file it wants to write is already there
+and sync did not write it, sync stops and names the file. To replace such files, run
+`./sync --apply --replace-existing`. Sync first saves the old files under
+`~/.config/agent-config/backups/`.
 
-## Configuration
-
-The shipped settings are in `config.defaults.json`. Do not edit that file. Put your
-changes in `config.json` next to it (gitignored), then run `./sync --apply`.
-
-`config.json` has the same shape as `config.defaults.json`, but holds only the keys you
-change. Every key you leave out keeps its shipped value.
-
-**Turn something off.** Set `enabled` to `false` under `skills`, `agents`, or `hooks`.
-The key is the skill's folder name, or the agent's or hook's file name without the
-extension. The next `./sync --apply` removes it from every tool.
-
-```json
-{ "skills": { "bro": { "enabled": false } } }
-```
-
-**Change a skill default.** Copy any key from a skill's `defaults` in
-`config.defaults.json` and give it a new value. A list replaces the shipped list.
-
-```json
-{ "skills": { "codex-review": { "defaults": { "model": "<model id>" } } } }
-```
-
-**Jira and restricted repositories** are set in `config.json` too. See
-[SETUP.md](SETUP.md#jira-mcp) and [Restricted repositories](#restricted-repositories).
-
-A model or effort you name in a request always wins over these settings.
-
-## Restricted repositories
-
-Some clients must not see that an agent worked on their code. The agent does two things
-only in repositories where you allow them. These are the restricted actions:
-
-- adding its attribution lines ("Filed by ... through ...") to PR descriptions;
-- marking a PR ready for review when the work is finished and verified.
-
-Repositories outside the allow list are restricted: the agent omits attribution and
-leaves PRs as drafts for you to publish.
-
-To allow a repository, add its GitHub owner (all of the owner's repos) or one
-`owner/repo` to `allow.restricted` in `config.json`. Entries are not case-sensitive:
-
-```json
-{ "allow": { "restricted": ["some-owner", "some-org/some-repo"] } }
-```
-
-`config.defaults.json` ships an empty list, so by default no repository allows them.
-The agent reads the repository's name with `gh repo view --json nameWithOwner`. A
-repository that is not on GitHub never allows them. After editing the list, run
-`./sync --apply`: it writes the list into the installed instructions.
-
-To use verification skills while keeping agent files outside an app repository, see
-[Companion QA repository](#companion-qa-repository).
-
-## Skills
-
-Every skill installs to every tool unless its `harness` field says otherwise. The agent
-starts most of them by itself when the situation fits. Manual skills run only when you
-name them:
-
-- Claude Code, Cursor, Grok: type `/skill-name`, for example `/squash-merge-pr`.
-- Codex: type `$skill-name`, for example `$squash-merge-pr`.
-
-### Skill destinations
-
-Store skills in `skills/<name>/`. No `harness` means all five tools. To select
-only certain destinations, put this in the opening `SKILL.md` frontmatter:
-
-```yaml
-metadata:
-  harness: "codex, cursor"
-```
-
-Names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `agents`.
-`agents` installs to `~/.agents/skills/`, which some tools also read; include
-it explicitly when wanted. The list replaces the default destinations.
-
-### Pull requests
-
-| Skill | What it does |
-|---|---|
-| `file-pr` | Opens a draft PR, or updates the existing one, with a title and description that match the branch. |
-| `modernize` | Rebases a branch onto its base (by default the PR's base branch) and pushes it. |
-| `takeover` | Takes over a colleague's PR and works on it until it is ready for you to merge. It never merges. |
-| `squash-merge-pr` | *Manual.* Squash-merges the PR and cleans up its branches and worktree. |
-| `tourik` | "Tourik mode": you are not watching, the agent owns the work until the PR is ready. It never merges. |
-
-### Reviews
-
-| Skill | What it does |
-|---|---|
-| `claude-review`, `codex-review`, `grok-review`, `cursor-grok-review` | One independent review of a change by Claude, Codex, or Grok (Grok also through Cursor). Model and effort come from `config.defaults.json`. |
-| `review-loop` | Reviews your branch in rounds. The agent fixes real findings and proves the result works, then a fresh reviewer checks that proof. |
-| `triple-review` | Three reviewers at once (general, simplicity, over-engineering), then one short report. |
-| `depatch` | Read-only. Checks whether code reads like patches piled on patches and sketches how it would look if written once. |
-
-### Planning and writing
-
-| Skill | What it does |
-|---|---|
-| `grill-me` | Interviews you about a plan or decision in rounds of numbered questions, each with a recommended answer. |
-| `html-communication` | Presents plans, reports, comparisons, or UI mockups as one readable HTML file. |
-| `bro` | *Manual.* Restates the last message in plain language, without jargon. |
-
-### Coordination and tickets
-
-| Skill | What it does |
-|---|---|
-| `t3-fan-out` | Starts one T3 thread and worktree per task, waits for all of them, and reports once. |
-| `create-jira-issue` | Creates (or drafts) Jira issues through the Jira MCP, after asking which project. |
-
-### Verification
-
-These skills let an agent run the real app and prove its change works before it calls the
-work done. They install to Claude Code, Codex, Grok, and Cursor, not OpenCode.
-
-**Set up a project.** These are manual. Run them from the project's root, each in a new
+A few tools need more than copied files: Jira, Claude reviews, and stacked PRs. Their
+steps are in [SETUP.md](SETUP.md). You can let an agent do them. Paste this into a new
 session:
-
-| Skill | What it does |
-|---|---|
-| `create-project-local-stack` | Writes `local-stack/`: one command that starts everything the app needs, isolated from other copies, with fakes for shared services. Developers run it next to their IDE; agents run many at once to check their work. |
-| `create-project-verification-skill` | Writes the project's own `verify-<app>` skill: one bash recipe per feature, the shipped runner `bin/verify`, and an `AGENTS.md` section. When `local-stack/` exists, the skill starts the app through it. |
-
-If the project already has a verification skill, `create-project-verification-skill`
-stops and asks whether to replace or upgrade it.
-
-**Use it every day.** After setup, the project has its own skill:
-
-| Skill | What it does |
-|---|---|
-| `verify-<app>` | Agents run it on their own before they call work done. `bin/verify affected` drives only the features a change touches, `bin/verify all` drives every feature, `bin/verify all --failed` reruns only what did not pass or what a change since then selects, and every run on the machine shares one queue that keeps 20% of memory free. You can also ask for it by name. |
-| `with-verification` | Add "with verify" to any request, in any repository. The agent finds the project's `verify-<app>` skill and runs it before it calls the work done. |
-
-**Keep up with this repository.** When the generator here changes, run `./sync --apply`,
-then `/maintain-project-verification-skill` in each project. A script copies the shipped
-files into the project and converts old recipes; the agent does only what the script lists.
-
-#### Companion QA repository
-
-When a [restricted repository](#restricted-repositories) also needs verification,
-and its agent files must stay outside the app repository, use a **companion QA
-repository**. It holds the verification skill and its recipes beside the app
-checkouts:
-
-1. Create a Git repository beside the app checkout, for example `my-app-qa/` beside
-   `my-app/`.
-2. Open an agent session in `my-app-qa/` and run
-   `/create-project-verification-skill`. Provide each app checkout's path when asked.
-3. The generator creates the verification skill and
-   `.agents/skills/verify-<app>/apps`, which lists each app name and checkout path
-   relative to the QA repository root, for example `my-app ../my-app`. Agent files
-   stay in the QA repository.
-4. In the app repository, append **"with verify"** to a coding request. The globally
-   installed `with-verification` skill finds the companion and verifies the checkout
-   being changed, including worktrees. If the app repository has its own
-   `verify-<app>`, it uses that one instead.
-5. After the generator here changes, run `/maintain-project-verification-skill` from the
-   QA repository.
-
-## Scripts
-
-`bin/` scripts install to `~/.local/bin/`.
-
-| Script | What it does |
-|---|---|
-| `squash-merge-pr` | Does every git and `gh` step of the squash merge. Needs `git`, a logged-in `gh`, and `jq`. |
-| `usage-report` | Prints what Codex and Claude Code sessions and their subagents cost in tokens. Needs only Python. |
-| `mcp-atlassian-start` | Starts the Jira MCP server with the login read from Bitwarden. |
-| `jira-gate-proxy` | Helps `mcp-atlassian-start --gate` reach a Jira behind Authentik. |
-
-## Setup and ownership rules
-
-Some tools need machine setup beyond copying files, such as Jira MCP and stacked PRs.
-Paste this into a new agent session:
 
 ```
 Follow SETUP.md in this repository and complete every setup the tools in this repo need.
 ```
 
-See [SETUP.md](SETUP.md).
+## What sync installs
 
-Sync adds, updates, and deletes what it installed, and touches nothing else. It refuses to
-replace or delete content it did not write unless you pass `--replace-existing`, and then
-saves it under `~/.config/agent-config/backups/<timestamp>/` first. See
-[AGENTS.md](AGENTS.md) for the ownership rules, folder layout, install locations, and
-tests.
+| Folder | What it holds | Where it goes |
+|---|---|---|
+| `instructions/` | My preferences. `common.md` is for every tool, `<tool>.md` adds more for one tool. | Each tool's global instructions file, such as `~/.claude/CLAUDE.md` |
+| `skills/` | Skills: instructions for one kind of task, such as opening a PR. | Each tool's skills folder |
+| `bin/` | Scripts that the skills call. | `~/.local/bin/` |
+
+Sync can also install agent definitions, hooks, and a Jira MCP server. See
+[AGENTS.md](AGENTS.md) for those and for the exact install paths.
+
+## Skills
+
+The agent starts most skills by itself when the task fits. Some are manual: they run
+only when you type `/skill-name` (`$skill-name` in Codex).
+
+| Group | Skills |
+|---|---|
+| Pull requests | `file-pr`, `modernize`, `takeover`, `tourik`, `squash-merge-pr` |
+| Reviews | `claude-review`, `codex-review`, `grok-review`, `cursor-grok-review`, `review-loop`, `triple-review`, `depatch` |
+| Planning and writing | `grill-me`, `html-communication`, `bro` |
+| Coordination and tickets | `t3-fan-out`, `create-jira-issue` |
+| Verification | `create-project-local-stack`, `create-project-verification-skill`, `maintain-project-verification-skill`, `with-verification` |
+
+[docs/skills.md](docs/skills.md) says what each one does.
+
+## Settings
+
+The shipped settings are in `config.defaults.json`. To change one, create `config.json`
+next to it and put only that setting there. Git ignores `config.json`. For example, this
+removes the `bro` skill from every tool:
+
+```json
+{ "skills": { "bro": { "enabled": false } } }
+```
+
+Then run `./sync --apply`. [docs/configuration.md](docs/configuration.md) lists
+everything you can set.
+
+## More
+
+- [docs/skills.md](docs/skills.md): every skill and script, and what it does.
+- [docs/configuration.md](docs/configuration.md): all settings, and every `./sync` command.
+- [docs/verification.md](docs/verification.md): how an agent runs the real app to prove
+  its change works.
+- [SETUP.md](SETUP.md): extra machine setup for Jira, Claude reviews, and stacked PRs.
+- [AGENTS.md](AGENTS.md): how this repository works inside. Folder layout, install paths,
+  what sync may overwrite, how to add a skill, and how to run the tests.
 
 ## Credits
 
