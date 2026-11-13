@@ -39,22 +39,25 @@ Add a framework here only after its command ran on a real project.
 - **How to tell:** `drupal/core` or `drupal/core-recommended` in `composer.json`.
 - **Entry points:** ask the run's site through drush. Views, webforms and routes that
   modules add at run time live in configuration and the database, where a source search
-  misses them. Every route with its handler:
-  `drush php:eval 'foreach (\Drupal::service("router.route_provider")->getAllRoutes() as $n => $r) { $d = $r->getDefaults(); echo implode(",", $r->getMethods() ?: ["GET"]), " ", $r->getPath(), "\t", isset($d["view_id"]) ? "view:" . $d["view_id"] : ($d["_controller"] ?? $d["_form"] ?? $d["_entity_form"] ?? $d["_entity_list"] ?? ""), "\n"; }'`.
-  Every webform a visitor can open:
-  `drush php:eval 'foreach (\Drupal::entityTypeManager()->getStorage("webform")->loadMultiple() as $id => $w) if ($w->isOpen() || $w->isScheduled()) echo "/webform/$id\t", $w->label(), "\n";'`.
-  Keep the routes whose handler is a View, a webform or a class of a custom module or
-  theme. The file of a class `\Drupal\<module>\<path>\<Class>` is
-  `modules/custom/<module>/src/<path>/<Class>.php` (or `themes/custom/...`); the file of a
-  View is `config/sync/views.view.<id>.yml`, and of a webform
-  `config/sync/webform.webform.<id>.yml`. A webform kept only in the database has no file:
-  the script writes its definition (`drush config:get webform.webform.<id>`) to
-  the skill's `.cache/entry-files/webform.webform.<id>.yml` and prints that path from the
-  repository root, so `bin/areas` groups
-  it and its recorder reads its fields there. Drush prints PHP deprecation notices on
-  stdout, so read only the lines the script printed (give them a prefix and keep those).
-- **What it adds:** on one site the router listed 75 View pages of 34 enabled Views, 66
-  custom routes against 64 in the routing files, and 192 open webforms, where a search of
-  the source found 1 webform. Each command took under a second.
-- **Still not listed:** blocks placed in layouts or regions, and Layout Builder content:
-  they render on pages that the routes above already list.
+  misses them.
+  - Every route with its handler:
+    `drush php:eval 'foreach (\Drupal::service("router.route_provider")->getAllRoutes() as $n => $r) { $d = $r->getDefaults(); echo implode(",", $r->getMethods() ?: ["GET"]), " ", $r->getPath(), "\t", isset($d["view_id"]) ? "view:" . $d["view_id"] : ($d["_controller"] ?? $d["_form"] ?? $d["_entity_form"] ?? $d["_entity_list"] ?? ""), "\n"; }'`.
+  - Every webform a visitor can open:
+    `drush php:eval 'foreach (\Drupal::entityTypeManager()->getStorage("webform")->loadMultiple() as $id => $w) if ($w->isOpen() || $w->isScheduled()) echo "/webform/$id\t", $w->label(), "\n";'`.
+  - Keep the routes whose handler is a View, a webform or a class of a custom module or
+    theme.
+  - Drush prints PHP deprecation notices on stdout. Give the lines the script prints a
+    prefix and keep only those.
+- **Files:**
+  - The file of a class `\Drupal\<module>\<path>\<Class>` is
+    `modules/custom/<module>/src/<path>/<Class>.php` (or `themes/custom/...`).
+  - The file of a View is `config/sync/views.view.<id>.yml`, and of a webform
+    `config/sync/webform.webform.<id>.yml`.
+  - A webform kept only in the database has no file. The script writes its definition
+    (`drush config:get webform.webform.<id>`) to the skill's
+    `.cache/entry-files/webform.webform.<id>.yml` and prints that path from the repository
+    root. `bin/areas` then groups it, and its recorder reads its fields there.
+- **What it adds:** on one site the router listed 192 open webforms, where a search of
+  the source found 1. It also listed 75 View pages. Each command took under a second.
+- **Still not listed:** blocks placed in layouts or regions, and Layout Builder content.
+  They render on pages that the routes above already list.
