@@ -9,10 +9,10 @@ disable-model-invocation: true
 # Maintain a project verification skill
 
 `create-project-verification-skill` generated the project's `verify-<app>` skill. The
-shipped files (`SKILL.md` and the files the generator's "What you write" marks `unchanged`)
-come from the generator. Everything project-specific sits in `PROJECT.md`, the other `bin/`
-helpers and `features/`. So an upgrade is mostly a copy, and a script does it. An upgrade
-does not record what no recipe covers yet: `/verify-<app> full` does that.
+shipped files (`SKILL.md`, `FULL.md` and the files the generator's "What you write" marks
+`unchanged`) come from the generator. Everything project-specific sits in `PROJECT.md`, the
+other `bin/` helpers and `features/`. So an upgrade is mostly a copy, and a script does it.
+An upgrade does not record what no recipe covers yet: `/verify-<app> full` does that.
 
 When you need me to make a choice before you can continue, use your question tool if you
 have one, or ask in your reply if you don't. If the question gets no answer, ask again in
@@ -91,7 +91,7 @@ are checked even when the script does not list them.
   `<generator>/references/agents-verification.md`.
 - **Features the script could not convert**: run `bin/areas > .cache/areas.txt`. Then send
   each area that holds such a feature to a recorder, as the Recorders section of the new
-  `SKILL.md` says, after step 3's `bin/verify up`. The recorder keeps the area's existing
+  `FULL.md` says, after step 3's `bin/verify up`. The recorder keeps the area's existing
   recipes.
 
 ## 3. Prove it

@@ -44,6 +44,7 @@ replace it (delete and generate again) or upgrade it with
 ```
 .agents/skills/verify-<app>/
   SKILL.md            <generator>/references/verify-skill.md, with <app> filled in
+  FULL.md             <generator>/references/full.md, with <app> filled in
   RECORDERS.md        copied from <generator>/references/recorders.md, unchanged
   PROJECT.md          this project's facts (step 3)
   bin/verify          copied from <generator>/references/verify, unchanged
@@ -65,7 +66,7 @@ replace it (delete and generate again) or upgrade it with
 `<app>` is a short lowercase name. Codex, Cursor, Grok and OpenCode read `.agents/skills/`.
 Claude Code reads only `.claude/skills/`, so the stub exists for it. Never use symlinks.
 
-`SKILL.md` and the files marked `unchanged` are the shipped files. An upgrade replaces
+`SKILL.md`, `FULL.md` and the files marked `unchanged` are the shipped files. An upgrade replaces
 them, so never edit them for the project. Everything project-specific goes into
 `PROJECT.md`, the other `bin/` helpers and `features/`.
 
@@ -365,13 +366,13 @@ checks in `PROJECT.md`, and go to step 6.
 3. Run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
    copy, every drive runs its `# alone` features there instead. Then start recorders as the
-   Recorders section of the copied `SKILL.md` says: one per area, every area at once,
+   Recorders section of the copied `FULL.md` says: one per area, every area at once,
    heaviest first.
 4. Read only their result files. Add their traps to `PROJECT.md`'s Gotchas.
 
 ## 5. Prove it
 
-Run `bin/verify down`. Then do steps 2 to 5 of Full in the copied `SKILL.md`. Its first
+Run `bin/verify down`. Then do steps 2 to 5 of Full in the copied `FULL.md`. Its first
 `verify all` starts a fresh environment on the production build, so every recipe runs once
 more with every other feature beside it. Send a failing feature, an uncovered line or a
 not-driven reason that does not hold back to the recorder that recorded its area, instead

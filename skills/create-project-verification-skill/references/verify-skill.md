@@ -30,8 +30,8 @@ and other paths are relative to `.agents/skills/verify-<app>/`.
 ## Modes
 
 - `/verify-<app>` (default): [Check a change](#check-a-change).
-- `/verify-<app> full`: [Full](#full): drive every feature, repair the failing ones, and
-  record what no recipe covers.
+- `/verify-<app> full`: drive every feature, repair the failing ones, and record what no
+  recipe covers. Follow `FULL.md`.
 
 A request with the same meaning, such as "update the verification map" for `full`, picks the
 same mode.
@@ -51,8 +51,8 @@ names, and report every feature `blocked: no isolation`. Otherwise:
      starts from the new code.
 2. Bring the recipes in line with the change, as part of the change, like tests. For
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh` as
-   [Recipes](#recipes) says. A whole new feature or screen can go to a recorder
-   ([Recorders](#recorders)).
+   [Recipes](#recipes) says. A whole new feature or screen can go to a recorder: `FULL.md`
+   says how to start one.
 3. Run `verify affected`. It first prints each feature it selected, with the file that
    selected it. Then it drives them, and prints each feature's summary line as soon as that
    feature finishes, as `[<done>/<total>] <line>`. It selects a feature when:
@@ -88,37 +88,10 @@ Do not drive features the change cannot affect. Never run `verify all` to check 
 unless the user asks for it. A change to a helper many features use, such as sign-in, is no
 exception: drive what `verify affected` selects.
 
-## Full
-
-1. Run `bin/areas > .cache/areas.txt`. Rerun `bin/harvest` into `.cache/expect/` for each
-   area whose tests or docs changed, so `verify uncovered` lists the behaviors no recipe of
-   that area cites.
-2. Run `verify all`, which brings the run up on the production build. Then run
-   `verify uncovered`. Check each not-driven reason it prints against [Header](#header):
-   recipes keep reasons that were written under older rules.
-3. Start a recorder for each area that holds a failing feature, an uncovered item or a
-   not-driven reason that does not hold, all at once ([Recorders](#recorders)). A feature
-   belongs to the area its name starts with, else to the area that lists its `# touches:`
-   files. Give each recorder the summary lines of its failing features, and those reasons
-   with their features. In each area:
-   - a failing recipe is repaired, or its product defect marked `# known failure:`;
-   - an uncovered item gets a step, or an `# expects:` line marked not driven with its
-     reason;
-   - a line whose reason does not hold gets a step.
-4. When every recorder has written its result file, run `verify all --failed`. Send each
-   feature that neither passes nor fails at its known failure back to its recorder, with
-   its summary line. Repeat until none is left.
-5. Run `verify all` once more, with no `--jobs`, as the final proof ([Done](#done)). When
-   a feature fails there, send it back and go on with `verify all --failed`, until each
-   feature passes in a final `verify all` or fails at its known failure. Then run
-   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
-6. Run `verify down`, commit, and report the features added, the features repaired, the
-   expectations that now have a step, and each product defect.
+## Commands
 
 A drive can outlast your command timeout. Run `verify` the way your harness runs background
 commands. Wait until it finishes, then read its output once. Do not poll it or tail its logs.
-
-## Commands
 
 - `verify up` / `verify down`: start or reuse the run's environment, and remove it. The app
   runs on its dev server unless the first `verify up` set `VERIFY_APP=build`. A failed
@@ -365,47 +338,14 @@ Split a bigger or slower feature in two. The slowest feature sets the end of eve
 
 ### Done
 
-In [Full](#full), and when the generator proves recipes, a new or repaired recipe is done
-only when it passes in the final `verify all` with no `--jobs`, where every other feature
-runs beside it. A pass in `verify all --failed`, alone or in a small batch, proves nothing
-about its waits. It only saves full drives until the final one.
+In Full mode (`FULL.md`), and when the generator proves recipes, a new or repaired recipe
+is done only when it passes in the final `verify all` with no `--jobs`, where every other
+feature runs beside it. A pass in `verify all --failed`, alone or in a small batch, proves
+nothing about its waits. It only saves full drives until the final one.
 
 When you [check a change](#check-a-change), and when the maintain skill proves an upgrade,
 a pass in the features you drive is enough: a full drive per change takes too long. Size
 the recipe's waits for `verify all` anyway.
-
-## Recorders
-
-An area is a line of `.cache/areas.txt`: a screen or a few that share setup, about 1,000
-lines of source.
-
-Start one recorder per area, every area at once, heaviest first. Their feature runs wait in
-the machine's queue, so they need no limit of their own. In T3 Code use `delegate_task` with
-`mode: "async"`. Otherwise use your tool's own background subagent, on its fast model (such
-as `sonnet`) when it offers one. When your tool will not start more subagents:
-
-- If your session runs commands without asking, start the rest as headless sessions of your
-  own CLI, in the background, from the repository root. Give each the short prompt, and
-  send its output to `.cache/recorders/<area>.log`:
-  `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
-  `codex exec -m <model> --full-auto "<short prompt>"`. Each is a process of its own, so run
-  `verify room` before starting each one: it returns once the machine has room.
-- Otherwise start the next area each time a recorder returns.
-- With no subagents and no CLI, record the areas yourself.
-
-Never block on a foreground command while recorders run, or their returns reach you late.
-Give each recorder this short prompt, with the paths and area filled in:
-
-```
-You are a recorder for verify-<app>. Follow
-<absolute path>/.agents/skills/verify-<app>/RECORDERS.md, with the repository root
-<absolute path>, the example recipe features/<example>.sh, and the area <area> of
-.agents/skills/verify-<app>/.cache/areas.txt.
-```
-
-A recorder has returned when its result file `.cache/results/<area>.txt` appears, with or
-without the host's completion notice: notices can be lost. Read only that file's lines. Add
-their traps to `PROJECT.md`'s Gotchas when they hold for other features.
 
 ## When a drive fails
 
