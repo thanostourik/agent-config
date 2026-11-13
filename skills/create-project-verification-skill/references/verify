@@ -397,19 +397,35 @@ admit() {
   echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
 }
 
+alone_waiting() {
+  local entry
+  for entry in "$1".wanted-*; do
+    [[ -f "$entry" ]] || continue
+    kill -0 "${entry##*.wanted-}" 2> /dev/null && return 0
+    rm -f "$entry"
+  done
+  return 1
+}
+
 # Every verify on the machine shares this copy's lock: an '# alone' feature holds it alone; other features and doctor share it.
 hold_copy() {
   command -v flock > /dev/null || return 0
-  local wanted=$cache/drive/.copy-$VERIFY_RUN_ID.wanted
-  exec 7> "$cache/drive/.copy-$VERIFY_RUN_ID"
+  local copy=$cache/drive/.copy-$VERIFY_RUN_ID
+  exec 7> "$copy"
   if [[ "$1" == alone ]]; then
-    echo "$BASHPID" > "$wanted"
+    : > "$copy.wanted-$BASHPID"
     flock -x 7
-    rm -f "$wanted"
+    rm -f "$copy.wanted-$BASHPID"
   else
-    while [[ -f "$wanted" ]] && kill -0 "$(cat "$wanted" 2> /dev/null)" 2> /dev/null; do sleep 1; done
+    while alone_waiting "$copy"; do sleep 1; done
     flock -s 7
   fi
+}
+
+# A drive that is starting a lane holds its copy alone until launch.sh and doctor.sh pass, or until it has removed the lane.
+lane_ready() {
+  command -v flock > /dev/null && flock -s "$cache/drive/.copy-$(lane_id "$1")" true
+  (($1 <= $(lane_count)))
 }
 
 group_of() { header "$1" shares | cut -d: -f1; }
@@ -555,12 +571,13 @@ drive() {
   }
   start_lane() {
     local lane=$1 began=$SECONDS
-    if on_lane "$lane" "$skill/bin/launch.sh" > "$cache/launch-$lane.log" 2>&1 < /dev/null && on_lane "$lane" doctor "$cache/doctor-$lane.log"; then
+    if on_lane "$lane" "$skill/bin/launch.sh" > "$cache/launch-$lane.log" 2>&1 < /dev/null 5>&- && on_lane "$lane" doctor "$cache/doctor-$lane.log" 5>&-; then
       echo $((SECONDS - began)) > "$cache/lane-seconds"
+      exec 5>&-
       run_lane "$lane"
     else
       echo "$lane" > "$run/lane-failed-$lane"
-      on_lane "$lane" "$skill/bin/cleanup.sh" > /dev/null 2>&1 < /dev/null
+      on_lane "$lane" "$skill/bin/cleanup.sh" > /dev/null 2>&1 < /dev/null 5>&-
       (flock 8 && (($(lane_count) == lane)) && echo $((lane - 1)) > "$cache/lanes") 8> "$cache/.lanes-lock"
     fi
   }
@@ -576,13 +593,16 @@ drive() {
     ((want > ${#alone[@]} - 1)) && want=$((${#alone[@]} - 1))
     for ((lane = count + 1; lane <= want; lane++)); do
       (($(meminfo MemAvailable) - (lane - count) * (stack + browser_mb) >= $(reserve_mb))) || break
-      (flock 8 && (($(lane_count) == lane - 1)) && echo "$lane" > "$cache/lanes") 8> "$cache/.lanes-lock" || break
+      exec 5> "$cache/drive/.copy-$(lane_id "$lane")"
+      flock -x 5
+      (flock 8 && (($(lane_count) == lane - 1)) && echo "$lane" > "$cache/lanes") 8> "$cache/.lanes-lock" || { exec 5>&-; break; }
       start_lane "$lane" &
+      exec 5>&-
       pids+=($!)
       lane_jobs=$((lane_jobs + 1))
     done
   }
-  for ((lane = 1; lane <= count; lane++)); do run_lane "$lane" & pids+=($!); done
+  for ((lane = 1; lane <= count; lane++)); do { lane_ready "$lane" && run_lane "$lane"; } & pids+=($!); done
   add_lanes
   local together_pids=() units=() unit group
   local -A shared=()
