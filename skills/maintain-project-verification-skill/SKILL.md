@@ -144,10 +144,11 @@ Commit and open one PR as the repository's conventions say. Report:
 - the features the recorders repaired, the expectations that now have a step, and each
   known failure.
 
-Say that only the features the upgrade could break were driven, and that
-`/verify-<app> full` drives every feature. When `bin/verify uncovered` listed anything as
-not covered, end the report with this line, the count filled in: "<n> entry points and
-actions have no recipe. Run `/verify-<app> full` to record them."
+End the report with exactly one of these lines. When `bin/verify uncovered` listed anything
+as not covered, fill in the count: "<n> entry points and actions have no recipe. Run
+`/verify-<app> full` to record them." Otherwise: "Recipes are up to date. Nothing else to
+run." Mention `full` nowhere else in the report: the user reads any mention as a request to
+run it.
 
 Then delete `.cache/upgrade/`. A later upgrade on this machine would otherwise take its old
 files for its own and list their work again.
