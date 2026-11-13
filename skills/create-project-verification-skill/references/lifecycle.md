@@ -1,64 +1,131 @@
 # Isolation, ownership and cleanup
 
-Goal: verification never changes what the developer uses. That means their running services, data, sessions and configuration. The generated skill's `PROJECT.md` states the project's concrete version of these rules, and `bin/launch.sh`, `bin/doctor.sh` and `bin/cleanup.sh` carry them out.
+Goal: verification never changes what the developer uses. That means their running
+services, data, sessions and configuration. The generated skill's `PROJECT.md` states how
+these rules apply to the project. The lifecycle scripts `bin/launch.sh`, `bin/doctor.sh`
+and `bin/cleanup.sh` carry them out.
 
 ## Choose the isolation level once
 
-Pick one level while generating. Write it into the Isolation section of `PROJECT.md` as `Isolation level: <level>`, with one line on why.
+Pick one level while generating. Write it into the Isolation section of `PROJECT.md` as
+`Isolation level: <level>`, with one line on why.
 
 - **full** (default): every run uses an environment that verification owns.
-- **shared**: the project cannot create an owned environment, and the user approved named shared resources.
-- **checks-only**: no live driving. The skill names the focused tests, lint and type checks to run instead. Live steps are reported `blocked: no isolation`.
+- **shared**: the project cannot create an owned environment, and the user approved named
+  shared resources.
+- **checks-only**: no live driving. The skill names the focused tests, lint and type checks
+  to run instead. Live steps are reported `blocked: no isolation`.
 
-Isolation never blocks the work. Find every way the project runs an environment, such as `local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV, and note for each whether it is isolated and disposable or shared. In a companion repo, look in the app checkouts. Take the first case that applies:
+Isolation never blocks the work. Find every way the project runs an environment, such as
+`local-stack/stack`, a dev script, a compose file, a devcontainer or DDEV. Note for each
+whether it is isolated and disposable, or shared. In a companion repo, look in the app
+checkouts. Take the first case that applies:
 
-- **State in a folder or file the app takes from a flag or variable** (a CLI's data folder, a server's database file and port): point it at a folder the run owns, at level `full`. Set `HOME` for the run too when the app may fall back to it.
-- **Isolated and disposable:** use it at level `full`, and name it in the report. Ask only when there are several. `local-stack/stack` is the known-good shape, with its Compose project label as the ownership marker:
-  - `launch.sh` runs `local-stack/stack up --stubs --name "$VERIFY_RUN_ID"`, plus the `--mode` options the features need. With `VERIFY_APP=build` it adds `--app`. With `VERIFY_APP=dev` it starts the developers' dev command on the host, with that run's stack values.
-  - `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"`. Then it removes both registry files, `<stack>-<run id>.json` and `<stack>-<run id>.lock` under `~/.local/state/local-stacks/`, of that stack and of every stack it started for a dependency, and checks that none remains.
-- **Not isolated:** say what it shares, such as "`dev.sh` gives each branch its own stack but still sends real emails", and use it at level `shared` only when the user approves.
-- **None, or the user declines:** ask the user to start the app and say where it answers. Their running app is then the approved resource of level `shared`. When `/create-project-local-stack` is installed, name it in that question as the way to reach `full` later.
+- **State in a folder or file the app takes from a flag or variable** (a CLI's data folder,
+  a server's database file and port): point it at a folder the run owns, at level `full`.
+  Set `HOME` for the run too when the app may fall back to it.
+- **Isolated and disposable:** use it at level `full`, and name it in the report. Ask only
+  when there are several. `local-stack/stack` is the model, with its Compose project label
+  as the ownership marker:
+  - `launch.sh` runs `local-stack/stack up --stubs --name "$VERIFY_RUN_ID"`, plus the
+    `--mode` options the features need. With `VERIFY_APP=build` it adds `--app`. With
+    `VERIFY_APP=dev` it starts the developers' dev command on the host, with that run's
+    stack values.
+  - `cleanup.sh` runs `local-stack/stack destroy --name "$VERIFY_RUN_ID"`. Then it removes
+    both registry files, `<stack>-<run id>.json` and `<stack>-<run id>.lock` under
+    `~/.local/state/local-stacks/`, of that stack and of every stack it started for a
+    dependency, and checks that none remains.
+- **Not isolated:** say what it shares, such as "`dev.sh` gives each branch its own stack
+  but still sends real emails". Use it at level `shared` only when the user approves.
+- **None, or the user declines:** ask the user to start the app and say where it answers.
+  Their running app is then the approved resource of level `shared`. When
+  `/create-project-local-stack` is installed, name it in that question as the way to reach
+  `full` later.
 - **The user cannot run the app either:** level `checks-only`.
 
-Build a setup yourself only when the user asks, as part of the repo, never inside the verify skill's `bin/`. Never use a running developer instance without the user's approval.
+Build a setup yourself only when the user asks, as part of the repo, never inside the verify
+skill's `bin/`. Never use a running developer instance without the user's approval.
 
 ## Ownership
 
-An environment is **owned** when the ownership record in `.cache/` lists it and each of its resources carries a marker the project can check: a compose project name, a container label, a data directory path, a port the run picked, an environment variable with the run id on each process (check it in `/proc/<pid>/environ`) plus recorded process-group ids. A local URL, a branch name or a separate container project name is not a marker.
+The ownership record in `.cache/` lists what the run created. An environment is **owned**
+when the record lists it and each of its resources carries a marker the project can check:
+
+- a compose project name;
+- a container label;
+- a data directory path;
+- a port the run picked;
+- an environment variable with the run id on each process (check it in
+  `/proc/<pid>/environ`), plus recorded process-group ids.
+
+A local URL, a branch name or a separate container project name is not a marker.
 
 - Use the environment the user chose. Do not invent a second mechanism next to it.
-- A run's environment lives from `bin/verify up` to `bin/verify down`, usually one task. A second `bin/verify up` reuses it when every marker still checks out, and restarts only the app. Recipes create their own data, so no reseed is needed.
-- Anything not owned is off limits: never attach to it, change it, reset it or stop it. If a required port or resource is occupied, report a blocker.
-- If ownership is uncertain, report a blocker. Never wipe an environment to hide missing cleanup.
+- A run's environment lives from `bin/verify up` to `bin/verify down`, usually one task. A
+  second `bin/verify up` reuses it when every marker still checks out, and restarts only
+  the app. Recipes create their own data, so no reseed is needed.
+- Anything not owned is off limits: never attach to it, change it, reset it or stop it. If
+  a required port or resource is occupied, report a blocker.
+- If ownership is uncertain, report a blocker. Never wipe an environment to hide missing
+  cleanup.
 
 ## Before the first start
 
-- Trace where startup and driving can send writes: dependencies, gateways, storage, email, background jobs. Point them at disposable destinations or disable them. Check the effective configuration.
+- Trace where startup and driving can send writes: dependencies, gateways, storage, email,
+  background jobs. Point them at disposable destinations or disable them. Check the
+  effective configuration.
 - Record what exists before the run and how to restore it.
-- Note the success paths that isolation makes unreachable. A disabled dependency's error path does not prove its success path.
-- A run never takes the project's default ports (such as 3000, 5432, 8080), even when they are free: the developer's own tools, such as a backend started in an IDE, connect to them and would write into the run. Check the stack's port choice before the first start. Take ports the run picks, or the stack's spare-port option; when the stack has none, add one to it as part of the repo.
-- When the app hard-codes a port or host that collides with the developer's, override it from outside, never in the app: a property or environment variable at start, or a small proxy in the run's stack.
-- Inspect startup commands for side effects on files, data and processes. After choosing isolation and cleanup, launch once and compare against the recorded original state.
-- If the app watches files and reloads, run it with watching off or from a copy under `.cache/`: recorders save recipes inside the checkout while it runs, and every save would reload the app under the other features. A reload you cannot avoid means asking the user.
-- A stub for an outside service the app calls, such as a sign-in provider, belongs in the skill's `bin/` and runs inside the run's environment.
+- Note the success paths that isolation makes unreachable. A disabled dependency's error
+  path does not prove its success path.
+- A run never takes the project's default ports (such as 3000, 5432, 8080), even when they
+  are free. The developer's own tools, such as a backend started in an IDE, connect to
+  them and would write into the run. Check the stack's port choice before the first start.
+  Take ports the run picks, or the stack's spare-port option. When the stack has none, add
+  one to it as part of the repo.
+- When the app hard-codes a port or host that collides with the developer's, override it
+  from outside, never in the app: a property or environment variable at start, or a small
+  proxy in the run's stack.
+- Inspect startup commands for side effects on files, data and processes. After choosing
+  isolation and cleanup, launch once and compare against the recorded original state.
+- If the app watches files and reloads, run it with watching off or from a copy under
+  `.cache/`. Recorders save recipes inside the checkout while the app runs, and every save
+  would reload the app under the other features. A reload you cannot avoid means asking the
+  user.
+- A stub for an outside service the app calls, such as a sign-in provider, belongs in the
+  skill's `bin/` and runs inside the run's environment.
 
 ## Lifecycle
 
-- Register every resource in the ownership record as it is created, before waiting for readiness. Cleanup then works after a partial startup.
-- Every run restores the original state on success, failure and interruption. It removes its own data, sessions, files, databases, containers, volumes and networks. It stops its recorded processes, never by process name. It restores changed configuration. Pre-existing resources stay untouched. Evidence stays.
-- Generate the exact cleanup commands for this project, with failure handling, in the lifecycle helpers.
-- After an abrupt kill, recover only resources the ownership record proves the earlier run left. Do this before checking that required resources are free.
-- If cleanup fails, keep the ownership record, report what remains and how to finish. Do not claim completion.
+- Register every resource in the ownership record as it is created, before waiting for
+  readiness. Cleanup then works after a partial startup.
+- Every run restores the original state on success, failure and interruption:
+  - It removes its own data, sessions, files, databases, containers, volumes and networks.
+  - It stops its recorded processes, never by process name.
+  - It restores changed configuration.
+  - Resources that existed before stay untouched. Evidence stays.
+- Write the exact cleanup commands for this project, with failure handling, into the
+  lifecycle scripts.
+- After an abrupt kill, recover only resources the ownership record proves the earlier run
+  left. Do this before checking that required resources are free.
+- If cleanup fails, keep the ownership record, and report what remains and how to finish.
+  Do not claim completion.
 
 ## Shared level
 
-Use it only when the user chose it. Write these rules into the generated skill.
+Use it only when the user chose it. Build these rules into the generated skill: `PROJECT.md`
+states them, and the lifecycle scripts carry them out.
 
-- The approved resources are listed by name in the Isolation section of `PROJECT.md`. Nothing else is touched.
+- The approved resources are listed by name in the Isolation section of `PROJECT.md`.
+  Nothing else is touched.
 - Drive with `--jobs 1`, and never while anyone else is using the resource.
-- Reads are free. Writes go only to fixtures the run creates, named `verify-<feature>-`, and removed in cleanup.
-- Doctor checks that the targeted resources are the approved ones, for example the right host and database name, and refuses anything else.
-- A step that needs a write outside a marked fixture, or a resource that is not on the approved list, asks the user first and names the resource.
+- Reads are free. Writes go only to fixtures the run creates, named `verify-<feature>-`,
+  and removed in cleanup.
+- `doctor.sh` checks that the targeted resources are the approved ones, for example the
+  right host and database name, and refuses anything else.
+- A step that needs a write outside a marked fixture, or a resource that is not on the
+  approved list, asks the user first and names the resource.
 - Deployed and remote services are never eligible. Report those steps blocked.
-- When the user runs the app, Launch only checks that it answers where the user said, and Cleanup removes the run's fixtures but never stops the app or touches its other data.
+- When the user runs the app, `launch.sh` only checks that it answers where the user said.
+  `cleanup.sh` removes the run's fixtures, but never stops the app or touches its other
+  data.
 - Every report is labeled `lower confidence: shared <resources>`.
