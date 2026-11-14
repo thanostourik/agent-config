@@ -25,8 +25,8 @@ and other paths are relative to `.agents/skills/verify-<app>/`.
   to `verify down`. **Lanes** are extra copies of it for features marked `# alone`.
 - **Summary line:** the one line `verify` prints per feature: a pass with its time, or the
   step, command and error where it failed.
-- **Feature of the change:** a feature whose steps fail before a change and pass after it.
-  A change can have several.
+- **Feature of the change:** the feature whose steps fail before a change and pass after
+  it.
 - **Recorder:** a subagent that writes the recipes of one area of the app.
 
 ## Modes
@@ -45,8 +45,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 
 1. Find the feature of the change before you write code. Its steps fail before the change
    and pass after it.
-   - **A bug.** Find the feature that should show it, with `verify list` or by searching
-     the recipes for the screen, route, command or message of the report. Run `verify up`
+   - **A bug.** Find the one feature that shows it most directly, with `verify list` or
+     by searching the recipes for the screen, route, command or message of the report. A
+     report that names separate symptoms has one such feature for each. Run `verify up`
      and drive that feature by name. It must fail at the step that shows the bug. When it
      passes, no step sees the bug: add that step, to this feature or to a new one, and
      drive it until it fails for the reason the report gives.
@@ -56,8 +57,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    - **A change meant to alter no behavior**, such as a refactor. It has no such feature:
      make the change, run `verify up`, and go on with step 3.
 2. Make the change, and loop on the feature of the change alone. After every code change
-   run `verify up`, then `verify <feature>...` with the features that failed, and nothing
-   else. Any other feature you drive here is driven again on every round.
+   run `verify up`, then `verify <feature>` with that feature, and nothing else. Any other
+   feature you drive here is driven again on every round. Other features that show the
+   same bug wait for step 3.
    - `verify up` reuses the run's environment when it is already up, and restarts only
      the app: the app runs the code it started with. Keep the environment up for the
      whole task.
