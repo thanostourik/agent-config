@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+# verify-time: show where verification time goes in Claude Code sessions, read
+# from the session logs on disk.
+#
+#   verify-time [--since YYYY-MM-DD] [--skip PROJECT]... [--runs] [--json]
+#
+# A run is one request: from a prompt the user typed to the last event before
+# the next one. Only runs that drove a feature with a project's bin/verify and
+# committed a feat, fix, refactor or perf change count, so sessions that build
+# a verify skill are left out. Working time leaves out gaps over three minutes
+# in which no tool call was open.
+
+import argparse
+import collections
+import datetime
+import json
+import pathlib
+import re
+import statistics
+import tempfile
+
+LOGS = pathlib.Path.home() / ".claude/projects"
+BUILDING = re.compile(r"recorder for verify|RECORDERS\.md|project-verification-skill|feature map", re.I)
+COMMIT = re.compile(r"git commit[\s\S]*?\b(feat|fix|refactor|perf)(\(([^)]*)\))?!?:")
+CALL = re.compile(r"bin/verify\b([^\n;&|)>]*)")
+RESULT = re.compile(r"^([a-z0-9][a-z0-9-]+): (pass|fail|timeout|error) ?.*?(\d+)s", re.M)
+SUMMARY = re.compile(r"^Summary \((\d+)s, (\d+) features(?:, (\d+)s of feature runs waiting)?.*(?:\n[a-z0-9][a-z0-9-]+: .*)*", re.M)
+NOTICE = re.compile(r"<task-notification>|<local-command|<command-name>|^\s*<system-reminder>")
+PLAIN = {"up", "down", "list", "lint", "uncovered", "doctor", "room", "help", "areas", "status"}
+DRIVES = ("all", "affected", "named")
+PARTS = (*DRIVES, "stack", "list")
+IDLE = 180
+
+
+def stamp(value):
+    return datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+
+
+def kinds(command):
+    """What each bin/verify call of a shell command does: up, down, list, all, affected, or named for a drive by name."""
+    found = []
+    for match in CALL.finditer(command):
+        words = [word for word in match.group(1).split() if not word.startswith("$")]
+        names = [word for index, word in enumerate(words) if not word.startswith("-") and not (index and words[index - 1] in ("--jobs", "--deadline", "--base"))]
+        if not names:
+            continue
+        if names[0] in ("up", "down"):
+            found.append(names[0])
+        elif names[0] in PLAIN or "--dry" in words:
+            found.append("list")
+        elif re.fullmatch(r"[a-z0-9][a-z0-9-]*", names[0]):
+            found.append(names[0] if names[0] in ("all", "affected") else "named")
+    return found
+
+
+def named(command):
+    return [word for match in CALL.finditer(command) for word in match.group(1).split()
+            if re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)+", word) and word not in PLAIN]
+
+
+def merged(intervals):
+    out = []
+    for start, end in sorted(intervals):
+        if out and start <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], end)
+        else:
+            out.append([start, end])
+    return out
+
+
+def overlap(intervals, start, end):
+    return sum(max(0, min(end, stop) - max(start, begin)) for begin, stop in intervals)
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    return " ".join(part.get("text", "") if part.get("type") == "text" else text_of(part.get("content")) if part.get("type") == "tool_result" else ""
+                    for part in content or [] if isinstance(part, dict))
+
+
+def project_of(cwd):
+    """The project a session worked in: the folder above a worktree's own, else the working folder."""
+    parts = pathlib.Path(cwd).parts
+    return parts[parts.index("worktrees") + 1] if "worktrees" in parts[:-2] else parts[-1]
+
+
+def read(paths):
+    """One session's log files as its prompts, event times, tool calls and what they printed."""
+    session = {"cwd": "", "prompts": [], "times": [], "calls": [], "commits": [], "outputs": []}
+    open_calls, finished = {}, {}
+    for path in paths:
+        main = len(path.relative_to(LOGS).parts) == 2
+        for line in path.open(errors="replace"):
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not entry.get("timestamp"):
+                continue
+            when = stamp(entry["timestamp"])
+            session["times"].append(when)
+            session["cwd"] = session["cwd"] or (entry.get("cwd") if main else "") or ""
+            content = (entry.get("message") or {}).get("content")
+            parts = [part for part in content if isinstance(part, dict)] if isinstance(content, list) else []
+            if entry.get("type") == "user":
+                said = text_of(content)
+                for task in re.findall(r"<task-id>([^<]+)</task-id>", said):
+                    finished.setdefault(task, when)
+                typed = main and not entry.get("isMeta") and said.strip() and not any(part.get("type") == "tool_result" for part in parts)
+                if typed and not NOTICE.search(said):
+                    session["prompts"].append((when, said.strip()[:200].replace("\n", " ")))
+            for part in parts:
+                if part.get("type") == "tool_use":
+                    command = (part.get("input") or {}).get("command", "") if part.get("name") == "Bash" else ""
+                    open_calls[part["id"]] = {"start": when, "kinds": kinds(command), "features": named(command), "task": None}
+                    session["commits"] += [(when, found.group(1)) for found in COMMIT.finditer(command) if "verify" not in (found.group(3) or "")]
+                elif part.get("type") == "tool_result" and part.get("tool_use_id") in open_calls:
+                    call = open_calls.pop(part["tool_use_id"])
+                    result = entry.get("toolUseResult") if isinstance(entry.get("toolUseResult"), dict) else {}
+                    call.update(end=when, task=result.get("backgroundTaskId"))
+                    session["outputs"].append((when, (result.get("stdout") or "") + "\n" + text_of([part])))
+                    session["calls"].append(call)
+    # A background command ends when its completion notice arrives, not when the tool call returns.
+    for call in session["calls"]:
+        if call["task"] in finished:
+            call["end"] = max(call["end"], finished[call["task"]])
+    session["times"].sort()
+    session["prompts"].sort()
+    return session
+
+
+def runs_of(session):
+    working = merged([(call["start"], call["end"]) for call in session["calls"]])
+    verify = sorted((call for call in session["calls"] if call["kinds"]), key=lambda call: call["start"])
+    prompts = session["prompts"]
+    for index, (start, said) in enumerate(prompts):
+        end = prompts[index + 1][0] if index + 1 < len(prompts) else session["times"][-1] + 1
+        inside = [call for call in verify if start <= call["start"] < end]
+        drives = [call for call in inside if set(DRIVES) & set(call["kinds"])]
+        if not drives or BUILDING.search(said) or not any(start <= when < end for when, _ in session["commits"]):
+            continue
+        ticks = sorted({when for when in session["times"] if start <= when < end} | {min(call["end"], end) for call in inside})
+        active = sum(after - before if after - before <= IDLE else overlap(working, before, after) for before, after in zip(ticks, ticks[1:]))
+        spent, cursor = collections.Counter(), start
+        for call in inside:
+            begin, stop = max(call["start"], cursor), min(call["end"], end)
+            if stop > begin:
+                cursor = stop
+                spent[next((name for name in DRIVES if name in call["kinds"]), "stack" if set(call["kinds"]) & {"up", "down"} else "list")] += stop - begin
+        blocks = {match.group(0): match for when, out in session["outputs"] if start <= when < end for match in SUMMARY.finditer(out)}
+        results = [found for block in blocks for found in RESULT.findall(block)]
+        failed = {name for name, verdict, _ in results if verdict != "pass"}
+        last = {name: verdict for name, verdict, _ in results}
+        asked = [feature for call in drives for feature in call["features"]]
+        yield {
+            "project": project_of(session["cwd"]), "day": datetime.datetime.fromtimestamp(start).strftime("%Y-%m-%d"), "prompt": said[:140],
+            "minutes": active / 60, "verify": sum(spent.values()) / 60, **{name: spent[name] / 60 for name in PARTS},
+            "rounds": len(drives), "ups": sum(call["kinds"].count("up") for call in inside), "whole": sum("all" in call["kinds"] for call in drives),
+            "asked": len(asked), "asked_distinct": len(set(asked)), "results": len(results), "failed": len([name for name, verdict, _ in results if verdict != "pass"]),
+            "fixed": len([name for name in failed if last[name] == "pass"]),
+            "blocks": [{"features": int(match.group(2)), "seconds": int(match.group(1)), "waited": int(match.group(3) or 0),
+                        "ran": [int(seconds) for _, _, seconds in RESULT.findall(block)]} for block, match in blocks.items()],
+        }
+
+
+def line(name, group):
+    total = sum(run["minutes"] for run in group)
+    share = lambda key: 100 * sum(run[key] for run in group) / total if total else 0
+    return (f"{name:24.24} {len(group):4} {total / 60:6.1f}h {statistics.median(run['minutes'] for run in group):5.0f}m | {share('verify'):5.0f}%"
+            f" {statistics.median(100 * run['verify'] / run['minutes'] for run in group if run['minutes']):5.0f}% |"
+            f" {share('all'):4.0f}% {share('affected'):7.0f}% {share('named'):5.0f}% {share('stack'):5.0f}% {share('list'):4.0f}% |"
+            f" {statistics.median(run['rounds'] for run in group):5.0f} {sum(run['ups'] for run in group) / len(group):5.1f}")
+
+
+def report(runs):
+    print(f"{'':24} runs    time median | verify median |  all affected named stack list | rounds   ups")
+    print(f"{'':24}                     |  share of working time                        | median  mean, per run")
+    print(line("All fix and build runs", runs))
+    by_project = collections.defaultdict(list)
+    for run in runs:
+        by_project[run["project"]].append(run)
+    for name, group in sorted(by_project.items(), key=lambda item: -len(item[1])):
+        print(line(name, group))
+    asked, distinct = sum(run["asked"] for run in runs), sum(run["asked_distinct"] for run in runs)
+    rounds = sorted(run["rounds"] for run in runs)
+    print(f"\nDrive rounds per run: median {statistics.median(rounds):.0f}, a quarter of the runs have {rounds[len(rounds) * 3 // 4]} or more, most {rounds[-1]}")
+    print(f"Runs with a whole-suite drive: {sum(bool(run['whole']) for run in runs)} of {len(runs)}")
+    if asked:
+        print(f"Features named on a drive command: {asked}, of them driven before in the same run: {asked - distinct} ({100 * (asked - distinct) / asked:.0f}%)")
+    seen = [run for run in runs if run["results"]]
+    blocks = [block for run in runs for block in run["blocks"]]
+    if not blocks:
+        return
+    print(f"\nRuns whose drive results are readable in the log: {len(seen)} of {len(runs)}")
+    print(f"  results {sum(run['results'] for run in seen)}, failed {sum(run['failed'] for run in seen)};"
+          f" runs where a feature failed and passed later: {sum(bool(run['fixed']) for run in seen)}")
+    total = sum(block["seconds"] for block in blocks)
+    for name, low, high in (("1 feature", 1, 1), ("2 to 5", 2, 5), ("6 to 20", 6, 20), ("21 to 99", 21, 99), ("100 or more", 100, 10 ** 6)):
+        group = [block for block in blocks if low <= block["features"] <= high]
+        if group:
+            print(f"  rounds of {name:11} {len(group):4} ({100 * len(group) / len(blocks):3.0f}%), {100 * sum(block['seconds'] for block in group) / total:3.0f}% of the drive time,"
+                  f" median {statistics.median(block['seconds'] for block in group):.0f} s")
+    single = [block for block in blocks if block["features"] == 1 and len(block["ran"]) == 1]
+    if single:
+        print(f"  one-feature rounds: the features ran {sum(block['ran'][0] for block in single) / 60:.0f} min and waited {sum(block['waited'] for block in single) / 60:.0f} min for room on the machine")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Where verification time goes in Claude Code sessions.")
+    parser.add_argument("--since", help="only runs that started on or after this day (YYYY-MM-DD)")
+    parser.add_argument("--skip", action="append", default=[], metavar="PROJECT", help="leave out this project; repeat for more")
+    parser.add_argument("--runs", action="store_true", help="also list each run, longest verification first")
+    parser.add_argument("--json", action="store_true", help="print the runs as JSON instead")
+    options = parser.parse_args()
+    sessions = collections.defaultdict(list)
+    for path in LOGS.glob("**/*.jsonl"):
+        parts = path.relative_to(LOGS).parts
+        sessions[parts[0], parts[1].removesuffix(".jsonl")].append(path)
+    runs = []
+    for paths in sessions.values():
+        if not any(len(path.relative_to(LOGS).parts) == 2 for path in paths):
+            continue
+        session = read(paths)
+        if not session["cwd"] or session["cwd"].startswith(tempfile.gettempdir()) or project_of(session["cwd"]) in options.skip:
+            continue
+        runs += [run for run in runs_of(session) if not options.since or run["day"] >= options.since]
+    if options.json:
+        print(json.dumps(runs, indent=1))
+        return
+    if not runs:
+        print("verify-time: no run drove a feature and committed a change")
+        return
+    report(runs)
+    if options.runs:
+        print()
+        for run in sorted(runs, key=lambda run: -run["verify"]):
+            print(f"{run['project'][:16]:16} {run['day']} {run['minutes']:5.0f}m, verify {run['verify']:4.0f}m, {run['rounds']:3} rounds, {run['ups']:2} ups | {run['prompt'][:80]}")
+
+
+if __name__ == "__main__":
+    main()
