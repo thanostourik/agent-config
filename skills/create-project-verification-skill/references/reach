@@ -73,6 +73,7 @@ def app_roots():
 
 roots = app_roots()
 texts = {}
+depths = {}
 
 
 def split(path):
@@ -91,9 +92,26 @@ def read(prefix, path):
     return texts[prefix, path]
 
 
+def grep(option, word):
+    """(prefix, output line) for each line `git grep` prints for the whole word, over every checkout."""
+    for prefix, checkout in roots.items():
+        found = subprocess.run(["git", "-C", str(checkout), "grep", "-I", option, "-w", "-F", "-e", word, "--", ".",
+                                ":!.agents", ":!.claude"], capture_output=True, text=True).stdout
+        for line in found.split("\n"):
+            if line:
+                yield prefix, line
+
+
 def indent(text):
     expanded = text.expandtabs(4)
     return len(expanded) - len(expanded.lstrip())
+
+
+def indents(lines):
+    """The indentation of each line of a file, None for a blank line. Kept per file: enclosing() asks for it a lot."""
+    if id(lines) not in depths:
+        depths[id(lines)] = [indent(text) if text.strip() else None for text in lines]
+    return depths[id(lines)]
 
 
 def annotated(lines, at):
@@ -107,23 +125,20 @@ def annotated(lines, at):
 
 def enclosing(lines, index):
     """The lines that enclose line `index`, innermost first: each is the nearest line above with less indentation."""
-    probe = index
-    while probe < len(lines) and not lines[probe].strip():
-        probe += 1
-    if probe >= len(lines):
-        return []
-    level, result = indent(lines[probe]), []
+    depth = indents(lines)
+    level = next((found for found in depth[index:] if found is not None), 0)
+    result = []
     for at in range(index - 1, -1, -1):
-        text = lines[at]
-        if not text.strip() or indent(text) >= level:
-            continue
-        if CLOSING.match(text):
-            level = indent(text) + 1
-            continue
-        level = indent(text)
-        result.append(annotated(lines, at) if text.lstrip().startswith("@") else at)
-        if level == 0:
+        if not level:
             break
+        if depth[at] is None or depth[at] >= level:
+            continue
+        text = lines[at]
+        if CLOSING.match(text):
+            level = depth[at] + 1
+            continue
+        level = depth[at]
+        result.append(annotated(lines, at) if text.lstrip().startswith("@") else at)
     return result
 
 
@@ -134,12 +149,24 @@ def opens_block(lines, index):
     return False
 
 
-def is_definition(lines, index):
-    """A line that opens a block, or sits at the top level or directly in a class body, defines something itself."""
-    if opens_block(lines, index):
-        return True
+def is_member(lines, index):
+    """Whether a line sits at the top level or directly in a class body, where a name it defines is known outside."""
     around = [at for at in enclosing(lines, index) if not CONTROL.match(lines[at])]
     return not around or bool(CONTAINER.search(lines[around[0]]))
+
+
+def signature(text):
+    """The name a line declares the way a function or method signature does, or None for a call."""
+    for found in CALL.finditer(text):
+        name, before = found.group(1).split("::")[-1], text[:found.start()].strip()
+        if name in KEYWORDS or text[:found.start()].endswith("."):
+            continue
+        if not before and re.fullmatch(r"[^()]*\([^()]*\)\s*(?::[^{;]*)?\{\s*", text[found.start():]):
+            return name
+        words = re.findall(r"[\w$]+", before)
+        if re.search(r"[\w$>\]*&]$", before) and not (words and words[-1] in USES):
+            return name
+    return None
 
 
 def defined_name(text, member=False):
@@ -150,12 +177,8 @@ def defined_name(text, member=False):
         found = pattern.search(text)
         if found:
             return found.group(1)
-    for found in CALL.finditer(text):
-        name = found.group(1).split("::")[-1]
-        if name not in KEYWORDS:
-            return name
     found = MEMBER.search(text) if member else None
-    return found.group(1) if found and found.group(1) not in KEYWORDS else None
+    return signature(text) or (found.group(1) if found and found.group(1) not in KEYWORDS else None)
 
 
 def defines(lines, index, name):
@@ -167,17 +190,10 @@ def defines(lines, index, name):
         found = pattern.search(text)
         if found:
             return found.group(1) == name
-    if not is_definition(lines, index):
+    if not opens_block(lines, index) and not is_member(lines, index):
         return False
-    found = re.search(r"(?<![\w$.])" + re.escape(name) + r"\s*(?:<[^<>()]*>)?\s*\(", text)
-    if not found:
-        key = MEMBER.match(text)
-        return bool(key) and key.group(1) == name
-    before = text[:found.start()].strip()
-    if not before:
-        return re.fullmatch(r"[^()]*\([^()]*\)[^()]*", text[found.start():]) is not None
-    words = re.findall(r"[\w$]+", before)
-    return re.search(r"[\w$>\]*&:]$", before) is not None and not (words and words[-1] in USES)
+    key = MEMBER.match(text)
+    return signature(text) == name or (bool(key) and key.group(1) == name)
 
 
 def code_of(text):
@@ -223,8 +239,11 @@ def cited_in(path):
     return merged
 
 
-def scope_of(lines, index, cited, own):
-    """(the innermost cited name around a line, the name of the definition the line is in); either can be None."""
+def scope_of(lines, index, cited, edited_line):
+    """(the innermost cited name around a line, the name of the definition the line is in); either can be None.
+    An edited line counts as its own scope when it opens a block, and names a definition only as a member."""
+    member = edited_line and is_member(lines, index)
+    own = member or (edited_line and opens_block(lines, index))
     levels = [annotated(lines, index) if own and lines[index].lstrip().startswith("@") else index] + enclosing(lines, index)
     definition = None
     for position, at in enumerate(levels):
@@ -236,9 +255,9 @@ def scope_of(lines, index, cited, own):
         hits = [name for name in cited if names(name, text, literal)]
         if hits and not (literal and len(hits) > 1):
             return max(hits, key=len), None
-        if literal or definition is not None:
+        if literal or definition is not None or (position == 0 and not member):
             continue
-        definition = False if CONTAINER.search(text) else defined_name(text, member=own and position == 0) or None
+        definition = False if CONTAINER.search(text) else defined_name(text, member=position == 0) or None
     return None, definition or None
 
 
@@ -282,13 +301,16 @@ for line in pathlib.Path(sys.argv[1]).read_text().split("\n"):
         changed_files.append(listed_path)
     if path.endswith(PROSE) or TESTS.search(path):
         continue
-    lines, cited = read(prefix, path), cited_in(listed_path)
+    cited = cited_in(listed_path)
+    if not cited and pathlib.Path(path).suffix not in CODE:
+        continue
+    lines = read(prefix, path)
     for index in range(int(first) - 1, min(int(first) - 1 + int(count), len(lines))):
         text = lines[index]
         if not text.strip() or COMMENT.match(text) or IMPORT.match(text):
             continue
-        name, definition = scope_of(lines, index, cited, is_definition(lines, index))
-        definition = name or definition or defined_name(text, member=True)
+        name, definition = scope_of(lines, index, cited, True)
+        definition = name or definition
         key = (prefix, path, definition)
         if name:
             reached.add(key)
@@ -302,34 +324,43 @@ trail = dict(edited)
 origin = {key: key for key in edited}
 frontier = [(key, 1) for key in edited]
 crowded = {}
+naming = {}
 while frontier:
     (prefix, path, name), steps = frontier.pop(0)
     here, source = trail[prefix, path, name], origin[prefix, path, name]
     stem = pathlib.Path(path).stem.split(".")[0]
     if stem in GENERIC_STEMS:
         stem = pathlib.Path(path).parent.name
+    hits = []
+    for other, found in grep("-n", name):
+        file, _, rest = found.partition(":")
+        number = rest.partition(":")[0]
+        if number.isdigit() and pathlib.Path(file).suffix in CODE:
+            hits.append((other, file, int(number) - 1))
+
+    def near(found):
+        """The hits in this file, or in a file that names it."""
+        if stem not in naming:
+            naming[stem] = set(grep("-l", stem))
+        return [hit for hit in found if hit[:2] == (prefix, path) or hit[:2] in naming[stem]]
+
+    # A name used all over, or defined in several files, is followed only into files that also name this file.
+    if len(hits) > MAX_USES:
+        hits = near(hits)
     uses, defined_in = [], set()
-    for other, checkout in roots.items():
-        found = subprocess.run(["git", "-C", str(checkout), "grep", "-I", "-n", "-w", "-F", "-e", name, "--", ".",
-                                ":!.agents", ":!.claude"], capture_output=True, text=True).stdout
-        for hit in found.split("\n"):
-            file, _, rest = hit.partition(":")
-            number = rest.partition(":")[0]
-            if not number.isdigit() or pathlib.Path(file).suffix not in CODE:
-                continue
-            lines, index = read(other, file), int(number) - 1
-            if index >= len(lines):
-                continue
-            text = lines[index]
-            if COMMENT.match(text) or IMPORT.match(text) or text.lstrip().startswith("@") or not names(name, code_of(text), False):
-                continue
-            if defines(lines, index, name):
-                defined_in.add((other, file))
-            else:
-                uses.append((other, file, index))
-    # A name defined in several files, or used all over, is followed only into files that also name this file.
-    if defined_in - {(prefix, path)} or len(uses) > MAX_USES:
-        uses = [use for use in uses if use[:2] == (prefix, path) or names(stem, "\n".join(read(*use[:2])), False)]
+    for other, file, index in hits[:10 * MAX_USES]:
+        lines = read(other, file)
+        text = lines[index] if index < len(lines) else ""
+        if not text or len(text) > 400 or COMMENT.match(text) or IMPORT.match(text) or text.lstrip().startswith("@"):
+            continue
+        if not names(name, code_of(text), False):
+            continue
+        if defines(lines, index, name):
+            defined_in.add((other, file))
+        else:
+            uses.append((other, file, index))
+    if defined_in - {(prefix, path)}:
+        uses = near(uses)
     if len(uses) > MAX_USES:
         crowded[source] = f"{here} (used in {len(uses)} places, too many to follow)"
         continue
@@ -346,7 +377,7 @@ while frontier:
                 else:
                     callers[feature].append((steps, label(file, user), here, *evidence(feature, file, user, edit_words[source])))
             continue
-        if definition is None and is_definition(lines, index):
+        if definition is None and is_member(lines, index):
             definition = defined_name(lines[index], member=True) or (name if "export" in lines[index] else None)
         key = (other, file, definition)
         if definition and key not in trail and steps < MAX_STEPS:
@@ -355,15 +386,16 @@ while frontier:
 
 for feature, why in sorted(direct.items()):
     print("direct", feature, ", ".join(sorted(why)), sep="\t")
-for share, feature, found in sorted((min(found)[3], feature, min(found)) for feature, found in callers.items()):
-    if feature not in direct:
-        print("caller", feature, found[1], found[2], found[4], sep="\t")
+shortest = {feature: min(found) for feature, found in callers.items() if feature not in direct}
+for feature, (_, user, path, _, checked) in sorted(shortest.items(), key=lambda item: (item[1][3], item[0])):
+    print("caller", feature, user, path, checked, sep="\t")
 listing = {feature for path in changed_files for feature in touches.get(path, ())} - set(direct) - set(callers)
 for feature in sorted(listing):
     print("listed" if behaviors[feature] else "blind", feature, sep="\t")
+quiet = [path for path in changed_files if not touches.get(path) and not TESTS.search(path) and not path.endswith(PROSE)
+         and not any(key[0] + key[1] == path for key in reached)]
 for key, name in edited.items():
-    if key not in reached:
+    if key not in reached and key[0] + key[1] not in quiet:
         print("loose", crowded.get(key, name), sep="\t")
-for path in changed_files:
-    if not touches.get(path) and not TESTS.search(path) and not path.endswith(PROSE) and not any(key[0] + key[1] == path for key in reached):
-        print("quiet", path, sep="\t")
+for path in quiet:
+    print("quiet", path, sep="\t")

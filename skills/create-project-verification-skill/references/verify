@@ -182,8 +182,13 @@ source_ranges() {
   } | awk -F '\t' 'FILENAME == ARGV[1] { wanted[$0]; next } ($1 in wanted) { print; found[$1] } END { for (path in wanted) if (!(path in found)) print path "\t1\t1000000" }' "$work/sources" -
 }
 
+# The features reach reports under one kind, without those about to be driven, on one line.
+undriven() {
+  awk -F '\t' -v kind="$1" 'FILENAME == ARGV[1] { driven[$0]; next } $1 == kind && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach"
+}
+
 select_affected() {
-  local file feature traced=""
+  local file feature left traced=""
   awk 'FNR == 1 { feature = FILENAME; sub(/.*\//, "", feature); sub(/[.]sh$/, "", feature) }
     /^# touches:/ { count = split(substr($0, 11), paths, /[ \t]+/); for (i = 1; i <= count; i++) if (paths[i] != "") print feature "\t" paths[i] }' "$skill"/features/*.sh > "$work/touches" 2> /dev/null
   : > "$work/affected"
@@ -208,9 +213,10 @@ select_affected() {
     source_ranges > "$work/ranges" && "$skill/bin/reach" "$work/ranges" > "$work/reach" && traced=1
   fi
   if [[ -z "$traced" ]]; then
-    while IFS= read -r file; do
-      awk -F '\t' -v file="$file" '$2 == file { print file "\t" $1; found = 1 } END { if (!found) print "quiet\t" file > "/dev/stderr" }' "$work/touches" >> "$work/candidates" 2>> "$work/reach"
-    done < "$work/sources"
+    awk -F '\t' -v candidates="$work/candidates" -v reach="$work/reach" '
+      FILENAME == ARGV[1] { features[$2] = features[$2] " " $1; next }
+      !($0 in features) { print "quiet\t" $0 >> reach; next }
+      { count = split(features[$0], names, " "); for (i = 1; i <= count; i++) print $0 "\t" names[i] >> candidates }' "$work/touches" "$work/sources"
   fi
   awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } $1 == "direct" && !($2 in changed) && !seen[$2]++ { print $2 }' "$work/affected" "$work/reach" > "$work/checks"
   if [[ -s "$work/affected" ]]; then
@@ -229,16 +235,10 @@ select_affected() {
     echo "Cite code that uses the edited code, not driven (closest to the edit first; drive a feature only when a line under it is a result the edited code produces):"
     cat "$work/lines"
   fi
-  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "listed" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
-  if [[ -s "$work/lines" ]]; then
-    echo "List a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):"
-    echo " $(cat "$work/lines")"
-  fi
-  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "blind" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
-  if [[ -s "$work/lines" ]]; then
-    echo "List a changed file and have no '# expects:' line with a step, not driven (nothing says what they check: read their steps):"
-    echo " $(cat "$work/lines")"
-  fi
+  left=$(undriven listed)
+  [[ -n "$left" ]] && printf '%s\n %s\n' "List a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):" "$left"
+  left=$(undriven blind)
+  [[ -n "$left" ]] && printf '%s\n %s\n' "List a changed file and have no '# expects:' line with a step, not driven (nothing says what they check: read their steps):" "$left"
   awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } !($2 in driven) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/driven" "$work/candidates" | sort > "$work/lines"
   if [[ -s "$work/lines" ]]; then
     if [[ -n "$traced" ]]; then
@@ -250,7 +250,7 @@ select_affected() {
   fi
   if grep -q '^loose' "$work/reach"; then
     echo "Edited code no recipe cites or reaches (search the recipes for what it produces, such as its route, table, message or label):"
-    sed -n 's/^loose\t/  /p' "$work/reach"
+    sed -n 's/^loose\t/  /p' "$work/reach" | awk 'NR <= 20 { print } END { if (NR > 20) print "  and " NR - 20 " more" }'
   fi
   if grep -q '^quiet' "$work/reach"; then
     echo "Changed files no feature names, with nothing reached (if one changes behavior a feature checks, drive that feature by name and add the file to its touches):"
