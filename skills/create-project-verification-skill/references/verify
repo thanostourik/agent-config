@@ -132,8 +132,11 @@ fingerprint() {
 
 changed_since() { comm -3 <(sort -u "$1") <(sort -u "$2") | sed -e 's/^\t//' -e 's/^[0-9a-f]*  //' | sort -u; }
 
-# One id for what every file of every checkout holds: the same after a commit, another after an edit.
-state() { sha1sum | cut -d ' ' -f 1; }
+# One id for what a feature's result depends on, from a fingerprint file: every file of every checkout but the
+# other features' recipes. It is the same after a commit, and another after an edit.
+state_of() {
+  { grep -v -F "  $skill_rel/features/" "$2"; grep -F "  $skill_rel/features/$1.sh" "$2"; } | sha1sum | cut -d ' ' -f 1
+}
 
 skill_rel=${skill#"$root"/}
 
@@ -646,7 +649,7 @@ drive() {
   # A pass counts for this code only when the app was started on it: 'verify up' has run since the last edit outside the skill.
   fingerprint > "$run/files"
   code=""
-  [[ -f "$cache/up-files" ]] && ! changed_since "$cache/up-files" "$run/files" | grep -q -v "^$skill_rel/" && code=$(state < "$run/files")
+  [[ -f "$cache/up-files" ]] && ! changed_since "$cache/up-files" "$run/files" | grep -q -v "^$skill_rel/" && code=1
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
   hold_copy shared
   doctor "$run/doctor.log" || { exec 7>&-; cp "$run/doctor.log" "$cache/doctor-failed.log"; echo "verify: doctor.sh failed, see $cache/doctor-failed.log" >&2; return 2; }
@@ -737,7 +740,7 @@ drive() {
     rm -f "$cache/passed/$feature"
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
-      [[ -n "$code" ]] && (($(cat "$run/rc-$feature") == 0)) && echo "$code" > "$cache/passed/$feature"
+      [[ -n "$code" ]] && (($(cat "$run/rc-$feature") == 0)) && state_of "$feature" "$run/files" > "$cache/passed/$feature"
       (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || { result=1 not_passed+=("$feature"); }
     elif [[ -s "$run/stop" ]]; then
       echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $cache/doctor-failed.log)"
@@ -887,9 +890,9 @@ case $command in
     changed_files > "$work/changed" || exit 2
     select_affected || exit 2
     result=0
-    code=$(fingerprint | state)
+    fingerprint > "$work/files"
     for feature in $(cat "$work/driven"); do
-      [[ "$(cat "$cache/passed/$feature" 2> /dev/null)" == "$code" ]] && echo "$feature"
+      [[ "$(cat "$cache/passed/$feature" 2> /dev/null)" == "$(state_of "$feature" "$work/files")" ]] && echo "$feature"
     done > "$work/passed"
     [[ -s "$work/passed" ]] && printf '%s\n  %s\n' "Passed on this code already, not driven again:" "$(paste -s -d ' ' "$work/passed")"
     grep -v -x -F -f "$work/passed" "$work/driven" > "$work/todo"
