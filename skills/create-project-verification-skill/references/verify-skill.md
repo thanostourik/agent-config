@@ -53,26 +53,42 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh` as
    [Recipes](#recipes) says. A whole new feature or screen can go to a recorder: `FULL.md`
    says how to start one.
-3. Run `verify affected`. It drives the features whose recipe the change edited or added,
-   and prints each feature's summary line as soon as that feature finishes, as
-   `[<done>/<total>] <line>`.
+3. Run `verify affected`. It drives two groups of features, and prints each feature's
+   summary line as soon as that feature finishes, as `[<done>/<total>] <line>`:
+   - the features whose recipe the change edited or added;
+   - the features that check the edited code. For each changed line, `verify affected`
+     finds the function, handler, component or query the line sits in. A feature checks
+     that code when one of its `# expects:` lines cites it, or cites a unit test of it.
 4. Decide which other features the change affects, and drive them together in one
-   `verify <feature>...`. `verify affected` lists the candidates and never drives them:
-   under each changed file, the features whose `# touches:` line lists it, and under each
-   changed helper, the features that use it.
-   - A candidate is affected when one of its steps checks what the edited code does: the
-     function, component, handler, query or template in the diff. Sharing the file is not
-     enough. An `# expects:` line cites its code as `<file name>: <function>`, so
-     `grep -l 'NoteEditor.tsx: handleSave' features/*.sh` finds the recipes that check a
-     changed function.
-   - A candidate that only passes through the edited code, the way every feature passes
-     through sign-in, a layout or a connection, is not affected. Drive the features that
-     check that code itself.
-   - For a changed helper, drive one candidate for each call of it the change altered.
-   - The candidates come only from `# touches:` lines. A change can also reach behavior
-     through a caller, an interface, an event or a framework that wires classes by type.
-     Search the source for the changed name, then find the features that check that code
-     with `verify list`.
+   `verify <feature>...`. A feature is affected when one of its steps checks a result the
+   edited code produces. `verify affected` prints the features to judge, and never drives
+   them:
+   - **Features that cite code that uses the edited code.** Each line names the feature
+     and the caller it cites. Drive the feature when one of its steps checks a result the
+     edited code produces in that caller, such as the refusal a changed guard gives
+     there. Its `# expects:` lines that cite the caller say what it checks.
+   - **Features that list a changed file and cite no code by name.** Nothing says what
+     they check. Read their steps.
+   - **The other features that list a changed file.** Nothing they cite uses the edited
+     code, but a step of theirs can still check it. Search their steps for what the
+     edited code produces, such as its route, message, field or label
+     (`grep -l '/login?error' features/*.sh`).
+   - **Features that use a changed helper.** Drive one for each call of the helper the
+     change altered.
+   - **Edited code no recipe cites or reaches.** A change also reaches features where no
+     call shows it: through a row a job picks up, a queue, an event, a file, a setting,
+     or a framework that wires classes by type. Search the recipes for what the edited
+     code produces, and drive the features whose steps check it.
+
+   Three rules decide the unclear cases:
+   - A step that checks the edited function with other input than the change is about
+     still checks that function. Drive its feature, even when you expect the step to
+     pass unchanged: the drive exists to catch what you did not expect.
+   - When several features check the same call of the edited code with the same kind of
+     input, one of them is enough. Name the others in your report.
+   - A feature that only passes through the edited code is not affected. Its steps need
+     that code to work, the way every feature needs sign-in, a layout or a connection,
+     but they check something else.
 5. Work through the three lists `verify affected` also prints:
    - **Entry points and actions (`bin/actions.sh`) in changed files that no recipe
      covers.** These are the screens, routes, buttons and handlers the change added.
@@ -80,9 +96,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
      passed. Give each item a step and an `# expects:` line, in the feature it belongs to
      or in a new one. Or give it an `# expects:` line marked not driven, with its reason.
      Then drive those features.
-   - **Changed files no feature names.** When such a file changes behavior a feature
-     checks, drive that feature by name and add the file to its `# touches:` line. Skip
-     files that change no behavior: tests, docs, build files.
+   - **Changed files no feature names, with nothing reached.** When such a file changes
+     behavior a feature checks, drive that feature by name and add the file to its
+     `# touches:` line. Skip files that change no behavior: tests, docs, build files.
    - **`# expects:` lines marked not driven that the change added or edited**, including
      lines another author of the branch wrote. Check each reason against
      [Header](#header). Give a line whose reason does not hold a step, and drive its
@@ -92,8 +108,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    features, together in one `verify <feature>...`.
 7. At the end of the task, also after a failure, run `verify down`.
 
-Drive only the features the change affects. Never drive every candidate because the tool
-listed it, and never run `verify all` to check a change, unless the user asks for it.
+Drive only the features the change affects. Never drive every feature `verify affected`
+lists for you to judge, and never run `verify all` to check a change, unless the user asks
+for it.
 
 ## Commands
 
@@ -105,17 +122,17 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   `verify up` prints the launch output of each copy that did not start, and the errors its
   app logged meanwhile (`bin/server-errors.sh`).
 - `verify affected [--dry] [--base <ref>]`: drive the features whose recipe a change
-  against the default branch edited, and list the candidates, as
-  [Check a change](#check-a-change) describes. `--dry` only lists. `--base <ref>` compares
-  against another ref. It exits 1 while the change adds entry points or actions no recipe
-  covers.
+  against the default branch edited, and the features that check the code it edited. It
+  lists the features left for you to judge, as [Check a change](#check-a-change)
+  describes. `--dry` only lists. `--base <ref>` compares against another ref. It exits 1
+  while the change adds entry points or actions no recipe covers.
 - `verify <feature>...`: drive those features on the run's environment.
 - `verify all`: drive every feature on the production build. It brings the run up on that
   build first, and removes a run on the dev server before that.
 - `verify all --failed`: the same, but drive only the features that did not pass in the
   last `verify all` or `verify all --failed`, plus the features whose recipe changed since
-  that run started. It lists the candidates of the other changed files, as
-  `verify affected` does.
+  that run started and the features that check the code changed since then. It lists the
+  features left to judge, as `verify affected` does.
 - `verify uncovered [area]`: list what no recipe covers:
   - entry points (routes, screens, commands) that no feature's `# covers:` line names, with
     the count covered;
@@ -405,8 +422,9 @@ Start from the summary lines.
   drive full.
 - Give one line per driven feature: **pass**, **fail** (with the step and the failure
   kind), or **blocked** (with what was tried).
-- Name the changed files you skipped and why. Name the edited code that other features
-  only pass through, so the user can ask for `verify all`.
+- Name the changed files you skipped and why. Name the features you left out because
+  another driven feature checks the same call, and the edited code that other features
+  only pass through, so the user can ask for them or for `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
 - Link evidence with Markdown links to absolute paths, and check that each linked file
   exists after `verify down`.

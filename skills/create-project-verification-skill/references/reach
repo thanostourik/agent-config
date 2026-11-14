@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""reach <ranges file>: which features check the code a change edits. bin/verify affected calls it.
+
+The ranges file holds one changed line range per line, `<path>\t<first line>\t<lines>`, with paths as
+recipes name them. Prints one finding per line:
+  direct\t<feature>\t<file>: <scope>            an '# expects:' line cites the edited scope, or a unit test of it
+  caller\t<feature>\t<file>: <scope>\t<path>    an '# expects:' line cites a scope that uses the edited one, up to
+                                                three uses away; <path> is the shortest way back to the edit
+  uncited\t<feature>                            lists a changed file, and no '# expects:' line of it cites a name
+                                                that its source file holds
+  listed\t<feature>                             lists a changed file, and cites only code the edit does not reach
+  loose\t<file>: <scope>                        edited code that no recipe cites or reaches
+  quiet\t<path>                                 a changed file no feature lists, with nothing reached from it
+A scope is the function, method, handler or block a line sits in. It is found by indentation, so it needs no
+parser and works for every language whose blocks are indented. Uses are found by name, with `git grep`.
+Shipped by create-project-verification-skill.
+"""
+import collections
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+MAX_USES, MAX_STEPS = 60, 3
+CODE = set(""".ts .tsx .js .jsx .mjs .cjs .vue .svelte .py .java .kt .go .rb .php .cs .rs .swift .dart .c .cc .cpp .h
+    .hpp .ino .ex .exs .scala .jsp .jspf .html .sql .sh""".split())
+PROSE = (".md", ".txt", ".rst", ".lock", ".csv", ".svg", ".png", ".jpg", ".gif", ".pdf")
+CONTROL = re.compile(r"^\s*[})\]]*\s*(?:if|else|elif|for|foreach|while|switch|try|catch|except|finally|do|with|return|when|match)\b")
+CLOSING = re.compile(r"^\s*[{})\]]+[;,]?\s*(?:\{\s*)?$|^\s*[)\]}]|^\s*(?:public|private|protected)\s*:\s*$")
+COMMENT = re.compile(r"^\s*(?://|#(?!define|include|if|else|endif)|\*|/\*|--|<!--)")
+IMPORT = re.compile(r"^\s*(?:import\b|from\b.*\bimport\b|#include|using\b|require\b|package\b)")
+CONTAINER = re.compile(r"\b(?:class|interface|struct|enum|namespace|object|module|impl|trait|record)\b")
+TESTS = re.compile(r"(^|/)(tests?|__tests__|spec|e2e)/|[._-](test|spec)\.|Tests?\.[a-z]+$")
+GENERIC_STEMS = {"index", "page", "route", "layout", "mod", "main", "__init__", "utils", "helpers", "types"}
+KEYWORDS = set("""if else for while switch case default try catch finally do return new await typeof sizeof function
+    async const let var val def fn func class public private protected static final export import from void int
+    long string boolean bool char double float this super null true false throw throws""".split())
+USES = set("return await new throw else case typeof yield in of and or not if while for do".split())
+DEFINITIONS = (
+    re.compile(r"\b(?:function|def|fn|func|class|interface|struct|enum|trait|type|namespace|record)\s+\*?\s*([A-Za-z_$][\w$]*)"),
+    re.compile(r"#define\s+([A-Za-z_]\w*)"),
+    re.compile(r"\b(?:const|let|var|val|final|static)\b[^=(]*?([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=(?!=)"),
+)
+CALL = re.compile(r"([A-Za-z_$][\w$]*(?:::[A-Za-z_~]\w*)*)\s*(?:<[^<>()]*>)?\s*\(")
+STRING = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
+MEMBER = re.compile(r"^\s*[\"']?([A-Za-z_$][\w$.-]*)[\"']?\s*[:=]")
+
+skill = pathlib.Path(os.environ.get("VERIFY_SKILL") or pathlib.Path(__file__).resolve().parent.parent)
+root = pathlib.Path(os.environ.get("VERIFY_ROOT") or skill.parents[2])
+
+
+def app_roots():
+    """Prefix of a recipe path -> the checkout it is in. A companion repo names app files '<app>/<path>'."""
+    roots = {"": root}
+    apps = skill / "apps"
+    if apps.exists():
+        for line in apps.read_text().split("\n"):
+            if line.strip():
+                name, path = line.split()
+                variable = "APP_" + name.upper().replace("-", "_")
+                roots[name + "/"] = pathlib.Path(os.environ.get(variable) or (root / path)).resolve()
+    return roots
+
+
+roots = app_roots()
+texts = {}
+
+
+def split(path):
+    for prefix in sorted(roots, key=len, reverse=True):
+        if prefix and path.startswith(prefix):
+            return prefix, path[len(prefix):]
+    return "", path
+
+
+def read(prefix, path):
+    if (prefix, path) not in texts:
+        try:
+            texts[prefix, path] = (roots[prefix] / path).read_text(errors="replace").split("\n")
+        except OSError:
+            texts[prefix, path] = []
+    return texts[prefix, path]
+
+
+def indent(text):
+    expanded = text.expandtabs(4)
+    return len(expanded) - len(expanded.lstrip())
+
+
+def annotated(lines, at):
+    """The declaration that the annotation or decorator on line `at` belongs to."""
+    for after in range(at + 1, len(lines)):
+        text = lines[after]
+        if text.strip() and indent(text) <= indent(lines[at]) and not CLOSING.match(text) and not text.lstrip().startswith("@"):
+            return after if indent(text) == indent(lines[at]) else at
+    return at
+
+
+def enclosing(lines, index):
+    """The lines that enclose line `index`, innermost first: each is the nearest line above with less indentation."""
+    probe = index
+    while probe < len(lines) and not lines[probe].strip():
+        probe += 1
+    if probe >= len(lines):
+        return []
+    level, result = indent(lines[probe]), []
+    for at in range(index - 1, -1, -1):
+        text = lines[at]
+        if not text.strip() or indent(text) >= level:
+            continue
+        if CLOSING.match(text):
+            level = indent(text) + 1
+            continue
+        level = indent(text)
+        result.append(annotated(lines, at) if text.lstrip().startswith("@") else at)
+        if level == 0:
+            break
+    return result
+
+
+def opens_block(lines, index):
+    for after in range(index + 1, len(lines)):
+        if lines[after].strip():
+            return indent(lines[after]) > indent(lines[index])
+    return False
+
+
+def is_definition(lines, index):
+    """A line that opens a block, or sits at the top level or directly in a class body, defines something itself."""
+    if opens_block(lines, index):
+        return True
+    around = [at for at in enclosing(lines, index) if not CONTROL.match(lines[at])]
+    return not around or bool(CONTAINER.search(lines[around[0]]))
+
+
+def defined_name(text, member=False):
+    """The name a line defines, or None when it does not look like a definition."""
+    if text.lstrip().startswith("<"):
+        return None
+    for pattern in DEFINITIONS:
+        found = pattern.search(text)
+        if found:
+            return found.group(1)
+    for found in CALL.finditer(text):
+        name = found.group(1).split("::")[-1]
+        if name not in KEYWORDS:
+            return name
+    found = MEMBER.search(text) if member else None
+    return found.group(1) if found and found.group(1) not in KEYWORDS else None
+
+
+def defines(lines, index, name):
+    """Whether a line is the definition of the name, not a use of it."""
+    text = lines[index]
+    if CONTROL.match(text):
+        return False
+    for pattern in DEFINITIONS:
+        found = pattern.search(text)
+        if found:
+            return found.group(1) == name
+    if not is_definition(lines, index):
+        return False
+    found = re.search(r"(?<![\w$.])" + re.escape(name) + r"\s*(?:<[^<>()]*>)?\s*\(", text)
+    if not found:
+        key = MEMBER.match(text)
+        return bool(key) and key.group(1) == name
+    before = text[:found.start()].strip()
+    if not before:
+        return re.fullmatch(r"[^()]*\([^()]*\)[^()]*", text[found.start():]) is not None
+    words = re.findall(r"[\w$]+", before)
+    return re.search(r"[\w$>\]*&:]$", before) is not None and not (words and words[-1] in USES)
+
+
+def names(name, text, literal):
+    """Whether the text holds the name as a whole word, or as a quoted string when `literal`."""
+    escaped = re.escape(name)
+    pattern = r"[\"'`]" + escaped + r"[\"'`]" if literal else r"(?<![A-Za-z0-9_$])" + escaped + r"(?![A-Za-z0-9_$])"
+    return re.search(pattern, text) is not None
+
+
+touches = collections.defaultdict(set)
+cites = collections.defaultdict(lambda: collections.defaultdict(set))
+for recipe in sorted((skill / "features").glob("*.sh")):
+    for line in recipe.read_text(errors="replace").split("\n"):
+        if line.startswith("# touches:"):
+            for path in line[10:].split():
+                touches[path].add(recipe.stem)
+        found = re.search(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*->", line) if line.startswith("# expects:") else None
+        if not found or ": " not in found.group(1):
+            continue
+        file_part, cited = found.group(1).split(": ", 1)
+        for name in {cited.strip(), *(part.strip() for part in cited.split(","))}:
+            name = re.sub(r"\(\)$", "", name)
+            if name:
+                cites[file_part.strip()][name].add(recipe.stem)
+
+
+def cited_in(path):
+    """name -> features, from the citations whose file part is this path or its end."""
+    merged = collections.defaultdict(set)
+    for file_part, by_name in cites.items():
+        if path == file_part or path.endswith("/" + file_part):
+            for name, features in by_name.items():
+                merged[name] |= features
+    return merged
+
+
+def scope_of(lines, index, cited, own):
+    """(the innermost cited name around a line, the name of the definition the line is in); either can be None."""
+    levels = [annotated(lines, index) if own and lines[index].lstrip().startswith("@") else index] + enclosing(lines, index)
+    definition = None
+    for position, at in enumerate(levels):
+        text = lines[at]
+        if COMMENT.match(text):
+            continue
+        # A statement names its scope only as a string it dispatches on, such as `if (action.equals("get-info"))`.
+        literal = bool(CONTROL.match(text)) or (position == 0 and not own)
+        hits = [name for name in cited if names(name, text, literal)]
+        if hits:
+            return max(hits, key=len), None
+        if literal or definition is not None:
+            continue
+        definition = False if CONTAINER.search(text) else defined_name(text, member=own and position == 0) or None
+    return None, definition or None
+
+
+def label(path, name):
+    return f"{pathlib.Path(path).name}: {name}"
+
+
+direct = collections.defaultdict(set)
+callers = collections.defaultdict(list)
+edited = {}
+reached = set()
+changed_files = []
+for line in pathlib.Path(sys.argv[1]).read_text().split("\n"):
+    if not line.strip():
+        continue
+    listed_path, first, count = line.split("\t")
+    prefix, path = split(listed_path)
+    if listed_path not in changed_files:
+        changed_files.append(listed_path)
+    if path.endswith(PROSE) or TESTS.search(path):
+        continue
+    lines, cited = read(prefix, path), cited_in(listed_path)
+    for index in range(int(first) - 1, min(int(first) - 1 + int(count), len(lines))):
+        text = lines[index]
+        if not text.strip() or COMMENT.match(text) or IMPORT.match(text):
+            continue
+        name, definition = scope_of(lines, index, cited, is_definition(lines, index))
+        definition = name or definition or defined_name(text, member=True)
+        key = (prefix, path, definition)
+        if name:
+            reached.add(key)
+            for feature in cited[name]:
+                direct[feature].add(label(path, name))
+        if definition and pathlib.Path(path).suffix in CODE:
+            edited.setdefault(key, label(path, definition))
+
+trail = dict(edited)
+origin = {key: key for key in edited}
+frontier = [(key, 1) for key in edited]
+crowded = {}
+while frontier:
+    (prefix, path, name), steps = frontier.pop(0)
+    here, source = trail[prefix, path, name], origin[prefix, path, name]
+    stem = pathlib.Path(path).stem.split(".")[0]
+    if stem in GENERIC_STEMS:
+        stem = pathlib.Path(path).parent.name
+    uses, defined_in = [], set()
+    for other, checkout in roots.items():
+        found = subprocess.run(["git", "-C", str(checkout), "grep", "-I", "-n", "-w", "-F", "-e", name, "--", ".",
+                                ":!.agents", ":!.claude"], capture_output=True, text=True).stdout
+        for hit in found.split("\n"):
+            file, _, rest = hit.partition(":")
+            number = rest.partition(":")[0]
+            if not number.isdigit() or pathlib.Path(file).suffix not in CODE:
+                continue
+            lines, index = read(other, file), int(number) - 1
+            if index >= len(lines):
+                continue
+            text = lines[index]
+            if COMMENT.match(text) or IMPORT.match(text) or text.lstrip().startswith("@") or not names(name, STRING.sub('""', text), False):
+                continue
+            if defines(lines, index, name):
+                defined_in.add((other, file))
+            else:
+                uses.append((other, file, index))
+    # A name defined in several files, or used all over, is followed only into files that also name this file.
+    if defined_in - {(prefix, path)} or len(uses) > MAX_USES:
+        uses = [use for use in uses if use[:2] == (prefix, path) or names(stem, "\n".join(read(*use[:2])), False)]
+    if len(uses) > MAX_USES:
+        crowded[source] = f"{here} (used in {len(uses)} places, too many to follow)"
+        continue
+    for other, file, index in uses:
+        lines, cited = read(other, file), cited_in(other + file)
+        user, definition = scope_of(lines, index, cited, False)
+        if TESTS.search(file) and not user:
+            continue
+        if user:
+            reached.add(source)
+            for feature in cited[user]:
+                if TESTS.search(file) and steps == 1:
+                    direct[feature].add(here)
+                else:
+                    callers[feature].append((steps, label(file, user), here))
+            continue
+        if definition is None and is_definition(lines, index):
+            definition = defined_name(lines[index], member=True) or (name if "export" in lines[index] else None)
+        key = (other, file, definition)
+        if definition and key not in trail and steps < MAX_STEPS:
+            trail[key], origin[key] = f"{label(file, definition)} uses {here}", source
+            frontier.append((key, steps + 1))
+
+for feature, why in sorted(direct.items()):
+    print("direct", feature, ", ".join(sorted(why)), sep="\t")
+for feature, found in sorted(callers.items()):
+    if feature not in direct:
+        print("caller", feature, *min(found)[1:], sep="\t")
+tracked = [(prefix, file) for prefix, checkout in roots.items()
+           for file in subprocess.run(["git", "-C", str(checkout), "ls-files"], capture_output=True, text=True).stdout.split("\n")]
+
+
+def cites_code(feature):
+    """Whether one '# expects:' line of the feature cites a name that its source file really holds."""
+    for file_part, by_name in cites.items():
+        if file_part.endswith(PROSE) or TESTS.search(file_part):
+            continue
+        for name, features in by_name.items():
+            if feature in features and any(names(name, "\n".join(read(prefix, file)), False) for prefix, file in tracked
+                                           if file == file_part or file.endswith("/" + file_part)):
+                return True
+    return False
+
+
+listing = {feature for path in changed_files for feature in touches.get(path, ())} - set(direct) - set(callers)
+for feature in sorted(listing):
+    print("listed" if cites_code(feature) else "uncited", feature, sep="\t")
+for key, name in edited.items():
+    if key not in reached:
+        print("loose", crowded.get(key, name), sep="\t")
+for path in changed_files:
+    if not touches.get(path) and not TESTS.search(path) and not path.endswith(PROSE) and not any(key[0] + key[1] == path for key in reached):
+        print("quiet", path, sep="\t")

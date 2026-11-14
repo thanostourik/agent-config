@@ -4,9 +4,9 @@ Before calling work on <app> complete, verify it with
 [verify-<app>](.agents/skills/verify-<app>/SKILL.md): run
 `.agents/skills/verify-<app>/bin/verify up`, update the recipes for behavior the change adds,
 alters or removes, run `verify affected`, drive by name the other features the change
-affects, fix failures, and run `verify down` at the end. `verify affected` drives only the
-recipes the change edited. Run `verify all` only when asked. A refactor
-is verified too, even though it is meant to change no behavior.
+affects, fix failures, and run `verify down` at the end. `verify affected` drives the
+recipes the change edited and the features that check the code it edited. Run `verify all`
+only when asked. A refactor is verified too, even though it is meant to change no behavior.
 
 Never attach to or change services and data the verification did not create. Report each
 driven feature as pass, fail or blocked, with evidence links to absolute paths, and report

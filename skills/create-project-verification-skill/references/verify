@@ -3,7 +3,7 @@
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
-# verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and list as candidates the features that list a changed file or use a changed helper; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
+# verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and the features with an expects line that cites the code it edited; list the features that cite a user of that code, or use a changed helper; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
 # verify all [--failed]     drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 #                           --failed drives only the features the last all did not pass, plus those whose recipe changed since
 # verify <feature>...       drive those features
@@ -140,7 +140,7 @@ features_using() {
     added=0
     for other in "$skill"/bin/*; do
       name=$(basename "$other")
-      [[ -f "$other" && " ${helpers[*]} verify lib.sh harvest " != *" $name "* ]] || continue
+      [[ -f "$other" && " ${helpers[*]} verify lib.sh harvest areas reach " != *" $name "* ]] || continue
       for helper in "${helpers[@]}"; do
         names "$helper" "$other" && { helpers+=("$name"); added=1; break; }
       done
@@ -153,47 +153,107 @@ features_using() {
   done
 }
 
+# Each changed line range of one checkout, as <prefix><path>\t<first line>\t<lines>. An untracked file is one range.
+ranges_in() {
+  local merge path
+  merge=$(merge_base "$1") || return 1
+  git -C "$1" -c diff.noprefix=false -c diff.mnemonicPrefix=false diff --no-ext-diff --no-color -U0 "$merge" | awk -v prefix="$2" '
+    /^\+\+\+ / { path = ($2 == "/dev/null") ? "" : substr($0, 7); next }
+    /^@@ / && path != "" {
+      split($3, range, ","); first = substr(range[1], 2) + 0; lines = (range[2] == "") ? 1 : range[2] + 0
+      if (!lines) { lines = 1; if (!first) first = 1 }
+      print prefix path "\t" first "\t" lines
+    }'
+  git -C "$1" ls-files -o --exclude-standard | while IFS= read -r path; do
+    printf '%s%s\t1\t%s\n' "$2" "$path" "$(wc -l < "$1/$path")"
+  done
+}
+
+# The changed line ranges of the files in $work/sources. A file with no range against the base counts as changed whole.
+source_ranges() {
+  local name path variable
+  {
+    if [[ -f "$skill/apps" ]]; then
+      while read -r name path; do
+        [[ -n "$name" ]] || continue
+        variable=$(app_variable "$name")
+        [[ -n "$base" ]] && ! has_base "${!variable}" && continue
+        ranges_in "${!variable}" "$name/" || return 1
+      done < "$skill/apps"
+    fi
+    ranges_in "$root" "" || return 1
+  } | awk -F '\t' 'FILENAME == ARGV[1] { wanted[$0]; next } ($1 in wanted) { print; found[$1] } END { for (path in wanted) if (!(path in found)) print path "\t1\t1000000" }' "$work/sources" -
+}
+
 select_affected() {
-  local file feature hit features=() untouched=()
+  local file feature features=() traced=""
   mapfile -t features < <(all_features)
   for feature in "${features[@]}"; do touches_of "$feature" | sed "s|^|$feature	|"; done > "$work/touches"
   : > "$work/affected"
   : > "$work/candidates"
+  : > "$work/sources"
+  : > "$work/reach"
   : > "$work/new"
   while IFS= read -r file; do
-    hit=""
     case $file in
       "$skill_rel"/features/*.sh)
         feature=$(basename "$file" .sh)
-        [[ -f "$skill/features/$feature.sh" ]] && { echo "$feature" >> "$work/affected"; hit=1; } ;;
-      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest | "$skill_rel"/bin/areas) continue ;;
+        [[ -f "$skill/features/$feature.sh" ]] && echo "$feature" >> "$work/affected" ;;
+      "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest | "$skill_rel"/bin/areas | "$skill_rel"/bin/reach) continue ;;
       "$skill_rel"/bin/*)
-        for feature in $(features_using "$(basename "$file")"); do
-          printf '%s\t%s\n' "$file" "$feature" >> "$work/candidates"; hit=1
-        done ;;
+        for feature in $(features_using "$(basename "$file")"); do printf '%s\t%s\n' "$file" "$feature" >> "$work/candidates"; done ;;
       .agents/* | .claude/* | "$skill_rel"/*) continue ;;
-      *)
-        while IFS= read -r feature; do
-          printf '%s\t%s\n' "$file" "$feature" >> "$work/candidates"; hit=1
-        done < <(awk -F '\t' -v file="$file" '$2 == file { print $1 }' "$work/touches") ;;
+      *) echo "$file" >> "$work/sources" ;;
     esac
-    [[ -n "$hit" ]] || untouched+=("$file")
   done < "$work/changed"
   sort -u -o "$work/affected" "$work/affected"
+  if [[ -s "$work/sources" && -x "$skill/bin/reach" ]] && command -v python3 > /dev/null; then
+    source_ranges > "$work/ranges" && "$skill/bin/reach" "$work/ranges" > "$work/reach" && traced=1
+  fi
+  if [[ -z "$traced" ]]; then
+    while IFS= read -r file; do
+      awk -F '\t' -v file="$file" '$2 == file { print file "\t" $1; found = 1 } END { if (!found) print "quiet\t" file > "/dev/stderr" }' "$work/touches" >> "$work/candidates" 2>> "$work/reach"
+    done < "$work/sources"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } $1 == "direct" && !($2 in changed) && !seen[$2]++ { print $2 }' "$work/affected" "$work/reach" > "$work/checks"
   if [[ -s "$work/affected" ]]; then
     echo "Changed recipes:"
     sed 's/^/  /' "$work/affected"
   else
     echo "Changed recipes: none"
   fi
-  awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } !($2 in changed) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/affected" "$work/candidates" | sort > "$work/candidate-lines"
-  if [[ -s "$work/candidate-lines" ]]; then
-    echo "Candidates, not driven (they list a changed file or use a changed helper; drive by name only those whose steps check what the edited code does):"
-    cat "$work/candidate-lines"
+  if [[ -s "$work/checks" ]]; then
+    echo "Check the edited code (an '# expects:' line cites it; 'verify affected' drives them too):"
+    awk -F '\t' 'FILENAME == ARGV[1] { wanted[$0]; next } $1 == "direct" && ($2 in wanted) { print "  " $2 ": " $3 }' "$work/checks" "$work/reach"
   fi
-  if ((${#untouched[@]})); then
-    echo "Changed files no feature names (if one changes behavior, drive that feature by name and add the file to its touches):"
-    printf '  %s\n' "${untouched[@]}"
+  cat "$work/affected" "$work/checks" > "$work/driven"
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "caller" && !($2 in driven) { print "  " $2 ": " $3 " uses " $4 }' "$work/driven" "$work/reach" > "$work/lines"
+  if [[ -s "$work/lines" ]]; then
+    echo "Cite code that uses the edited code, not driven (drive those with a step that checks a result the edit can change):"
+    cat "$work/lines"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "uncited" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
+  if [[ -s "$work/lines" ]]; then
+    echo "List a changed file and cite no code by name, not driven (nothing tells what they check: read their steps):"
+    echo " $(cat "$work/lines")"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } !($2 in driven) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/driven" "$work/candidates" | sort > "$work/lines"
+  if [[ -s "$work/lines" ]]; then
+    if [[ -n "$traced" ]]; then
+      echo "Use a changed helper, not driven (drive one for each call of it the change altered):"
+    else
+      echo "Candidates, not driven (they list a changed file or use a changed helper; drive by name only those whose steps check what the edited code does):"
+    fi
+    cat "$work/lines"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "listed" && !($2 in driven) { names = names " " $2 } END { if (names != "") print "Also list a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):\n " names }' "$work/driven" "$work/reach"
+  if grep -q '^loose' "$work/reach"; then
+    echo "Edited code no recipe cites or reaches (search the recipes for what it produces, such as its route, table, message or label):"
+    sed -n 's/^loose\t/  /p' "$work/reach"
+  fi
+  if grep -q '^quiet' "$work/reach"; then
+    echo "Changed files no feature names, with nothing reached (if one changes behavior a feature checks, drive that feature by name and add the file to its touches):"
+    sed -n 's/^quiet\t/  /p' "$work/reach"
   fi
   [[ -x "$skill/bin/entrypoints.sh" ]] || return 0
   uncovered_items | awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } $1 != "expectation" && ($3 in changed)' "$work/changed" - > "$work/new"
@@ -788,7 +848,7 @@ case $command in
     changed_files > "$work/changed" || exit 2
     select_affected || exit 2
     result=0
-    [[ -s "$work/affected" && -z "$dry" ]] && { drive $(cat "$work/affected"); result=$?; }
+    [[ -s "$work/driven" && -z "$dry" ]] && { drive $(cat "$work/driven"); result=$?; }
     not_driven_by_change > "$work/not-driven"
     [[ -s "$work/not-driven" ]] && {
       echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"
@@ -804,7 +864,7 @@ case $command in
       [[ -s "$cache/all/failed" ]] && echo "Did not pass in the last run: $(tr '\n' ' ' < "$cache/all/failed")"
       changed_since "$cache/all/files" "$work/files" > "$work/changed"
       select_affected || exit 2
-      for feature in $(cat "$cache/all/failed" "$work/affected" | sort -u); do
+      for feature in $(cat "$cache/all/failed" "$work/driven" | sort -u); do
         [[ -f "$skill/features/$feature.sh" ]] && echo "$feature"
       done > "$work/rerun"
       [[ -s "$work/rerun" ]] || { echo "all --failed: every feature passed in the last run and no recipe changed since; run 'verify all' for the final proof"; exit 0; }
