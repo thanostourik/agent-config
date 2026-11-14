@@ -132,25 +132,22 @@ changed_since() { comm -3 <(sort -u "$1") <(sort -u "$2") | sed -e 's/^\t//' -e 
 
 skill_rel=${skill#"$root"/}
 
-names() { grep -q -E "(^|[^A-Za-z0-9_.-])$(sed 's/[.]/[.]/g' <<< "$1")([^A-Za-z0-9_.-]|$)" "${@:2}"; }
+naming() {
+  local IFS='|'
+  echo "(^|[^A-Za-z0-9_.-])($(sed 's/[.]/[.]/g' <<< "$*"))([^A-Za-z0-9_.-]|\$)"
+}
 
 features_using() {
-  local helpers=("$1") added=1 other name feature
+  local helpers=("$1") added=1 other name
   while ((added)); do
     added=0
-    for other in "$skill"/bin/*; do
+    while IFS= read -r other; do
       name=$(basename "$other")
-      [[ -f "$other" && " ${helpers[*]} verify lib.sh harvest areas reach " != *" $name "* ]] || continue
-      for helper in "${helpers[@]}"; do
-        names "$helper" "$other" && { helpers+=("$name"); added=1; break; }
-      done
-    done
+      [[ " ${helpers[*]} verify lib.sh harvest areas reach " == *" $name "* ]] && continue
+      helpers+=("$name") added=1
+    done < <(grep -l -s -E "$(naming "${helpers[@]}")" "$skill"/bin/*)
   done
-  for feature in $(all_features); do
-    for helper in "${helpers[@]}"; do
-      names "$helper" "$skill/features/$feature.sh" && { echo "$feature"; break; }
-    done
-  done
+  grep -l -s -E "$(naming "${helpers[@]}")" "$skill"/features/*.sh | sed 's|.*/||; s|[.]sh$||'
 }
 
 # Each changed line range of one checkout, as <prefix><path>\t<first line>\t<lines>. An untracked file is one range.
@@ -186,9 +183,9 @@ source_ranges() {
 }
 
 select_affected() {
-  local file feature features=() traced=""
-  mapfile -t features < <(all_features)
-  for feature in "${features[@]}"; do touches_of "$feature" | sed "s|^|$feature	|"; done > "$work/touches"
+  local file feature traced=""
+  awk 'FNR == 1 { feature = FILENAME; sub(/.*\//, "", feature); sub(/[.]sh$/, "", feature) }
+    /^# touches:/ { count = split(substr($0, 11), paths, /[ \t]+/); for (i = 1; i <= count; i++) if (paths[i] != "") print feature "\t" paths[i] }' "$skill"/features/*.sh > "$work/touches" 2> /dev/null
   : > "$work/affected"
   : > "$work/candidates"
   : > "$work/sources"
@@ -340,8 +337,6 @@ check_expects() {
   ' "$1"
 }
 
-covers_of() { sed -n 's/^# covers:[[:space:]]*//p' "$skill/features/$1.sh" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d'; }
-
 doctor() {
   [[ -x "$skill/bin/doctor.sh" ]] || return 0
   "$skill/bin/doctor.sh" > "$1" 2>&1 < /dev/null && return
@@ -355,14 +350,14 @@ uncovered_items() {
   local feature list name source
   "$skill/bin/entrypoints.sh" | sort -u > "$work/entrypoints"
   if grep -q $'\t' "$work/entrypoints"; then
-    for feature in $(all_features); do covers_of "$feature"; done | sort -u > "$work/covered"
+    cat "$skill"/features/*.sh 2> /dev/null | sed -n 's/^# covers:[[:space:]]*//p' | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d' | sort -u > "$work/covered"
     awk -F '\t' 'FILENAME == ARGV[1] { covered[$0]; next } !($1 in covered) { print "entry point\t" $1 "\t" $2 }' "$work/covered" "$work/entrypoints"
   else
-    for feature in $(all_features); do touches_of "$feature"; done | sort -u > "$work/covered"
+    cat "$skill"/features/*.sh 2> /dev/null | sed -n 's/^# touches:[[:space:]]*//p' | tr -s ' \t' '\n' | sed '/^$/d' | sort -u > "$work/covered"
     comm -23 "$work/entrypoints" "$work/covered" | awk '{ print "entry point\t" $0 "\t" $0 }'
   fi
   if [[ -x "$skill/bin/actions.sh" ]]; then
-    for feature in $(all_features); do header "$feature" expects; done > "$work/cited"
+    cat "$skill"/features/*.sh 2> /dev/null | sed -n 's/^# expects:[[:space:]]*//p' > "$work/cited"
     "$skill/bin/actions.sh" | sort -u | awk -F '\t' '
       FILENAME == ARGV[1] { cited[++n] = $0; next }
       {
