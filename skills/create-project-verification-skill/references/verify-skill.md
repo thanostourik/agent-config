@@ -46,11 +46,12 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 1. Find the feature of the change before you write code. Its steps fail before the change
    and pass after it.
    - **A bug.** Find the one feature that shows it most directly, with `verify list` or
-     by searching the recipes for the screen, route, command or message of the report. A
-     report that names separate symptoms has one such feature for each. Run `verify up`
-     and drive that feature by name. It must fail at the step that shows the bug. When it
-     passes, no step sees the bug: add that step, to this feature or to a new one, and
-     drive it until it fails for the reason the report gives.
+     by searching the recipes for the screen, route, command or message of the report.
+     Take one feature also when the report names several symptoms: the others are driven
+     in step 3. Run `verify up` and drive that feature by name. It must fail at the step
+     that shows the bug. When it passes, no step sees the bug: add that step, to this
+     feature or to a new one, and drive it until it fails for the reason the report
+     gives.
    - **New or altered behavior.** Write or edit `features/<feature>.sh` for it as
      [Recipes](#recipes) says, as part of the change, like tests. A whole new feature or
      screen can go to a recorder: `FULL.md` says how to start one.
