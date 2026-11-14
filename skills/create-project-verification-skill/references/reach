@@ -223,10 +223,10 @@ def scope_of(lines, index, cited, own):
         text = lines[at]
         if COMMENT.match(text):
             continue
-        # A statement names its scope only as a string it dispatches on, such as `if (action.equals("get-info"))`.
+        # A statement names its scope only as the one string it dispatches on, such as `if (action.equals("get-info"))`.
         literal = bool(CONTROL.match(text)) or (position == 0 and not own)
         hits = [name for name in cited if names(name, text, literal)]
-        if hits:
+        if hits and not (literal and len(hits) > 1):
             return max(hits, key=len), None
         if literal or definition is not None:
             continue
