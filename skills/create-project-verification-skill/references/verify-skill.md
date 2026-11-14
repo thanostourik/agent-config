@@ -53,8 +53,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    behavior the change adds, alters or removes, write or edit `features/<feature>.sh` as
    [Recipes](#recipes) says. A whole new feature or screen can go to a recorder: `FULL.md`
    says how to start one.
-3. Run `verify affected`. It drives two groups of features, and prints each feature's
-   summary line as soon as that feature finishes, as `[<done>/<total>] <line>`:
+3. Run `verify affected`, also when you already know which features you would drive. It
+   drives two groups of features, and prints each feature's summary line as soon as that
+   feature finishes, as `[<done>/<total>] <line>`:
    - the features whose recipe the change edited or added;
    - the features that check the edited code. For each changed line, `verify affected`
      finds the function, handler, component or query the line sits in. A feature checks
@@ -62,11 +63,12 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 4. Decide which other features the change affects, and drive them together in one
    `verify <feature>...`. A feature is affected when one of its steps checks a result the
    edited code produces. `verify affected` prints the features to judge, and never drives
-   them:
+   them. Judge every feature of the first two lists, and leave none out unread:
    - **Features that cite code that uses the edited code.** Each feature comes with the
-     caller it cites, and under it the behaviors it checks there. Most of these features
-     only pass through the edited code. Drive one only when a behavior under it is a
-     result the edited code produces, such as the refusal a changed guard gives.
+     caller it cites, and under it up to four behaviors it checks: first the ones that
+     share words with the edit. Most of these features only pass through the edited
+     code. Drive one only when a behavior under it is a result the edited code produces,
+     such as the refusal a changed guard gives.
    - **Features that list a changed file and cite no code by name.** Nothing says what
      they check. Read their steps.
    - **The other features that list a changed file.** Nothing they cite uses the edited

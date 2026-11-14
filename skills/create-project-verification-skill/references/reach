@@ -7,7 +7,9 @@ recipes name them. Prints one finding per line:
   caller\t<feature>\t<file>: <scope>\t<path>\t<behaviors>
                                                 an '# expects:' line cites a scope that uses the edited one, up to
                                                 three uses away; <path> is the shortest way back to the edit, and
-                                                <behaviors> are what the feature checks at that scope, joined by ' | ' 
+                                                <behaviors> are up to four behaviors the feature checks, joined by
+                                                ' | ': first those that share words with the edit, then those it
+                                                checks at that scope. The features that share most come first.
   uncited\t<feature>                            lists a changed file, and no '# expects:' line of it cites a name
                                                 that its source file holds
   listed\t<feature>                             lists a changed file, and cites only code the edit does not reach
@@ -35,6 +37,9 @@ IMPORT = re.compile(r"^\s*(?:import\b|from\b.*\bimport\b|#include|using\b|requir
 CONTAINER = re.compile(r"\b(?:class|interface|struct|enum|namespace|object|module|impl|trait|record)\b")
 TESTS = re.compile(r"(^|/)(tests?|__tests__|spec|e2e)/|[._-](test|spec)\.|Tests?\.[a-z]+$")
 GENERIC_STEMS = {"index", "page", "route", "layout", "mod", "main", "__init__", "utils", "helpers", "types"}
+COMMON = set("""the and for not its with that this from are was has have when then than into each only also both
+    return const string null true false public privat static void import functi class else new value data name type
+    list item""".split())
 KEYWORDS = set("""if else for while switch case default try catch finally do return new await typeof sizeof function
     async const let var val def fn func class public private protected static final export import from void int
     long string boolean bool char double float this super null true false throw throws""".split())
@@ -197,7 +202,7 @@ for recipe in sorted((skill / "features").glob("*.sh")):
             name = re.sub(r"\(\)$", "", name)
             if name:
                 cites[file_part.strip()][name].add(recipe.stem)
-                behaviors[recipe.stem, pathlib.Path(file_part.strip()).name, name].append(line[10:found.start()].strip())
+        behaviors[recipe.stem].append((line[10:found.start()].strip(), pathlib.Path(file_part.strip()).name, cited.strip()))
 
 
 def cited_in(path):
@@ -229,11 +234,24 @@ def scope_of(lines, index, cited, own):
     return None, definition or None
 
 
-def closest(checked, path):
-    """Up to five of the behaviors a feature checks, those that share most words with the names on the path first."""
-    words = {word.lower()[:6] for name in re.findall(r": ([\w$-]+)", path) for word in re.findall(r"[A-Z]?[a-z]{3,}|[A-Z]{3,}", name)}
-    ranked = sorted(checked, key=lambda text: -sum(1 for word in words if word in text.lower()))
-    return " | ".join(text[:160] for text in ranked[:5])
+def stems(text):
+    """The words of a text, cut to six letters, so that `deleting` and `deletion` count as one. camelCase is split."""
+    return {word.lower()[:6] for word in re.findall(r"[A-Z]?[a-z]{3,}|[A-Z]{3,}", text)} - COMMON
+
+
+spread = collections.Counter(word for checked in behaviors.values() for word in set().union(*(stems(text) for text, _, _ in checked)))
+
+
+def evidence(feature, file, user, words):
+    """(how much the feature's behaviors share with the edit, up to four of them): the closest first, rare words weigh most."""
+    scored = []
+    for text, cited_file, cited_name in behaviors[feature]:
+        score = sum(1 / spread[word] for word in stems(text) & words)
+        at_user = cited_file == pathlib.Path(file).name and user in cited_name
+        if score or at_user:
+            scored.append((-score, not at_user, text[:170]))
+    scored = sorted(set(scored))[:4]
+    return (scored[0][0] if scored else 0), " | ".join(text for _, _, text in scored)
 
 
 def label(path, name):
@@ -243,6 +261,7 @@ def label(path, name):
 direct = collections.defaultdict(set)
 callers = collections.defaultdict(list)
 edited = {}
+edit_words = collections.defaultdict(set)
 reached = set()
 changed_files = []
 for line in pathlib.Path(sys.argv[1]).read_text().split("\n"):
@@ -268,6 +287,7 @@ for line in pathlib.Path(sys.argv[1]).read_text().split("\n"):
                 direct[feature].add(label(path, name))
         if definition and pathlib.Path(path).suffix in CODE:
             edited.setdefault(key, label(path, definition))
+            edit_words[key] |= stems(text) | stems(definition)
 
 trail = dict(edited)
 origin = {key: key for key in edited}
@@ -315,7 +335,7 @@ while frontier:
                 if TESTS.search(file) and steps == 1:
                     direct[feature].add(here)
                 else:
-                    callers[feature].append((steps, label(file, user), here, closest(behaviors[feature, pathlib.Path(file).name, user], here)))
+                    callers[feature].append((steps, label(file, user), here, *evidence(feature, file, user, edit_words[source])))
             continue
         if definition is None and is_definition(lines, index):
             definition = defined_name(lines[index], member=True) or (name if "export" in lines[index] else None)
@@ -326,9 +346,9 @@ while frontier:
 
 for feature, why in sorted(direct.items()):
     print("direct", feature, ", ".join(sorted(why)), sep="\t")
-for feature, found in sorted(callers.items()):
+for share, feature, found in sorted((min(found)[3], feature, min(found)) for feature, found in callers.items()):
     if feature not in direct:
-        print("caller", feature, *min(found)[1:], sep="\t")
+        print("caller", feature, found[1], found[2], found[4], sep="\t")
 tracked = [(prefix, file) for prefix, checkout in roots.items()
            for file in subprocess.run(["git", "-C", str(checkout), "ls-files"], capture_output=True, text=True).stdout.split("\n")]
 

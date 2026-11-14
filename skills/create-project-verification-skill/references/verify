@@ -229,7 +229,7 @@ select_affected() {
   cat "$work/affected" "$work/checks" > "$work/driven"
   awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "caller" && !($2 in driven) { print "  " $2 ": " $3 " uses " $4; count = split($5, checks, " [|] "); for (i = 1; i <= count; i++) print "      checks: " checks[i] }' "$work/driven" "$work/reach" > "$work/lines"
   if [[ -s "$work/lines" ]]; then
-    echo "Cite code that uses the edited code, not driven (most only pass through it; drive a feature only when a line under it is a result the edited code produces):"
+    echo "Cite code that uses the edited code, not driven (closest to the edit first; drive a feature only when a line under it is a result the edited code produces):"
     cat "$work/lines"
   fi
   awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "uncited" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
