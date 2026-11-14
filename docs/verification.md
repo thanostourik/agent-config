@@ -27,11 +27,16 @@ before they call work done. You can also ask for it by name. It drives the app t
 
 | Command | What it runs |
 |---|---|
-| `bin/verify affected` | The features whose recipe the change edited. It lists the features that share a changed file, and the agent drives by name the ones the change affects. |
+| `bin/verify affected` | The features whose recipe the change edited, and up to five features that check the code it edited: it finds the function each changed line sits in, and the recipes that cite that function. It skips a feature that passed on the same code. It lists the features one use from that code with what they check, and the agent drives by name the ones the change alters. It names the features farther away, and those stay out. |
 | `bin/verify all` | Every feature. |
-| `bin/verify all --failed` | Only the features that did not pass last time, plus the ones whose recipe changed since. |
+| `bin/verify all --failed` | Only the features that did not pass last time, plus the ones whose recipe changed since and the ones that check the code changed since. |
 
-All runs on the machine share one queue. The queue keeps 20% of the memory free.
+An agent first drives the feature its change is about: for a bug, before the fix, to see
+it fail. It drives only that feature while it works, and runs `bin/verify affected` once
+at the end.
+
+All runs on the machine share one queue. The queue keeps 20% of the memory free, and
+starts a drive of few features before a drive of many.
 
 In any repository, you can add "with verify" to a request. The `with-verification` skill
 then finds the project's `verify-<app>` skill and runs it before the agent calls the work

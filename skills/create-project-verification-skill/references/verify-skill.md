@@ -25,6 +25,8 @@ and other paths are relative to `.agents/skills/verify-<app>/`.
   to `verify down`. **Lanes** are extra copies of it for features marked `# alone`.
 - **Summary line:** the one line `verify` prints per feature: a pass with its time, or the
   step, command and error where it failed.
+- **Feature of the change:** the feature whose steps fail before a change and pass after
+  it.
 - **Recorder:** a subagent that writes the recipes of one area of the app.
 
 ## Modes
@@ -41,38 +43,60 @@ same mode.
 At isolation level `checks-only` there is no live drive: run the focused checks `PROJECT.md`
 names, and report every feature `blocked: no isolation`. Otherwise:
 
-1. When the code is ready, run `verify up`. It reuses the run's environment when it is
-   already up, and restarts only the app. Keep the environment up for the whole task.
-   - Run `verify up` again after every code change, before driving: the app runs the code
-     it started with.
+1. Find the feature of the change before you write code. Its steps fail before the change
+   and pass after it.
+   - **A bug.** Find the one feature that shows it most directly, with `verify list` or
+     by searching the recipes for the screen, route, command or message of the report.
+     Take one feature also when the report names several symptoms: the others are driven
+     in step 3. Run `verify up` and drive that feature by name. It must fail at the step
+     that shows the bug. When it passes, no step sees the bug: add that step, to this
+     feature or to a new one, and drive it until it fails for the reason the report
+     gives.
+   - **New or altered behavior.** Write or edit `features/<feature>.sh` for it as
+     [Recipes](#recipes) says, as part of the change, like tests. A whole new feature or
+     screen can go to a recorder: `FULL.md` says how to start one.
+   - **A change meant to alter no behavior**, such as a refactor. It has no such feature:
+     make the change, run `verify up`, and go on with step 3.
+2. Make the change, and loop on the feature of the change alone. After every code change
+   run `verify up`, then `verify <feature>` with that feature, and nothing else. Any other
+   feature you drive here is driven again on every round. Other features that show the
+   same bug wait for step 3.
+   - `verify up` reuses the run's environment when it is already up, and restarts only
+     the app: the app runs the code it started with. Keep the environment up for the
+     whole task.
    - The environment also keeps what earlier code did to it, such as the migrations it
      applied. When a change or a rebase alters one of those (edits, renames or renumbers an
      applied migration, or adds one before it), run `verify down` first, so `verify up`
      starts from the new code.
-2. Bring the recipes in line with the change, as part of the change, like tests. For
-   behavior the change adds, alters or removes, write or edit `features/<feature>.sh` as
-   [Recipes](#recipes) says. A whole new feature or screen can go to a recorder: `FULL.md`
-   says how to start one.
-3. Run `verify affected`. It drives the features whose recipe the change edited or added,
-   and prints each feature's summary line as soon as that feature finishes, as
-   `[<done>/<total>] <line>`.
-4. Decide which other features the change affects, and drive them together in one
-   `verify <feature>...`. `verify affected` lists the candidates and never drives them:
-   under each changed file, the features whose `# touches:` line lists it, and under each
-   changed helper, the features that use it.
-   - A candidate is affected when one of its steps checks what the edited code does: the
-     function, component, handler, query or template in the diff. Sharing the file is not
-     enough. An `# expects:` line cites its code as `<file name>: <function>`, so
-     `grep -l 'NoteEditor.tsx: handleSave' features/*.sh` finds the recipes that check a
-     changed function.
-   - A candidate that only passes through the edited code, the way every feature passes
-     through sign-in, a layout or a connection, is not affected. Drive the features that
-     check that code itself.
-   - For a changed helper, drive one candidate for each call of it the change altered.
-   - The candidates come only from `# touches:` lines. A change can also reach behavior
-     through a caller, an interface, an event or a framework that wires classes by type.
-     Search the source for the changed name, then find the features that check that code
-     with `verify list`.
+3. When the feature of the change passes, run `verify affected` once. It checks what is
+   near the change, and prints each feature's summary line as soon as that feature
+   finishes, as `[<done>/<total>] <line>`. It drives:
+   - the features whose recipe the change edited or added;
+   - the features that check the edited code. For each changed line, `verify affected`
+     finds the function, handler, component or query the line sits in. A feature checks
+     that code when one of its `# expects:` lines cites it, or cites a unit test of it.
+     When more than five features do, it drives the five whose behaviors share most
+     words with the edit, and names the others.
+
+   It never drives a feature again that passed on this exact code, so the feature of the
+   change is not repeated.
+4. `verify affected` also names features it does not drive. Drive the ones you choose
+   together, in one `verify <feature>...`:
+   - **One use from the edited code.** These features cite code that calls the edited
+     code directly. Each comes with that caller, and under it up to four behaviors it
+     checks. Most of them only pass through the edited code. Drive one only when a
+     behavior under it is a result your change alters, such as the refusal a changed
+     guard gives. When two of them check that result through the same caller, one is
+     enough.
+   - **Farther from the edit.** Leave them out. Drive one only when you followed your
+     change to one of its steps while you worked, where no call shows the way: through
+     a row a job picks up, a queue, an event, a file or a setting.
+   - **Features that use a changed helper.** Drive one for each call of the helper the
+     change altered.
+
+   A feature that only passes through the edited code is not affected. Its steps need
+   that code to work, the way every feature needs sign-in, a layout or a connection, but
+   they check something else.
 5. Work through the three lists `verify affected` also prints:
    - **Entry points and actions (`bin/actions.sh`) in changed files that no recipe
      covers.** These are the screens, routes, buttons and handlers the change added.
@@ -80,20 +104,22 @@ names, and report every feature `blocked: no isolation`. Otherwise:
      passed. Give each item a step and an `# expects:` line, in the feature it belongs to
      or in a new one. Or give it an `# expects:` line marked not driven, with its reason.
      Then drive those features.
-   - **Changed files no feature names.** When such a file changes behavior a feature
-     checks, drive that feature by name and add the file to its `# touches:` line. Skip
-     files that change no behavior: tests, docs, build files.
+   - **Changed files no feature names, with nothing reached.** When such a file changes
+     behavior a feature checks, drive that feature by name and add the file to its
+     `# touches:` line. Skip files that change no behavior: tests, docs, build files.
    - **`# expects:` lines marked not driven that the change added or edited**, including
      lines another author of the branch wrote. Check each reason against
      [Header](#header). Give a line whose reason does not hold a step, and drive its
      feature.
 6. On a failure, open the log only when the summary line is not enough. Classify the
-   failure ([When a drive fails](#when-a-drive-fails)), fix it, and rerun only the failed
-   features, together in one `verify <feature>...`.
+   failure ([When a drive fails](#when-a-drive-fails)), fix it, and loop as in step 2:
+   `verify up`, then only the failed features. When they pass, run `verify affected` once
+   more. It drives what the fix made stale, and skips what passed on this code.
 7. At the end of the task, also after a failure, run `verify down`.
 
-Drive only the features the change affects. Never drive every candidate because the tool
-listed it, and never run `verify all` to check a change, unless the user asks for it.
+Never run `verify all` to check a change, and never drive every feature `verify affected`
+names, unless the user asks for it. A feature far from the change that goes undriven costs
+less than many features driven on every round.
 
 ## Commands
 
@@ -105,17 +131,19 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   `verify up` prints the launch output of each copy that did not start, and the errors its
   app logged meanwhile (`bin/server-errors.sh`).
 - `verify affected [--dry] [--base <ref>]`: drive the features whose recipe a change
-  against the default branch edited, and list the candidates, as
-  [Check a change](#check-a-change) describes. `--dry` only lists. `--base <ref>` compares
-  against another ref. It exits 1 while the change adds entry points or actions no recipe
-  covers.
+  against the default branch edited, and up to five features that check the code it
+  edited. It leaves out a feature that passed on this exact code since the last
+  `verify up`, and names it. It lists the features left for you to judge, as
+  [Check a change](#check-a-change) describes. `--dry` only lists and drives nothing, so
+  it never checks a change. `--base <ref>` compares against another ref. It exits 1 while
+  the change adds entry points or actions no recipe covers.
 - `verify <feature>...`: drive those features on the run's environment.
 - `verify all`: drive every feature on the production build. It brings the run up on that
   build first, and removes a run on the dev server before that.
 - `verify all --failed`: the same, but drive only the features that did not pass in the
   last `verify all` or `verify all --failed`, plus the features whose recipe changed since
-  that run started. It lists the candidates of the other changed files, as
-  `verify affected` does.
+  that run started and the features that check the code changed since then. It lists the
+  features left to judge, as `verify affected` does.
 - `verify uncovered [area]`: list what no recipe covers:
   - entry points (routes, screens, commands) that no feature's `# covers:` line names, with
     the count covered;
@@ -127,15 +155,19 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   an `# expects:` line is marked not driven, most used first, with the count of its lines
   and its features.
 - `verify list`: every feature with its one-line summary.
-- `verify lint [feature...]`: check the recipe rules the runner enforces.
+- `verify lint [feature...]`: check the recipe rules the runner enforces. It then lists
+  the `# expects:` lines that cite a file or a name the code does not have. A change can
+  never select a feature through such a line: give it the function's name in the code.
 - `verify room`: wait until the machine has room for one more browser session or process.
 - `--jobs N` (default: the skill's `jobs` file, else the machine's cores) and
   `--deadline SECONDS` per feature (default 180) go anywhere.
 - Every `verify` on the machine, from every project and thread, shares one queue. A feature
   starts only while the reserve stays free, which is 20% of memory by default. One feature
   always runs. The user sets another reserve with `VERIFY_RESERVE=<percent>` or the file
-  `~/.config/verify/reserve`. A summary line with `waiting for room` says how long features
-  waited. The time a pass shows does not include that wait.
+  `~/.config/verify/reserve`. A feature of a drive with fewer features starts first, so a
+  drive of one feature does not wait behind `verify all`. A summary line with
+  `waiting for room` says how long features waited. The time a pass shows does not include
+  that wait.
 - Lanes run on the production build. `# alone` features take them from one queue, longest
   first. `verify up --lanes N` keeps exactly N. A drive also starts lanes itself, up to the
   number in the skill's `lanes` file, when both hold:
@@ -194,6 +226,12 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   - A behavior taken from the source code cites its file and function instead, as
     `<file name>: <function>` (`NoteEditor.tsx: handleSave`). `verify uncovered` counts an
     action covered only when a line names both.
+  - Cite the function that produces the behavior, by its name in the code, never by a
+    label of your own such as `BLE getFile`. `verify affected` drives the feature when a
+    change edits the function it cites, and finds that function only by this name.
+    `verify lint` lists the lines whose name the code does not have.
+  - A behavior that several functions produce cites each, joined with `, `
+    (`notes.py: add, store.py: save`).
 - A behavior no step of the recipe drives gets `-> not driven: <reason>`. Only three
   reasons hold:
   - Another feature drives it: `covered by <feature>`.
@@ -404,9 +442,12 @@ Start from the summary lines.
   5 features". Only `verify all` without `--failed` drives every feature, so call no other
   drive full.
 - Give one line per driven feature: **pass**, **fail** (with the step and the failure
-  kind), or **blocked** (with what was tried).
-- Name the changed files you skipped and why. Name the edited code that other features
-  only pass through, so the user can ask for `verify all`.
+  kind), or **blocked** (with what was tried). For the feature of the change, name the
+  step that failed before the change. For another feature you drove by name, add the
+  result your change alters that it checks.
+- Name the changed files you skipped and why. Say in one line how many features
+  `verify affected` named and you left out, so the user can ask for them or for
+  `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
 - Link evidence with Markdown links to absolute paths, and check that each linked file
   exists after `verify down`.
