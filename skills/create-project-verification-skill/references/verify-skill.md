@@ -63,10 +63,10 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    `verify <feature>...`. A feature is affected when one of its steps checks a result the
    edited code produces. `verify affected` prints the features to judge, and never drives
    them:
-   - **Features that cite code that uses the edited code.** Each line names the feature
-     and the caller it cites. Drive the feature when one of its steps checks a result the
-     edited code produces in that caller, such as the refusal a changed guard gives
-     there. Its `# expects:` lines that cite the caller say what it checks.
+   - **Features that cite code that uses the edited code.** Each feature comes with the
+     caller it cites, and under it the behaviors it checks there. Most of these features
+     only pass through the edited code. Drive one only when a behavior under it is a
+     result the edited code produces, such as the refusal a changed guard gives.
    - **Features that list a changed file and cite no code by name.** Nothing says what
      they check. Read their steps.
    - **The other features that list a changed file.** Nothing they cite uses the edited
@@ -81,14 +81,15 @@ names, and report every feature `blocked: no isolation`. Otherwise:
      code produces, and drive the features whose steps check it.
 
    Three rules decide the unclear cases:
-   - A step that checks the edited function with other input than the change is about
-     still checks that function. Drive its feature, even when you expect the step to
-     pass unchanged: the drive exists to catch what you did not expect.
+   - A step that checks the result of the edited function counts, also when its input
+     is not the input the change is about. Drive its feature even when you expect the
+     step to pass unchanged: the drive exists to catch what you did not expect.
    - When several features check the same call of the edited code with the same kind of
      input, one of them is enough. Name the others in your report.
    - A feature that only passes through the edited code is not affected. Its steps need
      that code to work, the way every feature needs sign-in, a layout or a connection,
-     but they check something else.
+     but they check something else. A step that feeds the edited code a value on its way
+     to another check passes through.
 5. Work through the three lists `verify affected` also prints:
    - **Entry points and actions (`bin/actions.sh`) in changed files that no recipe
      covers.** These are the screens, routes, buttons and handlers the change added.
@@ -421,7 +422,8 @@ Start from the summary lines.
   5 features". Only `verify all` without `--failed` drives every feature, so call no other
   drive full.
 - Give one line per driven feature: **pass**, **fail** (with the step and the failure
-  kind), or **blocked** (with what was tried).
+  kind), or **blocked** (with what was tried). For a feature you drove by name, add the
+  step that checks the edited code.
 - Name the changed files you skipped and why. Name the features you left out because
   another driven feature checks the same call, and the edited code that other features
   only pass through, so the user can ask for them or for `verify all`.

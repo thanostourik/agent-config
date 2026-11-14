@@ -4,8 +4,10 @@
 The ranges file holds one changed line range per line, `<path>\t<first line>\t<lines>`, with paths as
 recipes name them. Prints one finding per line:
   direct\t<feature>\t<file>: <scope>            an '# expects:' line cites the edited scope, or a unit test of it
-  caller\t<feature>\t<file>: <scope>\t<path>    an '# expects:' line cites a scope that uses the edited one, up to
-                                                three uses away; <path> is the shortest way back to the edit
+  caller\t<feature>\t<file>: <scope>\t<path>\t<behaviors>
+                                                an '# expects:' line cites a scope that uses the edited one, up to
+                                                three uses away; <path> is the shortest way back to the edit, and
+                                                <behaviors> are what the feature checks at that scope, joined by ' | ' 
   uncited\t<feature>                            lists a changed file, and no '# expects:' line of it cites a name
                                                 that its source file holds
   listed\t<feature>                             lists a changed file, and cites only code the edit does not reach
@@ -181,6 +183,7 @@ def names(name, text, literal):
 
 touches = collections.defaultdict(set)
 cites = collections.defaultdict(lambda: collections.defaultdict(set))
+behaviors = collections.defaultdict(list)
 for recipe in sorted((skill / "features").glob("*.sh")):
     for line in recipe.read_text(errors="replace").split("\n"):
         if line.startswith("# touches:"):
@@ -194,6 +197,7 @@ for recipe in sorted((skill / "features").glob("*.sh")):
             name = re.sub(r"\(\)$", "", name)
             if name:
                 cites[file_part.strip()][name].add(recipe.stem)
+                behaviors[recipe.stem, pathlib.Path(file_part.strip()).name, name].append(line[10:found.start()].strip())
 
 
 def cited_in(path):
@@ -223,6 +227,13 @@ def scope_of(lines, index, cited, own):
             continue
         definition = False if CONTAINER.search(text) else defined_name(text, member=own and position == 0) or None
     return None, definition or None
+
+
+def closest(checked, path):
+    """Up to five of the behaviors a feature checks, those that share most words with the names on the path first."""
+    words = {word.lower()[:6] for name in re.findall(r": ([\w$-]+)", path) for word in re.findall(r"[A-Z]?[a-z]{3,}|[A-Z]{3,}", name)}
+    ranked = sorted(checked, key=lambda text: -sum(1 for word in words if word in text.lower()))
+    return " | ".join(text[:160] for text in ranked[:5])
 
 
 def label(path, name):
@@ -304,7 +315,7 @@ while frontier:
                 if TESTS.search(file) and steps == 1:
                     direct[feature].add(here)
                 else:
-                    callers[feature].append((steps, label(file, user), here))
+                    callers[feature].append((steps, label(file, user), here, closest(behaviors[feature, pathlib.Path(file).name, user], here)))
             continue
         if definition is None and is_definition(lines, index):
             definition = defined_name(lines[index], member=True) or (name if "export" in lines[index] else None)
