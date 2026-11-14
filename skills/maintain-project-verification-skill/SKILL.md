@@ -107,9 +107,10 @@ upgrade mostly changes rules, and a rule change breaks no feature.
   converted or changed recipe. Under each changed helper it lists the features that use
   it: drive by name one of them for each call of the helper the upgrade altered. Changes
   to `SKILL.md`, `PROJECT.md` and the other rules list nothing.
-- When `bin/verify`, `bin/lib.sh`, `launch.sh`, `doctor.sh` or `cleanup.sh` changed, also
-  drive a few features by name, as a smoke test of the runner and the environment: one
-  plain feature, one marked `# alone`, and one marked `# shares`, each when one exists.
+- When `bin/verify`, `bin/lib.sh`, `bin/reach`, `launch.sh`, `doctor.sh` or `cleanup.sh`
+  changed, also drive a few features by name, as a smoke test of the runner and the
+  environment: one plain feature, one marked `# alone`, and one marked `# shares`, each
+  when one exists.
 - When neither gives a feature to drive, drive nothing: `bin/verify lint` was the check.
 
 Fix the environment yourself when `doctor.sh` stops the run.

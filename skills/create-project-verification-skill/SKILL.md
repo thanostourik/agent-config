@@ -51,6 +51,7 @@ replace it (delete and generate again) or upgrade it with
   bin/lib.sh          copied from <generator>/references/lib.sh, unchanged
   bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
+  bin/reach           copied from <generator>/references/reach, unchanged (needs python3)
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
   bin/env.sh bin/after-feature.sh   optional
@@ -383,10 +384,11 @@ divided by the longest parallel feature.
 Then check the lifecycle once:
 
 - Run `bin/verify lint`.
-- Commit, change one file a feature touches, and check that
-  `bin/verify affected --dry --base HEAD` lists that feature under the file. Without `--base HEAD` on
-  this branch, every new recipe counts as changed. Undo the change. In a companion, change
-  a copy of the app checkout instead and point `APP_<NAME>` at it.
+- Commit, change one line in a function that an `# expects:` line cites, and check that
+  `bin/verify affected --dry --base HEAD` lists that feature under "Check the edited
+  code". Without `--base HEAD` on this branch, every new recipe counts as changed. Undo
+  the change. In a companion, change a copy of the app checkout instead and point
+  `APP_<NAME>` at it.
 - Check that `bin/verify down` leaves nothing of the run outside `.cache/`: no process,
   port, container, browser session or file.
 

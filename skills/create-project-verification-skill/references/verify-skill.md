@@ -216,6 +216,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
   - A behavior taken from the source code cites its file and function instead, as
     `<file name>: <function>` (`NoteEditor.tsx: handleSave`). `verify uncovered` counts an
     action covered only when a line names both.
+  - Cite the function that produces the behavior, by its name in the code, never by a
+    label of your own such as `BLE getFile`. `verify affected` drives the feature when a
+    change edits the function it cites, and finds that function only by this name.
 - A behavior no step of the recipe drives gets `-> not driven: <reason>`. Only three
   reasons hold:
   - Another feature drives it: `covered by <feature>`.
