@@ -383,7 +383,8 @@ divided by the longest parallel feature.
 
 Then check the lifecycle once:
 
-- Run `bin/verify lint`.
+- Run `bin/verify lint`. Fix every `# expects:` line it lists as citing code the checkouts
+  do not have: `bin/verify affected` can never select a feature through such a line.
 - Commit, change one line in a function that an `# expects:` line cites, and check that
   `bin/verify affected --dry --base HEAD` lists that feature under "Check the edited
   code". Without `--base HEAD` on this branch, every new recipe counts as changed. Undo

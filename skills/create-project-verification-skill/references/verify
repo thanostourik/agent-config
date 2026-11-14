@@ -3,22 +3,24 @@
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
-# verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and the features with an expects line that cites the code it edited; list the features that cite a user of that code, or use a changed helper; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
+# verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and the five closest features with an expects line that cites the code it edited, but none that passed on this code already; list the features one use from that code, and name the ones farther away; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
 # verify all [--failed]     drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 #                           --failed drives only the features the last all did not pass, plus those whose recipe changed since
 # verify <feature>...       drive those features
-# verify list | lint [feature...]
+# verify list
+# verify lint [feature...]  check the recipe rules; then list the expects lines that cite code the checkouts do not have
 # verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers; ends with every reason an expects line is marked not driven
 # verify room               wait until the machine has room for one more browser session or process
 # Options: --jobs N (default: the skill's jobs file, else the machine's cores), --deadline SECONDS per feature (default 180).
 # Every verify on the machine shares one queue: a feature starts only while VERIFY_RESERVE percent of memory
-# (default 20, or ~/.config/verify/reserve) stays free, with at least one feature running.
+# (default 20, or ~/.config/verify/reserve) stays free, with at least one feature running. A feature of a drive
+# with fewer features starts first.
 set -uo pipefail
 
 skill=$(cd "$(dirname "$0")/.." && pwd)
 root=$(cd "$skill/../../.." && pwd)
 cache=$skill/.cache
-max_jobs="" deadline=180 budget=45 base="" dry="" lanes=""
+max_jobs="" deadline=180 budget=45 nearest=5 base="" dry="" lanes=""
 
 args=()
 while (($#)); do
@@ -130,6 +132,9 @@ fingerprint() {
 
 changed_since() { comm -3 <(sort -u "$1") <(sort -u "$2") | sed -e 's/^\t//' -e 's/^[0-9a-f]*  //' | sort -u; }
 
+# One id for what every file of every checkout holds: the same after a commit, another after an edit.
+state() { sha1sum | cut -d ' ' -f 1; }
+
 skill_rel=${skill#"$root"/}
 
 naming() {
@@ -196,6 +201,7 @@ select_affected() {
   : > "$work/sources"
   : > "$work/reach"
   : > "$work/new"
+  : > "$work/spare"
   while IFS= read -r file; do
     case $file in
       "$skill_rel"/features/*.sh)
@@ -218,7 +224,8 @@ select_affected() {
       !($0 in features) { print "quiet\t" $0 >> reach; next }
       { count = split(features[$0], names, " "); for (i = 1; i <= count; i++) print $0 "\t" names[i] >> candidates }' "$work/touches" "$work/sources"
   fi
-  awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } $1 == "direct" && !($2 in changed) && !seen[$2]++ { print $2 }' "$work/affected" "$work/reach" > "$work/checks"
+  awk -F '\t' -v nearest="$nearest" -v spare="$work/spare" 'FILENAME == ARGV[1] { changed[$0]; next }
+    $1 == "direct" && !($2 in changed) && !seen[$2]++ { if (++count > nearest) print $2 > spare; else print $2 }' "$work/affected" "$work/reach" > "$work/checks"
   if [[ -s "$work/affected" ]]; then
     echo "Changed recipes:"
     sed 's/^/  /' "$work/affected"
@@ -229,16 +236,25 @@ select_affected() {
     echo "Check the edited code (an '# expects:' line cites it; driven with the changed recipes):"
     awk -F '\t' 'FILENAME == ARGV[1] { wanted[$0]; next } $1 == "direct" && ($2 in wanted) { print "  " $2 ": " $3 }' "$work/checks" "$work/reach"
   fi
+  [[ -s "$work/spare" ]] && printf '%s\n  %s\n' "Cite the edited code too, not driven (the $nearest above share more words with the edit):" "$(paste -s -d ' ' "$work/spare")"
   cat "$work/affected" "$work/checks" > "$work/driven"
-  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "caller" && !($2 in driven) { print "  " $2 ": " $3 " uses " $4; count = split($5, checks, " [|] "); for (i = 1; i <= count; i++) print "      checks: " checks[i] }' "$work/driven" "$work/reach" > "$work/lines"
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "caller" && $6 == 1 && !($2 in driven) { print "  " $2 ": " $3 " uses " $4; count = split($5, checks, " [|] "); for (i = 1; i <= count; i++) print "      checks: " checks[i] }' "$work/driven" "$work/reach" > "$work/lines"
   if [[ -s "$work/lines" ]]; then
-    echo "Cite code that uses the edited code, not driven (closest to the edit first; drive a feature only when a line under it is a result the edited code produces):"
+    echo "One use from the edited code, not driven (closest to the edit first; drive a feature only when a line under it is a result your change alters):"
     cat "$work/lines"
   fi
-  left=$(undriven listed)
-  [[ -n "$left" ]] && printf '%s\n %s\n' "List a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):" "$left"
-  left=$(undriven blind)
-  [[ -n "$left" ]] && printf '%s\n %s\n' "List a changed file and have no '# expects:' line with a step, not driven (nothing says what they check: read their steps):" "$left"
+  {
+    left=$(awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "caller" && $6 > 1 && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach")
+    [[ -n "$left" ]] && echo "  two or three uses away:$left"
+    left=$(undriven listed)
+    [[ -n "$left" ]] && echo "  list a changed file, and cite nothing that uses the edited code:$left"
+    left=$(undriven blind)
+    [[ -n "$left" ]] && echo "  list a changed file, and have no '# expects:' line with a step:$left"
+  } > "$work/lines"
+  if [[ -s "$work/lines" ]]; then
+    echo "Farther from the edit, not driven (leave them out, unless you followed your change to a step of theirs):"
+    cat "$work/lines"
+  fi
   awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } !($2 in driven) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/driven" "$work/candidates" | sort > "$work/lines"
   if [[ -s "$work/lines" ]]; then
     if [[ -n "$traced" ]]; then
@@ -317,6 +333,15 @@ lint() {
     bash -n "$file" 2> /dev/null || report "not valid bash: $(bash -n "$file" 2>&1 | head -n 1)"
   done
   return $problems
+}
+
+# The citations of these features that no change can match: reach finds an edited function only by the file and name a line cites.
+cited_nowhere() {
+  [[ -x "$skill/bin/reach" ]] && command -v python3 > /dev/null || return 0
+  "$skill/bin/reach" --citations 2> /dev/null | awk -F '\t' -v wanted=" $* " 'index(wanted, " " $1 " ") { print "  " $1 ": " $2 " (" $3 ")" }' > "$work/cited-nowhere"
+  [[ -s "$work/cited-nowhere" ]] || return 0
+  echo "Cite code the checkouts do not have, so 'verify affected' never selects the feature for a change to it (cite the function by its name in the code):"
+  cat "$work/cited-nowhere"
 }
 
 check_expects() {
@@ -424,10 +449,14 @@ can_queue() { [[ -r /proc/meminfo ]] && command -v flock > /dev/null; }
 reserve_mb() { echo $(($(meminfo MemTotal) * $(reserve_percent) / 100)); }
 
 # Runs under the pool's lock. A slot started in the last 20 s has not shown up in MemAvailable yet, so each counts a browser's worth.
+# A feature waits while one of a drive with fewer features waits too, so a fix loop does not queue behind a long drive.
 admit() {
-  local holder=$1 entry started pid recent=0 running=0
+  local holder=$1 size=$2 entry other started pid recent=0 running=0
   for entry in "$room_pool"/wait-*; do
-    [[ -f "$entry" ]] && ! kill -0 "${entry##*/wait-}" 2> /dev/null && rm -f "$entry"
+    [[ -f "$entry" ]] || continue
+    kill -0 "${entry##*/wait-}" 2> /dev/null || { rm -f "$entry"; continue; }
+    read -r other 2> /dev/null < "$entry"
+    [[ "$size" =~ ^[0-9]+$ && "$other" =~ ^[0-9]+$ ]] && ((other < size)) && return 1
   done
   for entry in "$room_pool"/slot-*; do
     read -r started pid 2> /dev/null < "$entry" || continue
@@ -504,11 +533,11 @@ hold_share() {
 }
 
 take_room() {
-  local holder=$1
+  local holder=$1 size=${2:-}
   can_queue || return 0
   mkdir -p "$room_pool"
-  : > "$room_pool/wait-$holder"
-  until (flock 9 && admit "$holder") 9> "$room_pool/.lock"; do sleep 1; done
+  echo "$size" > "$room_pool/wait-$holder"
+  until (flock 9 && admit "$holder" "$size") 9> "$room_pool/.lock"; do sleep 1; done
   rm -f "$room_pool/wait-$holder"
 }
 
@@ -542,7 +571,7 @@ run_feature() {
   start=$SECONDS
   hold_copy "$(grep -q '^# alone' "$skill/features/$feature.sh" && echo alone)"
   hold_share "$(group_of "$feature")"
-  take_room "$BASHPID"
+  take_room "$BASHPID" "$total"
   local waited=$((SECONDS - start))
   start=$SECONDS
   rm -rf "$dir" "$cache/evidence/$feature"
@@ -606,13 +635,18 @@ line_of() {
 }
 
 drive() {
-  local feature together=() alone=() pids=() started=$SECONDS result=0 lane count total=$#
+  local feature together=() alone=() pids=() started=$SECONDS result=0 lane count total=$# code
   (($#)) || { echo "verify: no features to drive" >&2; return 2; }
   [[ -f "$cache/run-id" ]] || { echo "verify: no environment; run 'bin/verify up' first" >&2; return 2; }
+  mkdir -p "$cache/passed"
   export VERIFY_RUN_ID=$(cat "$cache/run-id") VERIFY_LANE=0 VERIFY_APP=$(app_mode 0)
   count=$(lane_count)
   run=$cache/drive/.run-$$
   mkdir -p "$run"
+  # A pass counts for this code only when the app was started on it: 'verify up' has run since the last edit outside the skill.
+  fingerprint > "$run/files"
+  code=""
+  [[ -f "$cache/up-files" ]] && ! changed_since "$cache/up-files" "$run/files" | grep -q -v "^$skill_rel/" && code=$(state < "$run/files")
   lint "$@" > "$run/lint.txt" || { cat "$run/lint.txt" >&2; echo "verify: fix the recipes above first" >&2; rm -rf "$run"; return 2; }
   hold_copy shared
   doctor "$run/doctor.log" || { exec 7>&-; cp "$run/doctor.log" "$cache/doctor-failed.log"; echo "verify: doctor.sh failed, see $cache/doctor-failed.log" >&2; return 2; }
@@ -700,8 +734,10 @@ drive() {
     [[ -f "$lane" ]] && echo "lane $(cat "$lane") did not start; its features ran on the main copy (see $cache/launch-$(cat "$lane").log)"
   done
   for feature in "$@"; do
+    rm -f "$cache/passed/$feature"
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
+      [[ -n "$code" ]] && (($(cat "$run/rc-$feature") == 0)) && echo "$code" > "$cache/passed/$feature"
       (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || { result=1 not_passed+=("$feature"); }
     elif [[ -s "$run/stop" ]]; then
       echo "$feature: not run (doctor.sh failed after $(cat "$run/stop"), see $cache/doctor-failed.log)"
@@ -774,6 +810,7 @@ up_env() {
     echo $((SECONDS - began)) > "$cache/lane-seconds"
     rm -f "$cache/run-id.unmeasured"
   fi
+  fingerprint > "$cache/up-files"
   echo "up: $(cat "$cache/run-id")$( ((count)) && echo " and $count lanes")"
 }
 
@@ -790,7 +827,7 @@ down_env() {
     "$skill/bin/cleanup.sh" "$@" || failed=1
   fi
   ((failed == 0)) || { echo "verify: cleanup.sh failed; the run's record stays in $cache" >&2; return 1; }
-  rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes" "$cache/app-mode"
+  rm -f "$cache/run-id" "$cache/run-id.unmeasured" "$cache/lanes" "$cache/app-mode" "$cache/up-files"
   echo "down"
 }
 
@@ -815,7 +852,10 @@ case $command in
     for feature in $(all_features); do printf '%s: %s\n' "$feature" "$(summary_of "$feature")"; done ;;
   lint)
     (($#)) || set -- $(all_features)
-    lint "$@" && echo "lint: ok" ;;
+    lint "$@" && echo "lint: ok"
+    result=$?
+    cited_nowhere "$@"
+    exit $result ;;
   uncovered)
     [[ -x "$skill/bin/entrypoints.sh" ]] || { echo "verify: no bin/entrypoints.sh" >&2; exit 2; }
     uncovered_items > "$work/uncovered"
@@ -847,8 +887,14 @@ case $command in
     changed_files > "$work/changed" || exit 2
     select_affected || exit 2
     result=0
-    [[ -s "$work/driven" && -z "$dry" ]] && { drive $(cat "$work/driven"); result=$?; }
-    [[ -s "$work/driven" && -n "$dry" ]] && echo "verify: --dry drove nothing; without it, the $(wc -l < "$work/driven") features of the first lists are driven" >&2
+    code=$(fingerprint | state)
+    for feature in $(cat "$work/driven"); do
+      [[ "$(cat "$cache/passed/$feature" 2> /dev/null)" == "$code" ]] && echo "$feature"
+    done > "$work/passed"
+    [[ -s "$work/passed" ]] && printf '%s\n  %s\n' "Passed on this code already, not driven again:" "$(paste -s -d ' ' "$work/passed")"
+    grep -v -x -F -f "$work/passed" "$work/driven" > "$work/todo"
+    [[ -s "$work/todo" && -z "$dry" ]] && { drive $(cat "$work/todo"); result=$?; }
+    [[ -s "$work/todo" && -n "$dry" ]] && echo "verify: --dry drove nothing; without it, the $(wc -l < "$work/todo") features of the first lists are driven" >&2
     not_driven_by_change > "$work/not-driven"
     [[ -s "$work/not-driven" ]] && {
       echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"

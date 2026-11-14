@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """reach <ranges file>: which features check the code a change edits. bin/verify affected calls it.
+reach --citations: the '# expects:' lines that cite code the checkouts do not have. bin/verify lint calls it.
 
 The ranges file holds one changed line range per line, `<path>\t<first line>\t<lines>`, with paths as
 recipes name them. Prints one finding per line:
-  direct\t<feature>\t<file>: <scope>            an '# expects:' line cites the edited scope, or a unit test of it
-  caller\t<feature>\t<file>: <scope>\t<path>\t<behaviors>
-                                                an '# expects:' line cites a scope that uses the edited one, up to
-                                                three uses away; <path> is the shortest way back to the edit, and
-                                                <behaviors> are up to four behaviors the feature checks, joined by
+  direct\t<feature>\t<file>: <scope>            an '# expects:' line cites the edited scope, or a unit test of it.
+                                                The features whose cited behaviors share most words with the edit
+                                                come first.
+  caller\t<feature>\t<file>: <scope>\t<path>\t<behaviors>\t<uses>
+                                                an '# expects:' line cites a scope that uses the edited one, <uses>
+                                                uses away, three at most; <path> is the shortest way back to the edit,
+                                                and <behaviors> are up to four behaviors the feature checks, joined by
                                                 ' | ': first those that share words with the edit, then those it
                                                 checks at that scope. The features that share most come first.
   listed\t<feature>                             lists a changed file, and cites no code the edit reaches
   blind\t<feature>                              lists a changed file and has no '# expects:' line with a step
   loose\t<file>: <scope>                        edited code that no recipe cites or reaches
   quiet\t<path>                                 a changed file no feature lists, with nothing reached from it
+With --citations it prints `<feature>\t<file>: <name>\t<reason>` for each citation of a code file that names
+no file of the checkouts, or a name that file does not hold. A change to such code can never select the feature.
 A scope is the function, method, handler or block a line sits in. It is found by indentation, so it needs no
 parser and works for every language whose blocks are indented. Uses are found by name, with `git grep`.
 Shipped by create-project-verification-skill.
@@ -210,9 +215,22 @@ def names(name, text, literal):
     return re.search(pattern, text) is not None
 
 
+def sources(cited):
+    """(file, name) for each source of a citation such as `a.py: load, save; b.py: store`: a part without a file
+    is another name in the file before it."""
+    file = None
+    for part in re.split(r"[,;]", cited):
+        if ": " in part:
+            file, part = part.split(": ", 1)
+        name = re.sub(r"\(\)$", "", part.strip())
+        if file and name:
+            yield file.strip(), name
+
+
 touches = collections.defaultdict(set)
 cites = collections.defaultdict(lambda: collections.defaultdict(set))
 behaviors = collections.defaultdict(list)
+citations = []
 for recipe in sorted((skill / "features").glob("*.sh")):
     for line in recipe.read_text(errors="replace").split("\n"):
         if line.startswith("# touches:"):
@@ -222,11 +240,11 @@ for recipe in sorted((skill / "features").glob("*.sh")):
         if not found or ": " not in found.group(1):
             continue
         file_part, cited = found.group(1).split(": ", 1)
-        for name in {cited.strip(), *(part.strip() for part in cited.split(","))}:
-            name = re.sub(r"\(\)$", "", name)
-            if name:
-                cites[file_part.strip()][name].add(recipe.stem)
+        cites[file_part.strip()][re.sub(r"\(\)$", "", cited.strip())].add(recipe.stem)
+        for file, name in sources(found.group(1)):
+            cites[file][name].add(recipe.stem)
         behaviors[recipe.stem].append((line[10:found.start()].strip(), pathlib.Path(file_part.strip()).name, cited.strip()))
+        citations.append((recipe.stem, found.group(1)))
 
 
 def cited_in(path):
@@ -286,7 +304,31 @@ def label(path, name):
     return f"{pathlib.Path(path).name}: {name}"
 
 
+def unmatched():
+    """(feature, citation, reason) for each citation of a code file that the checkouts cannot match."""
+    tracked = [(prefix, path) for prefix, checkout in roots.items()
+               for path in subprocess.run(["git", "-C", str(checkout), "ls-files"], capture_output=True, text=True).stdout.split("\n") if path]
+    def holds(file, name):
+        files = [read(prefix, path) for prefix, path in tracked if prefix + path == file or (prefix + path).endswith("/" + file)]
+        return "no such file" if not files else None if any(names(name, text, False) for lines in files for text in lines) else "the file has no such name"
+
+    for feature, cited in citations:
+        file, whole = (part.strip() for part in cited.split(": ", 1))
+        if pathlib.Path(file).suffix not in CODE or TESTS.search(file) or not holds(file, re.sub(r"\(\)$", "", whole)):
+            continue
+        for file, name in sources(cited):
+            if pathlib.Path(file).suffix in CODE and not TESTS.search(file) and holds(file, name):
+                yield feature, f"{file}: {name}", holds(file, name)
+
+
+if sys.argv[1:] == ["--citations"]:
+    for found in unmatched():
+        print(*found, sep="\t")
+    sys.exit()
+
+
 direct = collections.defaultdict(set)
+closeness = collections.Counter()
 callers = collections.defaultdict(list)
 edited = {}
 edit_words = collections.defaultdict(set)
@@ -316,6 +358,8 @@ for line in pathlib.Path(sys.argv[1]).read_text().split("\n"):
             reached.add(key)
             for feature in cited[name]:
                 direct[feature].add(label(path, name))
+                closeness[feature] += sum(1 / spread[word] for checked, file, at in behaviors[feature]
+                                          if file == pathlib.Path(path).name and name in at for word in stems(checked) & stems(text))
         if definition and pathlib.Path(path).suffix in CODE:
             edited.setdefault(key, label(path, definition))
             edit_words[key] |= stems(text) | stems(definition)
@@ -384,11 +428,11 @@ while frontier:
             trail[key], origin[key] = f"{label(file, definition)} uses {here}", source
             frontier.append((key, steps + 1))
 
-for feature, why in sorted(direct.items()):
+for feature, why in sorted(direct.items(), key=lambda item: (-closeness[item[0]], item[0])):
     print("direct", feature, ", ".join(sorted(why)), sep="\t")
 shortest = {feature: min(found) for feature, found in callers.items() if feature not in direct}
-for feature, (_, user, path, _, checked) in sorted(shortest.items(), key=lambda item: (item[1][3], item[0])):
-    print("caller", feature, user, path, checked, sep="\t")
+for feature, (steps, user, path, _, checked) in sorted(shortest.items(), key=lambda item: (item[1][3], item[0])):
+    print("caller", feature, user, path, checked, steps, sep="\t")
 listing = {feature for path in changed_files for feature in touches.get(path, ())} - set(direct) - set(callers)
 for feature in sorted(listing):
     print("listed" if behaviors[feature] else "blind", feature, sep="\t")

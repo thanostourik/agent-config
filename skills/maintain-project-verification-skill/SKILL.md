@@ -113,6 +113,11 @@ upgrade mostly changes rules, and a rule change breaks no feature.
   when one exists.
 - When neither gives a feature to drive, drive nothing: `bin/verify lint` was the check.
 
+`bin/verify lint` ends with the `# expects:` lines that cite a file or a name the code
+does not have. `bin/verify affected` can never select a feature through such a line. Give
+each the name of the function that produces its behavior, as the skill's Header rules say.
+A header edit needs no drive.
+
 Fix the environment yourself when `doctor.sh` stops the run.
 
 Repair two things before the PR:
