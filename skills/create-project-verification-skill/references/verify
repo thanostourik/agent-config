@@ -3,9 +3,9 @@
 # verify up [--lanes N]     start or reuse the run's environment (launch.sh, then doctor.sh); --lanes N keeps exactly N extra copies for '# alone' features
 # verify down               remove the run's environment and its lanes (cleanup.sh)
 #                           the main copy runs the app on its dev server; VERIFY_APP=build at the first up runs the production build; all and lanes always run the production build
-# verify affected [--dry]   drive the features a change against the default branch touches, directly or through a file that names a changed code file; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
+# verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and list as candidates the features that list a changed file or use a changed helper; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
 # verify all [--failed]     drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
-#                           --failed drives only the features the last all did not pass, plus those the files changed since it select
+#                           --failed drives only the features the last all did not pass, plus those whose recipe changed since
 # verify <feature>...       drive those features
 # verify list | lint [feature...]
 # verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers; ends with every reason an expects line is marked not driven
@@ -153,54 +153,43 @@ features_using() {
   done
 }
 
-callers_of() {
-  local dir=$root prefix="" path=$1 name=${1%%/*} variable stem
-  if [[ -f "$skill/apps" ]] && grep -q "^${name}[[:space:]]" "$skill/apps"; then
-    variable=$(app_variable "$name")
-    dir=${!variable} prefix=$name/ path=${1#*/}
-  fi
-  [[ $path =~ [.](c|cc|cjs|cpp|cs|dart|ex|exs|go|h|hpp|java|js|jsx|kt|m|mjs|php|py|rb|rs|scala|svelte|swift|ts|tsx|vue)$ ]] || return 0
-  stem=$(basename "$path")
-  stem=${stem%%.*}
-  case $stem in index | __init__ | mod) stem=$(basename "$(dirname "$path")") ;; esac
-  [[ -n "$stem" && "$stem" != . ]] || return 0
-  git -C "$dir" grep -l -I -w -F --untracked -e "$stem" -- . ':!.agents' ':!.claude' | grep -v -x -F "$path" | sed "s|^|$prefix|"
-}
-
 select_affected() {
-  local file feature helper hit via features=() untouched=()
+  local file feature hit features=() untouched=()
   mapfile -t features < <(all_features)
   for feature in "${features[@]}"; do touches_of "$feature" | sed "s|^|$feature	|"; done > "$work/touches"
   : > "$work/affected"
+  : > "$work/candidates"
   : > "$work/new"
   while IFS= read -r file; do
     hit=""
     case $file in
       "$skill_rel"/features/*.sh)
         feature=$(basename "$file" .sh)
-        [[ -f "$skill/features/$feature.sh" ]] && { echo "$feature	its recipe changed" >> "$work/affected"; hit=1; } ;;
+        [[ -f "$skill/features/$feature.sh" ]] && { echo "$feature" >> "$work/affected"; hit=1; } ;;
       "$skill_rel"/bin/verify | "$skill_rel"/bin/lib.sh | "$skill_rel"/bin/harvest | "$skill_rel"/bin/areas) continue ;;
       "$skill_rel"/bin/*)
-        helper=$(basename "$file")
-        for feature in $(features_using "$helper"); do
-          echo "$feature	uses $helper" >> "$work/affected"; hit=1
+        for feature in $(features_using "$(basename "$file")"); do
+          printf '%s\t%s\n' "$file" "$feature" >> "$work/candidates"; hit=1
         done ;;
       .agents/* | .claude/* | "$skill_rel"/*) continue ;;
       *)
-        { echo "$file"; callers_of "$file"; } > "$work/via"
-        while IFS=$'\t' read -r feature via; do
-          [[ "$via" == "$file" ]] || via="$via names $file"
-          echo "$feature	$via" >> "$work/affected"
-          hit=1
-        done < <(awk -F '\t' 'FILENAME == ARGV[1] { want[$0]; next } $2 in want' "$work/via" "$work/touches") ;;
+        while IFS= read -r feature; do
+          printf '%s\t%s\n' "$file" "$feature" >> "$work/candidates"; hit=1
+        done < <(awk -F '\t' -v file="$file" '$2 == file { print $1 }' "$work/touches") ;;
     esac
     [[ -n "$hit" ]] || untouched+=("$file")
   done < "$work/changed"
+  sort -u -o "$work/affected" "$work/affected"
   if [[ -s "$work/affected" ]]; then
-    echo "Selected:"
-    sort -u "$work/affected" | awk -F '\t' '{ print "  " $1 ": " $2 }'
+    echo "Changed recipes:"
+    sed 's/^/  /' "$work/affected"
   else
-    echo "Selected: none"
+    echo "Changed recipes: none"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { changed[$0]; next } !($2 in changed) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/affected" "$work/candidates" | sort > "$work/candidate-lines"
+  if [[ -s "$work/candidate-lines" ]]; then
+    echo "Candidates, not driven (they list a changed file or use a changed helper; drive by name only those whose steps check what the edited code does):"
+    cat "$work/candidate-lines"
   fi
   if ((${#untouched[@]})); then
     echo "Changed files no feature names (if one changes behavior, drive that feature by name and add the file to its touches):"
@@ -799,7 +788,7 @@ case $command in
     changed_files > "$work/changed" || exit 2
     select_affected || exit 2
     result=0
-    [[ -s "$work/affected" && -z "$dry" ]] && { drive $(cut -f1 "$work/affected" | sort -u); result=$?; }
+    [[ -s "$work/affected" && -z "$dry" ]] && { drive $(cat "$work/affected"); result=$?; }
     not_driven_by_change > "$work/not-driven"
     [[ -s "$work/not-driven" ]] && {
       echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"
@@ -815,10 +804,10 @@ case $command in
       [[ -s "$cache/all/failed" ]] && echo "Did not pass in the last run: $(tr '\n' ' ' < "$cache/all/failed")"
       changed_since "$cache/all/files" "$work/files" > "$work/changed"
       select_affected || exit 2
-      for feature in $({ cat "$cache/all/failed"; cut -f1 "$work/affected"; } | sort -u); do
+      for feature in $(cat "$cache/all/failed" "$work/affected" | sort -u); do
         [[ -f "$skill/features/$feature.sh" ]] && echo "$feature"
       done > "$work/rerun"
-      [[ -s "$work/rerun" ]] || { echo "all --failed: every feature passed in the last run and no change since selects one; run 'verify all' for the final proof"; exit 0; }
+      [[ -s "$work/rerun" ]] || { echo "all --failed: every feature passed in the last run and no recipe changed since; run 'verify all' for the final proof"; exit 0; }
     else
       all_features > "$work/rerun"
     fi

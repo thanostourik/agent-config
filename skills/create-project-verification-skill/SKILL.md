@@ -384,7 +384,7 @@ Then check the lifecycle once:
 
 - Run `bin/verify lint`.
 - Commit, change one file a feature touches, and check that
-  `bin/verify affected --dry --base HEAD` selects that feature. Without `--base HEAD` on
+  `bin/verify affected --dry --base HEAD` lists that feature under the file. Without `--base HEAD` on
   this branch, every new recipe counts as changed. Undo the change. In a companion, change
   a copy of the app checkout instead and point `APP_<NAME>` at it.
 - Check that `bin/verify down` leaves nothing of the run outside `.cache/`: no process,

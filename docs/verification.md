@@ -27,9 +27,9 @@ before they call work done. You can also ask for it by name. It drives the app t
 
 | Command | What it runs |
 |---|---|
-| `bin/verify affected` | Only the features the change touches. |
+| `bin/verify affected` | The features whose recipe the change edited. It lists the features that share a changed file, and the agent drives by name the ones the change affects. |
 | `bin/verify all` | Every feature. |
-| `bin/verify all --failed` | Only the features that did not pass last time, plus the ones a later change touches. |
+| `bin/verify all --failed` | Only the features that did not pass last time, plus the ones whose recipe changed since. |
 
 All runs on the machine share one queue. The queue keeps 20% of the memory free.
 
