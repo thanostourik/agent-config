@@ -74,7 +74,8 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    - **The other features that list a changed file.** Nothing they cite uses the edited
      code, but a step of theirs can still check it. Search their steps for what the
      edited code produces, such as its route, message, field or label
-     (`grep -l '/login?error' features/*.sh`).
+     (`grep -l '/login?error' features/*.sh`). Read every step the search finds before
+     you leave its feature out.
    - **Features that use a changed helper.** Drive one for each call of the helper the
      change altered.
    - **Edited code no recipe cites or reaches.** A change also reaches features where no
