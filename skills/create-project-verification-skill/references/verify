@@ -226,7 +226,7 @@ select_affected() {
     echo "Changed recipes: none"
   fi
   if [[ -s "$work/checks" ]]; then
-    echo "Check the edited code (an '# expects:' line cites it; 'verify affected' drives them too):"
+    echo "Check the edited code (an '# expects:' line cites it; driven with the changed recipes):"
     awk -F '\t' 'FILENAME == ARGV[1] { wanted[$0]; next } $1 == "direct" && ($2 in wanted) { print "  " $2 ": " $3 }' "$work/checks" "$work/reach"
   fi
   cat "$work/affected" "$work/checks" > "$work/driven"
@@ -848,7 +848,7 @@ case $command in
     select_affected || exit 2
     result=0
     [[ -s "$work/driven" && -z "$dry" ]] && { drive $(cat "$work/driven"); result=$?; }
-    [[ -s "$work/driven" && -n "$dry" ]] && echo "verify: --dry drove nothing; 'verify affected' drives the $(wc -l < "$work/driven") features of the first lists" >&2
+    [[ -s "$work/driven" && -n "$dry" ]] && echo "verify: --dry drove nothing; without it, the $(wc -l < "$work/driven") features of the first lists are driven" >&2
     not_driven_by_change > "$work/not-driven"
     [[ -s "$work/not-driven" ]] && {
       echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"
