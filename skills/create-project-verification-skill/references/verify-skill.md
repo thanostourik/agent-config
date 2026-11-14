@@ -87,8 +87,10 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    - A step that checks the result of the edited function counts, also when its input
      is not the input the change is about. Drive its feature even when you expect the
      step to pass unchanged: the drive exists to catch what you did not expect.
-   - When several features check the same call of the edited code with the same kind of
-     input, one of them is enough. Name the others in your report.
+   - Two features that reach the edited code through the same caller, as
+     `verify affected` names it, and feed it the same kind of input, check the same
+     thing. One of them is enough: name the other in your report. Features that reach it
+     through different callers are different checks.
    - A feature that only passes through the edited code is not affected. Its steps need
      that code to work, the way every feature needs sign-in, a layout or a connection,
      but they check something else. A step that feeds the edited code a value on its way
