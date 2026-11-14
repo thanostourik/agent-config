@@ -39,6 +39,9 @@ Two things to keep as they are:
   `~/.local/bin/`, executable. `squash-merge-pr` needs `git`, a logged-in `gh`, and `jq`.
   `usage-report` reads the Codex and Claude Code session logs and prints what
   each session and its subagents cost in tokens. It needs only Python.
+  `verify-time` reads the Claude Code session logs and prints where the time
+  of fix and build runs went inside a project's `bin/verify`. It needs only
+  Python.
   `mcp-atlassian-start` takes a Jira URL, reads that login's username and
   password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` when
   Authentik sits in front of that Jira. Authentik takes the Authorization

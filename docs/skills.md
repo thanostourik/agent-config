@@ -63,5 +63,6 @@ Sync installs the scripts in `bin/` to `~/.local/bin/`.
 |---|---|
 | `squash-merge-pr` | Does every git and `gh` step of the squash merge. Needs `git`, a logged-in `gh`, and `jq`. |
 | `usage-report` | Prints how many tokens each Codex and Claude Code session used, subagents included. Needs only Python. |
+| `verify-time` | Prints how much of the working time of Claude Code sessions went into `bin/verify`: drives, stack starts, drive rounds, repeated drives and waiting for room. Needs only Python. |
 | `mcp-atlassian-start` | Starts the Jira MCP server with the login it reads from Bitwarden. |
 | `jira-gate-proxy` | Lets `mcp-atlassian-start --gate` reach a Jira that sits behind Authentik. |
