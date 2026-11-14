@@ -232,9 +232,14 @@ select_affected() {
     echo "Cite code that uses the edited code, not driven (closest to the edit first; drive a feature only when a line under it is a result the edited code produces):"
     cat "$work/lines"
   fi
-  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "uncited" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "listed" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
   if [[ -s "$work/lines" ]]; then
-    echo "List a changed file and cite no code by name, not driven (nothing tells what they check: read their steps):"
+    echo "List a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):"
+    echo " $(cat "$work/lines")"
+  fi
+  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "blind" && !($2 in driven) { printf " %s", $2 }' "$work/driven" "$work/reach" > "$work/lines"
+  if [[ -s "$work/lines" ]]; then
+    echo "List a changed file and have no '# expects:' line with a step, not driven (nothing says what they check: read their steps):"
     echo " $(cat "$work/lines")"
   fi
   awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } !($2 in driven) && !seen[$0]++ { list[$1] = list[$1] " " $2 } END { for (file in list) print "  " file ":" list[file] }' "$work/driven" "$work/candidates" | sort > "$work/lines"
@@ -246,7 +251,6 @@ select_affected() {
     fi
     cat "$work/lines"
   fi
-  awk -F '\t' 'FILENAME == ARGV[1] { driven[$0]; next } $1 == "listed" && !($2 in driven) { names = names " " $2 } END { if (names != "") print "Also list a changed file, not driven (nothing they cite uses the edited code; search their steps for what that code produces before leaving them out):\n " names }' "$work/driven" "$work/reach"
   if grep -q '^loose' "$work/reach"; then
     echo "Edited code no recipe cites or reaches (search the recipes for what it produces, such as its route, table, message or label):"
     sed -n 's/^loose\t/  /p' "$work/reach"
@@ -849,6 +853,7 @@ case $command in
     select_affected || exit 2
     result=0
     [[ -s "$work/driven" && -z "$dry" ]] && { drive $(cat "$work/driven"); result=$?; }
+    [[ -s "$work/driven" && -n "$dry" ]] && echo "verify: --dry drove nothing; 'verify affected' drives the $(wc -l < "$work/driven") features of the first lists" >&2
     not_driven_by_change > "$work/not-driven"
     [[ -s "$work/not-driven" ]] && {
       echo "Marked not driven by the change (hold each reason against the skill's Header rules, and list these lines in your report):"

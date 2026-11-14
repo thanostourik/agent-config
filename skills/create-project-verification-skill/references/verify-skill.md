@@ -63,19 +63,19 @@ names, and report every feature `blocked: no isolation`. Otherwise:
 4. Decide which other features the change affects, and drive them together in one
    `verify <feature>...`. A feature is affected when one of its steps checks a result the
    edited code produces. `verify affected` prints the features to judge, and never drives
-   them. Judge every feature of the first two lists, and leave none out unread:
+   them. Judge every feature they name, and leave none out unread:
    - **Features that cite code that uses the edited code.** Each feature comes with the
      caller it cites, and under it up to four behaviors it checks: first the ones that
      share words with the edit. Most of these features only pass through the edited
      code. Drive one only when a behavior under it is a result the edited code produces,
      such as the refusal a changed guard gives.
-   - **Features that list a changed file and cite no code by name.** Nothing says what
-     they check. Read their steps.
-   - **The other features that list a changed file.** Nothing they cite uses the edited
-     code, but a step of theirs can still check it. Search their steps for what the
-     edited code produces, such as its route, message, field or label
+   - **Features that list a changed file.** Nothing they cite uses the edited code, but
+     a step of theirs can still check it. Search their steps for what the edited code
+     produces, such as its route, message, field or label
      (`grep -l '/login?error' features/*.sh`). Read every step the search finds before
      you leave its feature out.
+   - **Features that list a changed file and have no `# expects:` line with a step.**
+     Nothing says what they check. Read their steps.
    - **Features that use a changed helper.** Drive one for each call of the helper the
      change altered.
    - **Edited code no recipe cites or reaches.** A change also reaches features where no
@@ -128,8 +128,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
 - `verify affected [--dry] [--base <ref>]`: drive the features whose recipe a change
   against the default branch edited, and the features that check the code it edited. It
   lists the features left for you to judge, as [Check a change](#check-a-change)
-  describes. `--dry` only lists. `--base <ref>` compares against another ref. It exits 1
-  while the change adds entry points or actions no recipe covers.
+  describes. `--dry` only lists and drives nothing, so it never checks a change.
+  `--base <ref>` compares against another ref. It exits 1 while the change adds entry
+  points or actions no recipe covers.
 - `verify <feature>...`: drive those features on the run's environment.
 - `verify all`: drive every feature on the production build. It brings the run up on that
   build first, and removes a run on the dev server before that.

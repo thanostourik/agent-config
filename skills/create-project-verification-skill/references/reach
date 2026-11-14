@@ -10,9 +10,8 @@ recipes name them. Prints one finding per line:
                                                 <behaviors> are up to four behaviors the feature checks, joined by
                                                 ' | ': first those that share words with the edit, then those it
                                                 checks at that scope. The features that share most come first.
-  uncited\t<feature>                            lists a changed file, and no '# expects:' line of it cites a name
-                                                that its source file holds
-  listed\t<feature>                             lists a changed file, and cites only code the edit does not reach
+  listed\t<feature>                             lists a changed file, and cites no code the edit reaches
+  blind\t<feature>                              lists a changed file and has no '# expects:' line with a step
   loose\t<file>: <scope>                        edited code that no recipe cites or reaches
   quiet\t<path>                                 a changed file no feature lists, with nothing reached from it
 A scope is the function, method, handler or block a line sits in. It is found by indentation, so it needs no
@@ -51,6 +50,8 @@ DEFINITIONS = (
 )
 CALL = re.compile(r"([A-Za-z_$][\w$]*(?:::[A-Za-z_~]\w*)*)\s*(?:<[^<>()]*>)?\s*\(")
 STRING = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'")
+TEMPLATE = re.compile(r"`[^`]*`")
+WORDS_ONLY = re.compile(r"^\s*[A-Za-z0-9'’-]+(?: [A-Za-z0-9'’-]+)+[.!?…]?\s*$")
 MEMBER = re.compile(r"^\s*[\"']?([A-Za-z_$][\w$.-]*)[\"']?\s*[:=]")
 
 skill = pathlib.Path(os.environ.get("VERIFY_SKILL") or pathlib.Path(__file__).resolve().parent.parent)
@@ -179,6 +180,13 @@ def defines(lines, index, name):
     return re.search(r"[\w$>\]*&:]$", before) is not None and not (words and words[-1] in USES)
 
 
+def code_of(text):
+    """A line without what only looks like code: quoted strings, the text of a template literal, a line of plain words."""
+    if WORDS_ONLY.match(text):
+        return ""
+    return TEMPLATE.sub(lambda found: " ".join(re.findall(r"\$\{([^}]*)\}", found.group(0))), STRING.sub('""', text))
+
+
 def names(name, text, literal):
     """Whether the text holds the name as a whole word, or as a quoted string when `literal`."""
     escaped = re.escape(name)
@@ -194,7 +202,7 @@ for recipe in sorted((skill / "features").glob("*.sh")):
         if line.startswith("# touches:"):
             for path in line[10:].split():
                 touches[path].add(recipe.stem)
-        found = re.search(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*->", line) if line.startswith("# expects:") else None
+        found = re.search(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*->(?! not driven)", line) if line.startswith("# expects:") else None
         if not found or ": " not in found.group(1):
             continue
         file_part, cited = found.group(1).split(": ", 1)
@@ -243,7 +251,8 @@ spread = collections.Counter(word for checked in behaviors.values() for word in 
 
 
 def evidence(feature, file, user, words):
-    """(how much the feature's behaviors share with the edit, up to four of them): the closest first, rare words weigh most."""
+    """(minus how much the feature's behaviors share with the edit, up to four of them): the closest first, rare words
+    weigh most. A behavior the feature checks at the caller `user` counts even when it shares no word."""
     scored = []
     for text, cited_file, cited_name in behaviors[feature]:
         score = sum(1 / spread[word] for word in stems(text) & words)
@@ -312,7 +321,7 @@ while frontier:
             if index >= len(lines):
                 continue
             text = lines[index]
-            if COMMENT.match(text) or IMPORT.match(text) or text.lstrip().startswith("@") or not names(name, STRING.sub('""', text), False):
+            if COMMENT.match(text) or IMPORT.match(text) or text.lstrip().startswith("@") or not names(name, code_of(text), False):
                 continue
             if defines(lines, index, name):
                 defined_in.add((other, file))
@@ -349,25 +358,9 @@ for feature, why in sorted(direct.items()):
 for share, feature, found in sorted((min(found)[3], feature, min(found)) for feature, found in callers.items()):
     if feature not in direct:
         print("caller", feature, found[1], found[2], found[4], sep="\t")
-tracked = [(prefix, file) for prefix, checkout in roots.items()
-           for file in subprocess.run(["git", "-C", str(checkout), "ls-files"], capture_output=True, text=True).stdout.split("\n")]
-
-
-def cites_code(feature):
-    """Whether one '# expects:' line of the feature cites a name that its source file really holds."""
-    for file_part, by_name in cites.items():
-        if file_part.endswith(PROSE) or TESTS.search(file_part):
-            continue
-        for name, features in by_name.items():
-            if feature in features and any(names(name, "\n".join(read(prefix, file)), False) for prefix, file in tracked
-                                           if file == file_part or file.endswith("/" + file_part)):
-                return True
-    return False
-
-
 listing = {feature for path in changed_files for feature in touches.get(path, ())} - set(direct) - set(callers)
 for feature in sorted(listing):
-    print("listed" if cites_code(feature) else "uncited", feature, sep="\t")
+    print("listed" if behaviors[feature] else "blind", feature, sep="\t")
 for key, name in edited.items():
     if key not in reached:
         print("loose", crowded.get(key, name), sep="\t")
