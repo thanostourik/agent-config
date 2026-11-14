@@ -87,10 +87,11 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    - A step that checks the result of the edited function counts, also when its input
      is not the input the change is about. Drive its feature even when you expect the
      step to pass unchanged: the drive exists to catch what you did not expect.
-   - Two features that reach the edited code through the same caller, as
-     `verify affected` names it, and feed it the same kind of input, check the same
-     thing. One of them is enough: name the other in your report. Features that reach it
-     through different callers are different checks.
+   - Two features check the same thing only when they reach the edited code through
+     the same caller, as `verify affected` names it, feed it the same input, and assert
+     the same result. Then one of them is enough: name the other in your report. Read
+     both steps before you decide. When the callers differ, or any value they send or
+     assert differs, drive both.
    - A feature that only passes through the edited code is not affected. Its steps need
      that code to work, the way every feature needs sign-in, a layout or a connection,
      but they check something else. A step that feeds the edited code a value on its way
@@ -434,7 +435,7 @@ Start from the summary lines.
   kind), or **blocked** (with what was tried). For a feature you drove by name, add the
   step that checks the edited code.
 - Name the changed files you skipped and why. Name the features you left out because
-  another driven feature checks the same call, and the edited code that other features
+  another driven feature checks the same thing, and the edited code that other features
   only pass through, so the user can ask for them or for `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
 - Link evidence with Markdown links to absolute paths, and check that each linked file
