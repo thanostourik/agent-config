@@ -40,7 +40,7 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 
 | Skill | What it does |
 |---|---|
-| `t3-fan-out` | Starts one T3 thread and worktree per task, waits for all of them, and reports once. |
+| `t3-fan-out` | Starts one T3 thread and worktree per task, waits for all of them, and reports once. Say "fan out" to trigger it, "detach" to let the threads run on their own, or "delegates" to run the tasks as delegates of the current thread. |
 | `create-jira-issue` | Creates or drafts Jira issues through the Jira MCP server, after asking which project. |
 
 ## Verification
