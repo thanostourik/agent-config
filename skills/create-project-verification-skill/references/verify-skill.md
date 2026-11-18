@@ -175,8 +175,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   - the copy, with a feature running on it, fits in memory beside the reserve.
 
   The summary line of a feature that ran on a lane names it (`lane 1`).
-- In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
-  drives another checkout of that app, such as a worktree. A `--base <ref>` that only the
+- In a companion repo, `apps` lists the app repos, and `verify` finds each app's clone
+  next to this repo's main clone. `APP_<NAME>=<path> verify ...` drives another checkout
+  of that app, such as a worktree. A `--base <ref>` that only the
   app checkout has still works: the companion's own changes are then compared with its
   default branch.
 

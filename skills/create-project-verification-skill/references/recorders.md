@@ -4,7 +4,8 @@ You record end-to-end recipes for one area of this project. The short prompt tha
 you names the repository root, the example recipe and your area. Run every command from the
 repository root. Read nothing outside it: another checkout's recipes are not this
 project's. The one exception is a companion repo, where the app's source is in the app
-checkouts (`$APP_<NAME>` when it is set, else the paths in `<skill>/apps`). Below, `<skill>`
+checkouts (`$APP_<NAME>` when it is set, else the clone of each repo in `<skill>/apps` next
+to this repo's main clone). Below, `<skill>`
 is the folder that holds this file, such as `.agents/skills/verify-shop`.
 
 ## Steps

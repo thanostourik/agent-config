@@ -37,6 +37,20 @@ mkdir -p ".claude/skills/verify-$app"
 sed -e "s/<skill name>/verify-$app/g" -e "s|^description: .*|description: $description|" "$shipped/claude-stub.md" > ".claude/skills/verify-$app/SKILL.md"
 grep -q -x '.cache/' "$skill/.gitignore" 2> /dev/null || echo '.cache/' >> "$skill/.gitignore"
 
+folders=()
+if grep -q -E '^[^[:space:]]+[[:space:]]+[./~]' "$skill/apps" 2> /dev/null; then
+  [[ -f "$keep/apps" ]] || cp "$skill/apps" "$keep/apps"
+  while read -r name where; do
+    [[ -n "$name" ]] || continue
+    if [[ "$where" =~ ^[./~] ]] && url=$(git -C "$where" remote get-url origin 2> /dev/null); then
+      url=${url%/} url=${url%.git}
+      where=$(sed -E 's#.*[/:]([^/:]+/[^/:]+)$#\1#' <<< "$url")
+    fi
+    [[ "$where" =~ ^[./~] ]] && folders+=("$name")
+    echo "$name $where"
+  done < "$keep/apps" > "$skill/apps"
+fi
+
 convert() {
   awk '
     NR == 1 && /^# / { title = substr($0, 3); next }
@@ -135,6 +149,7 @@ mapfile -t bare < <(grep -l -E '^# alone[[:space:]]*$' "$skill"/features/*.sh 2>
 ((${#bare[@]})) && todo+=("Give each '# alone' its reason ('# alone: <the shared state it changes>'), or give the feature its own namespace and drop the line, in: ${bare[*]}.")
 mapfile -t alone < <(grep -l '^# alone' "$skill"/features/*.sh 2> /dev/null | xargs -r -n1 basename | sed 's/\.sh$//')
 ((${#alone[@]})) && todo+=("For each '# alone' feature, read what it changes: when only features that change the same state clash with it, replace the line with '# shares: <group>: <that state>', the same group for each of them, so they take turns while other features run beside them. Keep '# alone' only when every feature clashes with it, such as a clock change or a restart. In: ${alone[*]}.")
+((${#folders[@]})) && todo+=("Replace the folder of each of these apps in $skill/apps with the repo path its git remote ends in, such as client-org/shop: ${folders[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
 [[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3).")
 grep -q -s 'maintain-verify' AGENTS.md CLAUDE.md && todo+=("Replace the ## Verification section of AGENTS.md (and CLAUDE.md) with the generator's references/agents-verification.md.")

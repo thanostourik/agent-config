@@ -78,10 +78,13 @@ repo: a separate git repo next to the app checkouts that holds only agent files.
 
 Run one `git ls-files` here. When it lists no app source, this is a companion:
 
-- Ask for the path of each app checkout. Write `.agents/skills/verify-<app>/apps` with one
-  line `<name> <path>` per app, the path relative to this repo's root.
-- `bin/verify` exports each path as `APP_<NAME>` (upper case, `-` as `_`). A value the
-  caller set wins.
+- Ask which app repos the skill covers. Write `.agents/skills/verify-<app>/apps` with one
+  line `<name> <repo>` per app. `<repo>` is the repo path the app's git remote ends in,
+  such as `client-org/shop`, never a folder.
+- `bin/verify` finds each app's main clone next to this repo's main clone, as "Another
+  repo" in [`references/lifecycle.md`](references/lifecycle.md) says. It exports the
+  clone's folder as `APP_<NAME>` (upper case, `-` as `_`). A value the caller set wins for
+  that call, such as a worktree of the app.
 - Recipes, `# touches:` lines and helpers name app files as `<name>/<path>` and reach them
   through `$APP_<NAME>`.
 
