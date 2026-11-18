@@ -50,7 +50,7 @@ only when you type `/skill-name` (`$skill-name` in Codex).
 |---|---|
 | Pull requests | `file-pr`, `modernize`, `takeover`, `tourik`, `squash-merge-pr` |
 | Reviews | `claude-review`, `codex-review`, `grok-review`, `cursor-grok-review`, `review-loop`, `triple-review`, `depatch` |
-| Planning and writing | `grill-me`, `html-communication`, `bro` |
+| Planning and writing | `grill-me`, `html-communication`, `draftie`, `bro` |
 | Coordination and tickets | `t3-fan-out`, `create-jira-issue` |
 | Verification | `create-project-local-stack`, `create-project-verification-skill`, `maintain-project-verification-skill`, `with-verification` |
 
