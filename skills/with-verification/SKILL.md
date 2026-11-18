@@ -10,7 +10,7 @@ description: Use when the user adds "with verify" or "with verification" to a ta
 The user wants this task verified with the project's `verify-<app>` skill
 before you call it done. That skill lives either in this repository or in a
 **companion repo**: a separate git repo next to the app checkouts that holds
-only the agent files, with an `apps` file that lists them.
+only the agent files, with an `apps` file that lists the app repos.
 
 Find the skill before you change anything, so a missing one shows up early.
 Drive nothing until the task has changed code.
@@ -25,11 +25,15 @@ main checkout is the original clone, not the worktree's own folder:
 
 ```bash
 main=$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd -P)
+mapfile -t urls < <(git -C "$main" config --get-regexp '^remote\..*\.url$' | awk '{ url = tolower($2); sub(/\/$/, "", url); sub(/\.git$/, "", url); print url }')
 for apps in "$(dirname "$main")"/*/.agents/skills/verify-*/apps; do
   [[ -f "$apps" ]] || continue
-  companion=$(cd "$(dirname "$apps")/../../.." && pwd -P)
-  while read -r name path; do
-    [[ -n "$name" && "$(cd "$companion" && cd "$path" 2>/dev/null && pwd -P)" == "$main" ]] && echo "$name $(dirname "$apps")"
+  while read -r name repo; do
+    [[ -n "$name" ]] || continue
+    repo=${repo,,} repo=${repo%.git}
+    for url in "${urls[@]}"; do
+      [[ "$url" == *[/:]"$repo" ]] && { echo "$name $(dirname "$apps")"; break; }
+    done
   done < "$apps"
 done
 ```

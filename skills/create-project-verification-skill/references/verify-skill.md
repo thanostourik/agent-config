@@ -61,9 +61,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    run `verify up`, then `verify <feature>` with that feature, and nothing else. Any other
    feature you drive here is driven again on every round. Other features that show the
    same bug wait for step 3.
-   - `verify up` reuses the run's environment when it is already up, and restarts only
-     the app: the app runs the code it started with. Keep the environment up for the
-     whole task.
+   - `verify up` reuses the run's environment when it is already up. It restarts the
+     app, plus any dependency whose files changed: each runs the code it started with.
+     Keep the environment up for the whole task.
    - The environment also keeps what earlier code did to it, such as the migrations it
      applied. When a change or a rebase alters one of those (edits, renames or renumbers an
      applied migration, or adds one before it), run `verify down` first, so `verify up`
@@ -175,8 +175,9 @@ commands. Wait until it finishes, then read its output once. Do not poll it or t
   - the copy, with a feature running on it, fits in memory beside the reserve.
 
   The summary line of a feature that ran on a lane names it (`lane 1`).
-- In a companion repo, `apps` lists the app checkouts. `APP_<NAME>=<path> verify ...`
-  drives another checkout of that app, such as a worktree. A `--base <ref>` that only the
+- In a companion repo, `apps` lists the app repos, and `verify` finds each app's clone
+  next to this repo's main clone. `APP_<NAME>=<path> verify ...` drives another checkout
+  of that app, such as a worktree. A `--base <ref>` that only the
   app checkout has still works: the companion's own changes are then compared with its
   default branch.
 

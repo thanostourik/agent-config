@@ -58,11 +58,12 @@ repository, next to the app checkout, that holds the verification skill and its 
 1. Create a Git repository beside the app checkout, for example `my-app-qa/` beside
    `my-app/`.
 2. Open an agent session in `my-app-qa/` and run `/create-project-verification-skill`.
-   Give each app checkout's path when it asks.
+   Name the app repos when it asks.
 3. The generator writes the verification skill and the file
-   `.agents/skills/verify-<app>/apps`. That file lists each app's name and the path to
-   its checkout, relative to the QA repository's root, for example `my-app ../my-app`.
-   All agent files stay in the QA repository.
+   `.agents/skills/verify-<app>/apps`. That file lists each app's name and its repo as
+   its git remote names it, for example `my-app client-org/my-app`, never a folder.
+   `bin/verify` finds the app's clone next to the QA repository by that repo, so keep
+   both clones in the same folder. All agent files stay in the QA repository.
 4. In the app repository, add "with verify" to a coding request. The `with-verification`
    skill finds the companion and verifies the checkout you are changing. This works in
    worktrees too. If the app repository has its own `verify-<app>` skill, that one is

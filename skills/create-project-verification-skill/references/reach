@@ -64,15 +64,14 @@ root = pathlib.Path(os.environ.get("VERIFY_ROOT") or skill.parents[2])
 
 
 def app_roots():
-    """Prefix of a recipe path -> the checkout it is in. A companion repo names app files '<app>/<path>'."""
+    """Prefix of a recipe path -> the checkout it is in. A companion repo names app files '<app>/<path>'; bin/verify exports each app's checkout."""
     roots = {"": root}
     apps = skill / "apps"
     if apps.exists():
         for line in apps.read_text().split("\n"):
             if line.strip():
-                name, path = line.split()
-                variable = "APP_" + name.upper().replace("-", "_")
-                roots[name + "/"] = pathlib.Path(os.environ.get(variable) or (root / path)).resolve()
+                name = line.split()[0]
+                roots[name + "/"] = pathlib.Path(os.environ["APP_" + name.upper().replace("-", "_")]).resolve()
     return roots
 
 

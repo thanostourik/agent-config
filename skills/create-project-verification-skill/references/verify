@@ -38,15 +38,41 @@ command -v timeout > /dev/null || { echo "verify: needs GNU timeout (coreutils)"
 
 app_variable() { echo "APP_$(tr 'a-z-' 'A-Z_' <<< "$1")"; }
 
+# The main clone of a repo next to this repo's main clone, found by a remote that ends in the repo path.
+clone_of() {
+  local repo=${1,,} variable=$2 main folder url found=()
+  repo=${repo%.git}
+  main=$(dirname "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)")
+  for folder in "$(dirname "$main")"/*/; do
+    folder=${folder%/}
+    [[ -d "$folder/.git" ]] || continue
+    while read -r _ url; do
+      url=${url,,} url=${url%/} url=${url%.git}
+      [[ "$url" == *[/:]"$repo" ]] && { found+=("$folder"); break; }
+    done < <(git -C "$folder" config --get-regexp '^remote\..*\.url$' 2> /dev/null)
+  done
+  if ((${#found[@]} == 0)); then
+    echo "verify: no clone of $1 next to this repo in $(dirname "$main"); clone it there, or set $variable to a checkout of it for this run" >&2
+    return 1
+  fi
+  if ((${#found[@]} > 1)); then
+    echo "verify: several clones of $1 in $(dirname "$main"): ${found[*]}; set $variable to the one for this run" >&2
+    return 1
+  fi
+  echo "${found[0]}"
+}
+
 export_apps() {
-  local name path variable
+  local name repo variable folder
   [[ -f "$skill/apps" ]] || return 0
   export GIT_OPTIONAL_LOCKS=0
-  while read -r name path; do
+  while read -r name repo; do
     [[ -n "$name" ]] || continue
     variable=$(app_variable "$name")
-    [[ -n "${!variable:-}" ]] || printf -v "$variable" '%s' "$(cd "$root" && cd "$path" 2> /dev/null && pwd)"
-    [[ -n "${!variable}" ]] || { echo "verify: no checkout of $name at $path; set $variable to it" >&2; return 1; }
+    if [[ -z "${!variable:-}" ]]; then
+      folder=$(clone_of "$repo" "$variable") || return 1
+      printf -v "$variable" '%s' "$folder"
+    fi
     export "${variable?}"
   done < "$skill/apps"
 }
@@ -94,9 +120,9 @@ changed_in() {
 }
 
 changed_files() {
-  local name path variable found=""
+  local name variable found=""
   if [[ -f "$skill/apps" ]]; then
-    while read -r name path; do
+    while read -r name _; do
       [[ -n "$name" ]] || continue
       variable=$(app_variable "$name")
       if [[ -n "$base" ]] && ! has_base "${!variable}"; then
@@ -119,9 +145,9 @@ fingerprint_of() {
 }
 
 fingerprint() {
-  local name path variable
+  local name variable
   if [[ -f "$skill/apps" ]]; then
-    while read -r name path; do
+    while read -r name _; do
       [[ -n "$name" ]] || continue
       variable=$(app_variable "$name")
       fingerprint_of "${!variable}" "$name/"
@@ -176,10 +202,10 @@ ranges_in() {
 
 # The changed line ranges of the files in $work/sources. A file with no range against the base counts as changed whole.
 source_ranges() {
-  local name path variable
+  local name variable
   {
     if [[ -f "$skill/apps" ]]; then
-      while read -r name path; do
+      while read -r name _; do
         [[ -n "$name" ]] || continue
         variable=$(app_variable "$name")
         [[ -n "$base" ]] && ! has_base "${!variable}" && continue

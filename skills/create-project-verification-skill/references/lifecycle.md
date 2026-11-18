@@ -46,6 +46,22 @@ checkouts. Take the first case that applies:
 Build a setup yourself only when the user asks, as part of the repo, never inside the verify
 skill's `bin/`. Never use a running developer instance without the user's approval.
 
+## Another repo
+
+Where another developer keeps a clone is not this project's fact. So no file holds the
+folder of another repo the app needs: not a committed one, not a git-ignored settings
+file, not a local variables file. Only the run's own record may hold the folder it found,
+and `cleanup.sh` deletes that record.
+
+- When `local-stack/stack` starts that repo, its own lookup finds the clone. Pass nothing.
+- Otherwise `launch.sh` finds it the same way on every run. It looks in the folders next to
+  this repo's main clone, so it works the same from every worktree. The main clone is the
+  folder that holds `git rev-parse --path-format=absolute --git-common-dir`. It takes the
+  main clone whose git remote ends in the repo path `PROJECT.md` names. A worktree never
+  counts: its `.git` is a file, not a folder.
+- When there is no such clone, or more than one, `launch.sh` stops. It names the repo and
+  says to clone it next to this one.
+
 ## Ownership
 
 The ownership record in `.cache/` lists what the run created. An environment is **owned**
@@ -62,8 +78,9 @@ A local URL, a branch name or a separate container project name is not a marker.
 
 - Use the environment the user chose. Do not invent a second mechanism next to it.
 - A run's environment lives from `bin/verify up` to `bin/verify down`, usually one task. A
-  second `bin/verify up` reuses it when every marker still checks out, and restarts only
-  the app. Recipes create their own data, so no reseed is needed.
+  second `bin/verify up` reuses it when every marker still checks out. It restarts the
+  app, plus any dependency whose files changed, and recreates nothing when nothing
+  changed. Recipes create their own data, so no reseed is needed.
 - Anything not owned is off limits: never attach to it, change it, reset it or stop it. If
   a required port or resource is occupied, report a blocker.
 - If ownership is uncertain, report a blocker. Never wipe an environment to hide missing
