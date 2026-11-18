@@ -138,6 +138,10 @@ questions is the only work that happens on main.
   deployed environments, remote databases, config files outside the repository, and password
   stores.
 
+## New projects
+
+- Use pnpm: scaffold with `pnpm create <x>` and install with `pnpm install`.
+
 ## TypeScript
 
 - Type safety is useful, take advantage of it.
