@@ -34,7 +34,7 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 |---|---|
 | `grill-me` | Interviews you about a plan or decision in rounds of numbered questions, each with a recommended answer. |
 | `html-communication` | Presents a plan, report, comparison, or UI mockup as one readable HTML file. |
-| `draftie` | Uploads one HTML file to draftie and gives you its link, or reads a page back from a draftie link. Needs `npx draftie auth login` once. |
+| `draftie` | Uploads one HTML file to draftie and gives you its link, or reads a draft back from a draftie link. Needs `npx draftie auth login` once. |
 | `bro` | *Manual.* Restates the last message in plain language, without jargon. |
 
 ## Coordination and tickets
