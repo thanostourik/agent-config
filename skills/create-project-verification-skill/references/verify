@@ -382,6 +382,7 @@ check_expects() {
         line = expects[i]; at = index(line, " -> ")
         if (!at) { print "expects line has no \" -> \": " line; continue }
         target = substr(line, at + 4)
+        if (target ~ /^not driven:[[:space:]]*covered by/) { print "expects line points at another feature; delete it, since the line in that feature covers the behavior: " line; continue }
         if (target ~ /^not driven:[[:space:]]*[^[:space:]]/) continue
         if (target ~ /^not driven/) { print "expects line says not driven without a reason: " line; continue }
         k = split(target, labels, /, /)
@@ -420,11 +421,11 @@ uncovered_items() {
         print "action\t" $1 "\t" $2
       }' "$work/cited" -
   fi
+  cat "$skill"/features/*.sh 2> /dev/null | grep '^# expects:' > "$work/cited"
   for list in "$cache"/expect/*.txt; do
     [[ -f "$list" ]] || continue
     name=$(basename "$list" .txt)
     [[ -f "$skill/features/$name.sh" ]] && continue
-    cat "$skill/features/$name"-*.sh 2> /dev/null | grep '^# expects:' > "$work/cited"
     sed -n 's/^- \([^ ][^:]*: [^ ].*\)$/\1/p' "$list" | while IFS= read -r source; do
       grep -q -F -- "$source" "$work/cited" || printf 'expectation\t%s\t%s\n' "$source" "$name"
     done
@@ -448,6 +449,26 @@ not_driven_reasons() {
 }
 
 area_files() { sed -n "s/^\(split: \)\{0,1\}$1: .*; files: //p" "$cache/areas.txt" 2> /dev/null | tr ' ' '\n'; }
+
+# The entry points .cache/areas.txt lists for the area $1, or with --others for every other area.
+area_points() {
+  local others=0
+  [[ $1 == --others ]] && { others=1; shift; }
+  sed -n 's/^\(split: \)\{0,1\}\([^:]*\): .*; entry points: \(.*\); files: .*/\2\t\3/p' "$cache/areas.txt" 2> /dev/null \
+    | awk -F '\t' -v area="$1" -v others=$others '($1 == area) != others { n = split($2, points, /, /); for (i = 1; i <= n; i++) print points[i] }'
+}
+
+# An entry point is the area's when the area lists it, or when its file is the area's and no other area lists it.
+area_entries() {
+  awk -F '\t' -v area="$1" '
+    FILENAME == ARGV[1] { files[$0]; next }
+    FILENAME == ARGV[2] { points[$0]; next }
+    FILENAME == ARGV[3] { others[$0]; next }
+    $1 == "expectation" { if ($3 == area) print; next }
+    $1 == "action" { if ($3 in files) print; next }
+    $1 == "entry point" { if ($2 in points || ($3 in files && !($2 in others))) print; next }
+    { if ($1 in points || ($NF in files && !($1 in others))) print }' "$work/area-files" "$work/area-points" "$work/other-points" "$2"
+}
 
 lane_count() { cat "$cache/lanes" 2> /dev/null || echo 0; }
 lane_id() { if (($1 == 0)); then cat "$cache/run-id"; else echo "$(cat "$cache/run-id")-l$1"; fi; }
@@ -808,7 +829,11 @@ up_env() {
   [[ -r /proc/meminfo ]] && before=$(meminfo MemAvailable)
   began=$SECONDS since=$EPOCHSECONDS
   if ((count == 0)); then
-    on_lane 0 "$skill/bin/launch.sh" "$@" || broken+=(0)
+    on_lane 0 "$skill/bin/launch.sh" "$@" > "$cache/launch-0.log" 2>&1 < /dev/null || {
+      broken+=(0)
+      echo "verify: $(lane_id 0) did not start ($cache/launch-0.log):" >&2
+      tail -n 20 "$cache/launch-0.log" >&2
+    }
   else
     for ((lane = 0; lane <= count; lane++)); do
       ((lane <= previous)) || claim_lane "$lane" || { echo "verify: another verify changed the lanes; run up again" >&2; wait; return 1; }
@@ -891,9 +916,11 @@ case $command in
     if (($#)); then
       area_files "$1" > "$work/area-files"
       [[ -s "$work/area-files" ]] || { echo "verify: no area '$1' with files in .cache/areas.txt" >&2; exit 2; }
-      awk -F '\t' -v area="$1" 'FILENAME == ARGV[1] { mine[$0]; next } ($1 == "expectation" ? $3 == area : $3 in mine)' "$work/area-files" "$work/uncovered" > "$work/uncovered-area"
+      area_points "$1" > "$work/area-points"
+      area_points --others "$1" > "$work/other-points"
+      area_entries "$1" "$work/uncovered" > "$work/uncovered-area"
       mv "$work/uncovered-area" "$work/uncovered"
-      total=$(awk -F '\t' 'FILENAME == ARGV[1] { mine[$0]; next } ($NF in mine)' "$work/area-files" "$work/entrypoints" | wc -l)
+      total=$(area_entries "$1" "$work/entrypoints" | wc -l)
     else
       total=$(wc -l < "$work/entrypoints")
     fi

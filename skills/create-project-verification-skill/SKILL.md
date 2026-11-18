@@ -52,6 +52,7 @@ replace it (delete and generate again) or upgrade it with
   bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
   bin/reach           copied from <generator>/references/reach, unchanged (needs python3)
+  bin/detach          copied from <generator>/references/detach, unchanged
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
   bin/env.sh bin/after-feature.sh   optional
@@ -103,6 +104,17 @@ Answer from the codebase. Ask only what you cannot observe.
 - **Entry points:** the files that define routes, screens, commands or endpoints, found
   with one grep. That grep becomes `bin/entrypoints.sh`.
 - **Checks:** the focused test, lint and type-check commands.
+- **Timers:** the waits a feature would sit through, such as expiries, schedules, retry
+  delays and timeouts, and how the run can shorten each: a setting, an environment
+  variable, a file the stack reads. When some can't be shortened from outside the app,
+  such as a constant compiled into it, list them and ask me once which way to go:
+  - a test-only setting in the product, which you add in this branch as a commit of its
+    own;
+  - a fake clock the run starts the app with, such as `libfaketime` when it is installed
+    (a statically linked binary, such as most Go programs, ignores it);
+  - leave the behaviors that wait on them undriven.
+
+  Write the answer into `PROJECT.md`'s Timers section.
 - **Other repos:** another repo the app needs at run time, such as a backend. Write into
   `PROJECT.md` the repo path its git remote ends in, such as `my-org/backend`. Never write
   a folder for it anywhere, not even in a git-ignored file: the run finds the clone each
@@ -138,6 +150,11 @@ At the other levels, write the scripts below into `bin/` and make each one execu
   - With `VERIFY_APP=build` it runs the production build.
   - A run uses `dev` unless its first `bin/verify up` sets `VERIFY_APP=build`. `verify all`
     and lanes always use `build`.
+  - It starts every process that must outlive it, such as the app or a stub, through
+    `bin/detach`, with input and output redirected:
+    `bin/detach <command> < /dev/null > "$log" 2>&1 &`. So does every helper that restarts
+    one. Agents run in systemd scopes, and a process started in one dies when that agent
+    ends. A process that keeps the caller's output open keeps `bin/verify up` waiting.
   - It is idempotent. When the run's environment already exists, a second call restarts the
     app, plus any dependency whose files changed, and recreates nothing when nothing
     changed. A second `bin/verify up` then takes seconds. Example: a sign-in server in
@@ -252,6 +269,8 @@ Write `PROJECT.md`, about 10 KB, with these sections:
   the files whose change triggers each restart.
 - **Sign-in and data:** the test accounts and baseline data a recipe can count on, each
   checked with one command against the running environment.
+- **Timers:** each timer the features wait on, and how the run shortens it, or that I chose
+  to leave it undriven (step 1).
 - **Stubs:** for each stub or fake service in the run, what it returns and stores and what
   it cannot do (such as an ML stub that stores nothing, or a collector that returns no
   data), each checked with one call. Recorders read this instead of finding it out in
@@ -293,12 +312,14 @@ current.
 Every recipe waits on the environment in every run.
 
 - Derive every per-run file name and port from `$VERIFY_RUN_ID`, never a fixed path such as
-  `.cache/run/`, so lanes can run side by side.
+  `.cache/run/`, so lanes can run side by side. That includes the ports the app picks for
+  itself while it runs, such as a host port per container. When the app picks them from a
+  fixed range and has no setting for it, two copies clash: the skill then gets no lanes.
 - Shorten every timer the features wait on, in the run's own configuration: job intervals,
   retry delays, grace periods, expiries, polling.
   - When the project's stack fixes the environment and offers no way to override it, add
-    one to the stack as part of the repo, such as a compose override file it reads. Or note
-    the gap and start the job once per recipe.
+    one to the stack as part of the repo, such as a compose override file it reads. A
+    timer inside the app's own code follows my answer from step 1.
   - Write each override and the recipes that rely on it into `PROJECT.md`.
   - Before shortening a job for all features, check which recipes set up the state that job
     consumes.
@@ -333,8 +354,9 @@ Every recipe waits on the environment in every run.
    `<area>: <n> lines; entry points: <...>; files: <...>`. The files are the entry points'
    folders and the project files they import. One recorder records one area. Review the
    file:
-   - Leave a line marked `split:` as it is. It is one file over the size, and its recorder
-     takes longer.
+   - Split a line marked `split:`, and any area much larger than the rest, by user goal
+     into several areas. Each new line keeps the shared files and lists only its own entry
+     points. All recorders run at once, so the largest area sets when recording ends.
    - Rename an area whose name does not say what the user calls the screen, such as one
      named `area2-<name>`.
    - Move a file the lines miss, such as a component two screens share, to the area that
@@ -368,12 +390,13 @@ Every recipe waits on the environment in every run.
      after a busy run. A busy run is the example recipe's flow plus a few hundred sign-ins,
      30 at a time. Read the use with `docker stats`. Never size the limit from an idle
      stack.
-4. Run `bin/verify up --lanes 1`. A feature marked `# alone` waits until its copy is free
+4. Run `bin/verify up --lanes 1`, or `bin/verify up` when two copies clash on ports
+   (step 3). A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
    copy, every drive runs its `# alone` features there instead. Then start recorders as the
    Recorders section of the copied `FULL.md` says: one per area, every area at once,
    heaviest first.
-5. Read only their result files. Add their traps to `PROJECT.md`'s Gotchas.
+5. Read only their result files, as the Recorders section of `FULL.md` says.
 
 ## 5. Prove it
 
@@ -386,9 +409,9 @@ where it already ran, which also proves each recipe repeats.
 
 The runner starts up to as many features at once as the machine has cores, each only when
 the machine-wide queue has room. Write a `jobs` file only when the project needs a lower
-limit, such as a service with few connections. When `# alone` features remain, write into
-the skill's `lanes` file the most extra copies a drive may start: about their total time
-divided by the longest parallel feature.
+limit, such as a service with few connections. When `# alone` features remain and two
+copies do not clash on ports, write into the skill's `lanes` file the most extra copies a
+drive may start: about their total time divided by the longest parallel feature.
 
 Then check the lifecycle once:
 
@@ -418,6 +441,18 @@ the focused check commands filled in. In a companion repo it goes in the compani
 - Report an older verification system instead of deleting it.
 
 Merge `Bash(sudo:*)` into `permissions.deny` of `.claude/settings.json`, keeping the rest.
-Commit following the repo's conventions. Report: the isolation level, how long recording and
-`bin/verify all` took, one line per feature (pass, fail with its kind, or blocked with what
-was tried), and product defects found.
+Commit following the repo's conventions.
+
+Report what I need to know, in plain words:
+
+- the isolation level;
+- how long setup, recording and the final `bin/verify all` took, from times you took with
+  `date` when each began and ended, never estimated;
+- one line per area: features passing, failing with the failure kind, or blocked with what
+  was tried;
+- each product defect, and each piece of dead code the recorders found;
+- the decisions left to me;
+- the behaviors no step drives, grouped by reason, each with what would make it drivable.
+
+Fixes to the skill's own scripts while you built it are part of building it: leave them
+out.
