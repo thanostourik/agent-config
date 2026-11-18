@@ -123,7 +123,7 @@ for script in launch.sh cleanup.sh doctor.sh; do
   [[ -x "$skill/bin/$script" ]] || todo+=("Write $skill/bin/$script.")
 done
 [[ -f "$skill/bin/launch.sh" ]] && ! grep -q VERIFY_APP "$skill/bin/launch.sh" && todo+=("Give $skill/bin/launch.sh the two app modes of the generator's step 3: the developers' dev command when VERIFY_APP=dev, the runner's default, and the production build when VERIFY_APP=build.")
-[[ -f "$keep/SKILL.md" ]] && todo+=("Make bin/launch.sh idempotent if it is not: a second bin/verify up reuses the run's environment and restarts only the app.")
+[[ -f "$keep/SKILL.md" ]] && todo+=("Make bin/launch.sh idempotent if it is not: a second bin/verify up reuses the run's environment and restarts the app, plus any dependency whose files changed.")
 [[ -x "$skill/bin/server-errors.sh" ]] || todo+=("Write $skill/bin/server-errors.sh (the generator's step 3) when the app has a server log, so a failure's evidence holds the server errors behind it.")
 stale=$(grep -l -E 'steps\.sh|drive\.sh|rec\.sh|find\.sh|maintain-verify|\.cache/record|drive/[^ ]*/steps' "$skill"/bin/* "$skill"/PROJECT.md 2> /dev/null | grep -v -E '/bin/(verify|lib\.sh)$' || true)
 [[ -n "$stale" ]] && todo+=("Remove references to the removed scripts in: $(echo $stale).")

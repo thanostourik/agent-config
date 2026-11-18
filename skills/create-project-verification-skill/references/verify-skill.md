@@ -61,9 +61,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    run `verify up`, then `verify <feature>` with that feature, and nothing else. Any other
    feature you drive here is driven again on every round. Other features that show the
    same bug wait for step 3.
-   - `verify up` reuses the run's environment when it is already up, and restarts only
-     the app: the app runs the code it started with. Keep the environment up for the
-     whole task.
+   - `verify up` reuses the run's environment when it is already up. It restarts the
+     app, plus any dependency whose files changed: each runs the code it started with.
+     Keep the environment up for the whole task.
    - The environment also keeps what earlier code did to it, such as the migrations it
      applied. When a change or a rebase alters one of those (edits, renames or renumbers an
      applied migration, or adds one before it), run `verify down` first, so `verify up`

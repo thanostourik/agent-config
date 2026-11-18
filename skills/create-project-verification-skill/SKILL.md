@@ -100,8 +100,10 @@ Answer from the codebase. Ask only what you cannot observe.
 - **Entry points:** the files that define routes, screens, commands or endpoints, found
   with one grep. That grep becomes `bin/entrypoints.sh`.
 - **Checks:** the focused test, lint and type-check commands.
-- **Sibling repos:** another repo the app needs at run time, such as a backend. Use the path
-  its docs name, else `../<name>`, and write it into `PROJECT.md`.
+- **Other repos:** another repo the app needs at run time, such as a backend. Write into
+  `PROJECT.md` the repo path its git remote ends in, such as `my-org/backend`. Never write
+  a folder for it anywhere, not even in a git-ignored file: the run finds the clone each
+  time, as "Another repo" in [`references/lifecycle.md`](references/lifecycle.md) says.
 
 If the app does not build or start as it is, fix that or report it before going on.
 
@@ -133,8 +135,11 @@ At the other levels, write the scripts below into `bin/` and make each one execu
   - With `VERIFY_APP=build` it runs the production build.
   - A run uses `dev` unless its first `bin/verify up` sets `VERIFY_APP=build`. `verify all`
     and lanes always use `build`.
-  - It is idempotent. When the run's environment already exists, it restarts the app, so a
-    second `bin/verify up` takes seconds.
+  - It is idempotent. When the run's environment already exists, a second call restarts the
+    app, plus any dependency whose files changed, and recreates nothing when nothing
+    changed. A second `bin/verify up` then takes seconds. Example: a sign-in server in
+    another repo's stack loads a theme built from this repo. After a theme edit, a second
+    `up` restarts that server too, or no feature sees the edit.
 - `cleanup.sh` removes only what the run created, after success, failure and interruption,
   and checks that none of it remains. It never checks resources that existed before. With
   no run recorded, it exits 0.
@@ -239,8 +244,9 @@ Write `PROJECT.md`, about 10 KB, with these sections:
 - **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
   markers, and the success paths the isolation cannot reach (such as a real payment that a
   stub replaces).
-- **Environment:** what `launch.sh`, `cleanup.sh` and `doctor.sh` do, and how long a first
-  and a second `bin/verify up` take.
+- **Environment:** what `launch.sh`, `cleanup.sh` and `doctor.sh` do, how long a first
+  and a second `bin/verify up` take, and which dependencies a second `up` restarts, with
+  the files whose change triggers each restart.
 - **Sign-in and data:** the test accounts and baseline data a recipe can count on, each
   checked with one command against the running environment.
 - **Stubs:** for each stub or fake service in the run, what it returns and stores and what

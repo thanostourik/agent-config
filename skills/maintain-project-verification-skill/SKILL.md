@@ -41,7 +41,7 @@ It is safe to run again. Commit its result before anything else.
 ## 2. Do what it lists
 
 Do the items the script lists, in the order it lists them, and nothing else. An item with
-no entry below is done as its line says. Two more items, marked "every upgrade", are
+no entry below is done as its line says. Three more items, marked "every upgrade", are
 checked even when the script does not list them. Do them after the `launch.sh` items.
 
 - **`PROJECT.md`**: write it from `.cache/upgrade/SKILL.md` and `.cache/upgrade/README.md`,
@@ -51,7 +51,9 @@ checked even when the script does not list them. Do them after the `launch.sh` i
   - Drop the rules the shipped `SKILL.md` already states, and everything about the old
     runner, recorders, contract maps and maintenance modes.
 - **`launch.sh` idempotent**: when the run's environment is already up, a second call
-  rebuilds and restarts only the app, and recreates nothing when the source is unchanged.
+  restarts the app, plus any dependency whose files changed, and recreates nothing when
+  nothing changed. Keep each such dependency restart: a dependency can load files built
+  from this repo, such as a sign-in theme.
   `doctor.sh` accepts the result. Keep the ownership record of `launch.sh` and its recovery
   of an interrupted launch.
 - **The project's stack** (every upgrade): the repo may have an environment that
@@ -70,6 +72,12 @@ checked even when the script does not list them. Do them after the `launch.sh` i
   - Check that a helper that inserts rows directly follows the fixture rule in the new
     `SKILL.md`'s Data section, against the seed data or the dump.
   - `verify lint` checks only recipes, so this is the only check helpers get.
+- **Folders of other repos** (every upgrade): search `PROJECT.md`, the `bin/` helpers and
+  any git-ignored settings or variables file of the skill for the folder of another repo
+  the app needs, such as `../backend`.
+  - Replace each with the lookup that "Another repo" in `<generator>/references/lifecycle.md`
+    describes, and write the repo path in `PROJECT.md` instead of the folder.
+  - Delete a settings or variables file that held only such folders.
 - **References to the removed scripts**: remove them. A helper that reads the old runner's
   files, such as an `observe.sh` reading `.cache/drive/<feature>/steps/`, reads
   `$VERIFY_DIR/log` and `$EVIDENCE` instead.
