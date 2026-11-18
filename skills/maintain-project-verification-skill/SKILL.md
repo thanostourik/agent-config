@@ -134,7 +134,13 @@ Repair two things before the PR:
 - An `# expects:` line marked not driven for a reason the new rules do not allow. Recipes
   keep reasons that were written under older rules. `bin/verify uncovered` ends with every
   such reason and its features. Check each against the Header rules in the new
-  `SKILL.md`'s Recipes section.
+  `SKILL.md`'s Recipes section. Two of them need no recorder:
+  - A line for a branch no input can reach, such as a check an earlier layer always makes
+    first: delete it, and list it as dead code in the report.
+  - A line that waits on a timer the run cannot shorten, when `PROJECT.md` has no Timers
+    section: ask me once for all such timers, as step 1 of `<generator>/SKILL.md` says.
+    Write the answer into a Timers section of `PROJECT.md`. Lines left undriven by that
+    answer then name the timer as their reason.
 
 To repair them:
 
@@ -156,8 +162,8 @@ Commit and open one PR as the repository's conventions say. Report:
 
 - what the script changed, and what you did from its list;
 - each drive with its command, number of features and time;
-- the features the recorders repaired, the expectations that now have a step, and each
-  known failure.
+- the features the recorders repaired, the expectations that now have a step, each known
+  failure, and the dead code whose lines you deleted.
 
 End the report with exactly one of these lines. When `bin/verify uncovered` listed anything
 as not covered, fill in the count: "<n> entry points and actions have no recipe. Run

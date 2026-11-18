@@ -14,7 +14,8 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    the example recipe, and your area's expectation list `<skill>/.cache/expect/<area>.txt`.
    Your area's line in `<skill>/.cache/areas.txt` lists its files.
 2. Read every file of your area. Write its behaviors, one per line as the Recipes section
-   lists them, to `<skill>/.cache/behaviors/<area>.txt`.
+   lists them, to `<skill>/.cache/behaviors/<area>.txt`. When another area's line lists the
+   same file, take only the behaviors behind your own entry points.
 3. Split that list into features by user goal, each 8 to 15 steps, with one behavior per
    step where it can be driven on its own. Name them `<area>-<goal>`. A recipe of your area
    that already exists is one of them.
@@ -35,7 +36,8 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    marked not driven for a reason the Recipes section allows, until none is left. It ends
    with your area's not-driven reasons. Check each against the Header rules of the Recipes
    section, also in recipes written before you, and give each line whose reason does not
-   hold a step.
+   hold a step. An action in a file another area also lists, behind none of your entry
+   points, belongs to that area: leave it.
 8. Run your features once together with three features of areas that already have a result
    file in `<skill>/.cache/results/` (with all of them when fewer exist):
    `<skill>/bin/verify <yours> <others>`. Check only data your recipe created. This pass is
@@ -45,7 +47,12 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
 9. As your last action, write your result to `<skill>/.cache/results/<area>.txt`, through a
    temporary file and `mv`. Then return the same lines:
    - one line per feature: `passed`, `product defect: <what>`, or `blocked: <reason>`;
-   - one line per trap that cost you a run, for `PROJECT.md`'s Gotchas.
+   - one line per trap that cost you a run, for `PROJECT.md`'s Gotchas;
+   - one line per branch no input can reach: `dead code: <file>: <function>: <what reaches
+     first>`;
+   - one line per timer a behavior waits on that `PROJECT.md`'s Timers section does not
+     list: `timer: <name> (<file>): <what it delays>`. Its behaviors get no line until the
+     user decides.
 
 ## When the area already has recipes
 

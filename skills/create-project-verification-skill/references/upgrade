@@ -23,8 +23,8 @@ if [[ -f "$skill/SKILL.md" ]] && ! grep -q 'shipped by `create-project-verificat
 fi
 [[ -f "$skill/features/README.md" ]] && cp "$skill/features/README.md" "$keep/README.md"
 
-cp "$shipped/verify" "$shipped/lib.sh" "$shipped/harvest" "$shipped/areas" "$shipped/reach" "$skill/bin/"
-chmod +x "$skill/bin/verify" "$skill/bin/lib.sh" "$skill/bin/harvest" "$skill/bin/areas" "$skill/bin/reach"
+cp "$shipped/verify" "$shipped/lib.sh" "$shipped/harvest" "$shipped/areas" "$shipped/reach" "$shipped/detach" "$skill/bin/"
+chmod +x "$skill/bin/verify" "$skill/bin/lib.sh" "$skill/bin/harvest" "$skill/bin/areas" "$skill/bin/reach" "$skill/bin/detach"
 if [[ -f "$skill/pw-version" ]]; then
   cp "$shipped/pw.sh" "$shipped/pw-close" "$skill/bin/"
   chmod +x "$skill/bin/pw.sh" "$skill/bin/pw-close"
@@ -111,6 +111,8 @@ for recipe in "$skill"/features/*.md; do
 done
 if [[ -f "$skill/features/README.md" ]] && ((${#unconverted[@]} == 0)); then rm "$skill/features/README.md"; fi
 rm -f "$skill/features/last-reviewed"
+pointers=$(cat "$skill"/features/*.sh 2> /dev/null | grep -c -E '^# expects:.* -> not driven:[[:space:]]*covered by' || true)
+sed -i -E '/^# expects:.* -> not driven:[[:space:]]*covered by/d' "$skill"/features/*.sh 2> /dev/null || true
 
 removed=()
 for old in drive.sh steps.sh rec.sh find.sh; do
@@ -130,6 +132,7 @@ done
 echo "Upgraded $skill to the current generator."
 ((${#converted[@]})) && echo "Converted to scripts: ${converted[*]}"
 ((${#removed[@]})) && echo "Removed: ${removed[*]}"
+((pointers)) && echo "Deleted $pointers '# expects:' lines that only pointed at another feature ('covered by')"
 echo
 echo "Left for an agent:"
 [[ -f "$skill/PROJECT.md" ]] || todo+=("Write $skill/PROJECT.md from $keep/SKILL.md and $keep/README.md, as the generator's step 3 describes.")
@@ -151,6 +154,7 @@ mapfile -t alone < <(grep -l '^# alone' "$skill"/features/*.sh 2> /dev/null | xa
 ((${#alone[@]})) && todo+=("For each '# alone' feature, read what it changes: when only features that change the same state clash with it, replace the line with '# shares: <group>: <that state>', the same group for each of them, so they take turns while other features run beside them. Keep '# alone' only when every feature clashes with it, such as a clock change or a restart. In: ${alone[*]}.")
 ((${#folders[@]})) && todo+=("Replace the folder of each of these apps in $skill/apps with the repo path its git remote ends in, such as client-org/shop: ${folders[*]}.")
 [[ -x "$skill/bin/entrypoints.sh" ]] || todo+=("Write $skill/bin/entrypoints.sh, one '<entry point><TAB><file>' per line.")
+grep -q -s 'detach' "$skill/bin/launch.sh" || todo+=("Start every process that must outlive the command that starts it, in bin/launch.sh and in each helper that restarts one, through bin/detach, with its input and output redirected (the generator's step 3).")
 [[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3).")
 grep -q -s 'maintain-verify' AGENTS.md CLAUDE.md && todo+=("Replace the ## Verification section of AGENTS.md (and CLAUDE.md) with the generator's references/agents-verification.md.")
 ((${#unconverted[@]})) && todo+=("No bash blocks to convert in: ${unconverted[*]}. Send them to recorders, then delete $skill/features/README.md.")

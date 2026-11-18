@@ -32,7 +32,8 @@ gives.
    feature passes in a final `verify all` or fails at its known failure. Then run
    `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
 6. Run `verify down`, commit, and report the features added, the features repaired, the
-   expectations that now have a step, and each product defect.
+   expectations that now have a step, each product defect, and the dead code the recorders
+   found.
 
 ## Expectation lists
 
@@ -45,9 +46,10 @@ An area's expectation list holds the behaviors its tests and docs state. Write i
 - Give each area only its own test files. Then delete from the list the tests that belong
   to another area (from a test file two areas share) and tests of internals (pure
   functions, formatting, chart math).
-- Every line left is a behavior that one of the area's recipes must cite in an `# expects:`
-  line. `verify uncovered <area>` lists each line none cites, so recorders never search for
-  behavior and never skip it.
+- Every line left is a behavior that a recipe must cite in an `# expects:` line, usually
+  one of the area's, else the recipe of another area that drives it. `verify uncovered
+  <area>` lists each line no recipe cites, so recorders never search for behavior and never
+  skip it.
 
 ## Recorders
 
@@ -74,8 +76,8 @@ Give each recorder this short prompt, with the paths and area filled in:
 ```
 You are a recorder for verify-<app>. Follow
 <absolute path>/.agents/skills/verify-<app>/RECORDERS.md, with the repository root
-<absolute path>, the example recipe features/<example>.sh, and the area <area> of
-.agents/skills/verify-<app>/.cache/areas.txt.
+<absolute path>, the example recipe features/<example>.sh, and your area, the line named
+`<area>` in .agents/skills/verify-<app>/.cache/areas.txt.
 ```
 
 Before you start a recorder, or send work back to one, delete its result file
@@ -83,5 +85,11 @@ Before you start a recorder, or send work back to one, delete its result file
 already finished.
 
 A recorder has returned when its result file appears, with or without the host's completion
-notice: notices can be lost. Read only that file's lines. Add their traps to `PROJECT.md`'s
-Gotchas when they hold for other features.
+notice: notices can be lost. Read only that file's lines:
+
+- Add their traps to `PROJECT.md`'s Gotchas when they hold for other features.
+- Keep their dead code lines for the report.
+- A timer that `PROJECT.md`'s Timers section does not list: ask the user how the run should
+  treat it: a test-only setting in the product, a fake clock the run starts the app with,
+  or leaving its behaviors undriven. Write the answer there, then send the timer back to
+  the recorder.

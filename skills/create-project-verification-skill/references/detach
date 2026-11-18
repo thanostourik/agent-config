@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# detach <command...>: run a command in a systemd scope of its own when the user's systemd offers one, so it outlives the
+# agent session that started it: systemd stops every process of a session's scope when the session ends. Without systemd
+# it runs the command as it is. Shipped by create-project-verification-skill; never edit it in the project.
+if systemd-run --user --scope --quiet --collect true > /dev/null 2>&1; then
+  exec systemd-run --user --scope --quiet --collect "$@"
+fi
+exec "$@"

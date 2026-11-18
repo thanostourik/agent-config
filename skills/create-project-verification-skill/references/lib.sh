@@ -31,6 +31,23 @@ wait_for() {
 
 cleanup() { :; }
 
+# grep -q stops reading at its first match, and under pipefail the command writing into it then dies of SIGPIPE.
+# This grep drops -q and discards the output instead, so it reads all its input.
+grep() {
+  local arg args=() quiet= options=1
+  for arg in "$@"; do
+    if ((options)) && [[ $arg == -- || $arg != -* ]]; then options=0; fi
+    if ((options)) && [[ $arg == --quiet || $arg == --silent ]]; then quiet=1; continue; fi
+    if ((options)) && [[ $arg == -[!-]* && $arg == *q* ]]; then
+      quiet=1 arg=${arg//q/}
+      [[ $arg == - ]] && continue
+    fi
+    args+=("$arg")
+  done
+  [[ -n $quiet ]] || { command grep "$@" || return; return 0; }
+  command grep "${args[@]}" > /dev/null || return
+}
+
 verify_end() {
   local status=$? cleanup_status
   trap - EXIT TERM INT ERR

@@ -233,16 +233,24 @@ wait_for 10 api GET /notes?title=verify-create-note-1
     `verify lint` lists the lines whose name the code does not have.
   - A behavior that several functions produce cites each, joined with `, `
     (`notes.py: add, store.py: save`).
-- A behavior no step of the recipe drives gets `-> not driven: <reason>`. Only three
-  reasons hold:
-  - Another feature drives it: `covered by <feature>`.
-  - The app can never receive that input. The reason names what stops it, such as a unique
-    index or the filter of an earlier layer.
+- Each behavior gets one line, in the recipe whose step drives it. A recipe that only
+  passes through a behavior another recipe drives writes no line for it: `verify uncovered`
+  counts a line in any recipe.
+- Write no line for a branch no input can reach, such as a check an earlier layer always
+  makes first, or an error a unique index rules out. It is dead code, not a behavior.
+  Report it as dead code, with what reaches first.
+- A behavior no step of the recipe drives gets `-> not driven: <reason>`. Only two reasons
+  hold:
   - Nothing the run owns could make it happen, even after you extend its stubs, helpers
     and fixtures. The reason names what it would take, such as a charge at the real
     payment provider, or a second request landing between two statements of the first.
+  - It waits on a timer that `PROJECT.md`'s Timers section lists as left undriven. The
+    reason names the timer.
 
   These are not reasons:
+  - Another feature drives it. Write no line: that feature's line covers it.
+  - A timer that `PROJECT.md`'s Timers section does not list. Report it: the user decides
+    once, for every recipe, how the run shortens it.
   - A stub, fake or helper that does not yet return the data, or cannot yet fail on
     demand. It is the project's own tooling: extend it, or start a listener of the
     feature's own, as part of writing the recipe.
@@ -255,8 +263,8 @@ wait_for 10 api GET /notes?title=verify-create-note-1
     body, not only its name. The expectation list holds one line per test, but a test that
     checks several cases, such as a loop over rejected values or one date at each edge of a
     period, gives one `# expects:` line per case, each citing that test.
-  - Then always take the rest from the source, one behavior per line, never merged: each
-    field and its validation message, each button and what it does, each state (empty,
+  - Then always take the rest from the source, one behavior per line, never merged, for
+    every branch some input can reach: each field and its validation message, each button and what it does, each state (empty,
     loading, filtered, paging, editing, error, limit), each error response, each
     permission rule (who may, and who is refused), and each side effect (row, mail, file,
     event) in the feature's files.
@@ -294,6 +302,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - Every step ends with a check that exits non-zero when the result is wrong: `test`,
   `jq -e`, `grep -q` on a saved file, the driver's own assertion. A command that only prints
   proves nothing. Under `set -e`, `! command` never fails: use `test` or `if`.
+- In a recipe, `grep -q` reads all its input, so a pipe into it never kills the command that
+  writes into it. Never pipe an endless stream into it, such as `tail -f`: use `wait_for`
+  with a `grep` of the file.
 - Exercise the real user path, not test-only endpoints or internal setters. Check side
   effects (rows, files, messages) next to what is visible. Administrative setup is fine,
   but never in place of the user action being proved.
@@ -344,8 +355,8 @@ These rules hold for recipes and for every helper in `bin/`.
 - Wait for something to happen, never for a fixed extra time. To prove a job left something
   alone, add an old probe item and stop waiting when the job removes it.
 - Never wait for real time. A job interval, retry delay, rate-limit window or expiry that
-  takes longer than a few seconds is shortened in the run's environment (`PROJECT.md` says
-  how), never waited out. Never turn a behavior off to make a recipe faster or pass.
+  takes longer than a few seconds is shortened in the run's environment, never waited out.
+  `PROJECT.md`'s Timers section says how, or that the user chose to leave it undriven. Never turn a behavior off to make a recipe faster or pass.
 - Use a fresh identifier instead of waiting for a window to reset. A rate limit or quota
   counts per key, account or caller, so take a new one. Check whether a wait is needed
   before waiting.
@@ -450,6 +461,7 @@ Start from the summary lines.
   `verify affected` named and you left out, so the user can ask for them or for
   `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
+- List the dead code you found: each branch no input can reach, with what reaches first.
 - Link evidence with Markdown links to absolute paths, and check that each linked file
   exists after `verify down`.
 - Report a failed `verify down` separately: a passing feature does not mean cleanup
