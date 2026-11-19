@@ -64,19 +64,20 @@ Give the reviewer only:
   branch, or the paths of existing code
 - the two phases below and the list of typical findings, word for word
 
-It writes `design.md` in the spec's folder and changes nothing else. It starts
-no subagents of its own.
+It writes `design.md` and `findings.md` in the spec's folder and changes
+nothing else. It starts no subagents of its own.
 
 **Phase 1: design.** From the spec and the code around the target alone, it
 designs the target: the modules or functions with their responsibilities, the
 data flow, the names, and a rough size in lines. It writes this to
 `design.md`. Until that file is written it must not read the target's files,
 installed copies of them, notes or reviews that quote them, the branch diff,
-or the git history.
+or the git history. At the top of `design.md` it lists what it had read by
+then, including instructions the tool loaded by itself.
 
 **Phase 2: compare.** It reads the target's code and `git log -p` over it: the
 branch commits, or the target's paths for existing code. It no longer changes
-`design.md`. It reports:
+`design.md`. It writes to `findings.md`:
 
 - every place where the real code is bigger, more tangled, or shaped
   differently than the design. For each: file and line, what it is, what the
@@ -106,7 +107,8 @@ yourself while one can run.
 
 If no subagent is available, write the design yourself from the spec alone
 before you look at the target's code again, then compare. Say in the verdict
-that the review is not blind.
+that the review is not blind. Say the same when the reviewer's list shows it
+had read the target, or a text that describes how the target is built.
 
 ## 3. Check
 
@@ -133,7 +135,7 @@ folder. Liking today's code better is not a reason to drop a finding.
    working.
 4. **Open questions:** only the ones the user must answer.
 
-Then link `spec.md`, `design.md`, and `dropped.md`, and give the number of
-dropped findings. Do not repeat what those files say.
+Then link `spec.md`, `design.md`, `findings.md`, and `dropped.md`, and give
+the number of dropped findings. Do not repeat what those files say.
 
 End by asking whether the user wants the redesign. Do not start it yourself.

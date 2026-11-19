@@ -18,9 +18,11 @@ user wants the redesign.
 1. **The subagent compares.** One fresh subagent works in two phases:
    - It designs the target from the spec and writes the design to
      `.plans/scratch/<branch>/depatch/design.md`, before it opens the
-     target's code.
-   - It then reads the target's code and `git log -p`, and lists every place
-     where the real code is bigger, more tangled, or shaped differently.
+     target's code. At the top it lists what it had read by then, so a leak
+     shows.
+   - It then reads the target's code and `git log -p`, and writes every
+     place where the real code is bigger, more tangled, or shaped differently
+     to `findings.md`.
 
    The main agent writes the spec, as today, and saves it to `spec.md` in the
    same folder. After the subagent answers, the main agent checks each
@@ -43,8 +45,8 @@ user wants the redesign.
    - Redesign: its size against today's code and what it drops.
    - Open questions: only the ones that need the user's answer.
 
-   The spec, the design and the dropped findings stay in the scratch folder.
-   The report links them.
+   The spec, the design, the full findings and the dropped findings stay in
+   the scratch folder. The report links them.
 
 "Patch scars" becomes "findings", because a finding no longer needs patch
 history. `tourik` names the old word in its report list, so that one word
