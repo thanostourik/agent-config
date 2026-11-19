@@ -26,7 +26,7 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 | `claude-review`, `codex-review`, `grok-review`, `cursor-grok-review` | One independent review of a change by Claude, Codex, or Grok. `cursor-grok-review` runs Grok through Cursor. You can set each one's model and effort. |
 | `review-loop` | Reviews your branch in rounds. The agent fixes the real findings and proves the result works. Then a fresh reviewer checks that proof. |
 | `triple-review` | Three reviewers at once, then one short report. One reviews in general, one looks for simpler solutions, one looks for over-engineering. |
-| `depatch` | Checks whether code reads like patches piled on patches, and sketches how it would look if written once. It changes no files. |
+| `depatch` | Checks whether code reads like patches piled on patches or is more complicated than it needs to be. A fresh agent designs it from scratch without seeing the code, then compares. It changes no code. |
 
 ## Planning and writing
 
