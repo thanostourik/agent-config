@@ -12,12 +12,14 @@ proof against the intent.
 
 ## Setup
 
-- **Reviewers:** two lists of review skills.
+- **Reviewers:** three lists of review skills.
   - Round reviewers review in every round: `{{defaults.reviewers}}`.
   - One-pass reviewers review once, starting in round one:
     `{{defaults.one_pass_reviewers}}`. This list is for reviewers worth one
     full review but too slow to wait for. They keep running while you fix
     findings and while later rounds run.
+  - Fallback reviewers stand in for a round reviewer that cannot run:
+    `{{defaults.fallback_reviewers}}`.
 
   `none` means an empty list. With no round reviewers, tell the user and
   stop. A list the user names replaces the default one. When the user names
@@ -25,8 +27,19 @@ proof against the intent.
   are no one-pass reviewers. A one-pass reviewer that is also a round reviewer
   already reviews every round, so it is not a one-pass reviewer. Each entry is
   a review skill. That skill's own defaults give the model and effort, and it
-  says how to run and wait for the review. If a listed skill is not available
-  to you, tell the user and stop. Do not substitute another reviewer.
+  says how to run and wait for the review.
+
+  A reviewer cannot run when its skill is not available to you, or when it
+  failed twice in a row, for example on a usage limit. Then:
+  - A one-pass reviewer: go on without it.
+  - A round reviewer: replace it, for the rest of the loop, with the first
+    fallback reviewer whose model family no other reviewer in this loop
+    uses. A second GPT reviewer next to a GPT one adds nothing. With no such
+    fallback, ask the user through the harness's question tool which
+    reviewer to use, or whether to go on without one. A round that a round
+    reviewer missed is not clean.
+
+  Never substitute a reviewer any other way.
 - **Target:** the current branch against its base: the PR's base branch, or
   `origin/main` when there is no PR. Note `git diff --shortstat` of the target
   before round one.
@@ -68,8 +81,8 @@ request wins.
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
 4. Wait until every round reviewer finishes, but not the one-pass reviewers.
-   If a reviewer fails, start it once more. If it fails again, go on without
-   it. That round is not clean, and the report says so.
+   If a reviewer fails, start it once more. If it fails again, it cannot
+   run: do what Setup says. A replacement reviews the same round.
 5. Check each finding against the code. Review makes the change correct, not
    bigger.
    - Declined or out of scope earlier: add the reviewer to that row and skip
@@ -82,8 +95,9 @@ request wins.
    - Real but already there before this branch: record it as `out of scope`.
    - Not real: decline it with a reason a reader can check.
    Record every new finding in the ledger.
-6. After fixes that change behavior, verify the affected features the way the
-   project does, then commit.
+6. Check each fix that changes behavior with a focused check, such as one
+   test or one request, then commit. Do not run the project's live
+   verification in a round. It runs on the final head, in Proof.
 
 A round is clean when every round reviewer finished, and after skipping the
 declined and out-of-scope findings, nothing above `low` is left. Fix the
@@ -106,7 +120,8 @@ budget is not approval; report what is still open.
    `.plans/scratch/<branch>/proof/`: screenshots, transcripts, and command
    output with exit codes.
 2. Run one evidence check with a fresh reviewer: the first round reviewer,
-   through its skill's custom-prompt mode. The prompt holds only:
+   or its replacement, through its skill's custom-prompt mode. The prompt
+   holds only:
    - The intent, quoted word for word: the Jira ticket or the user's request.
      When neither exists, the acceptance criteria in
      `.plans/scratch/<branch>/criteria.md`.
@@ -128,7 +143,8 @@ The report lists:
 - The target, and whether it was a follow-up loop.
 - The rounds: head commit and result of each, and why the loop stopped.
 - The round reviewers and the one-pass reviewers, each with the model and
-  harness that ran it, for example `GPT-6.1 Sol through Codex`.
+  harness that ran it, for example `GPT-6.1 Sol through Codex`. Each reviewer
+  that did not run, and each replacement.
 - The fixed findings.
 - The declined findings, each with its reason.
 - The out-of-scope findings, as follow-ups for the user.

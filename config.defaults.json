@@ -32,6 +32,7 @@
       "defaults": {
         "reviewers": ["codex-review"],
         "one_pass_reviewers": ["grok-review"],
+        "fallback_reviewers": ["claude-review"],
         "rounds": "3",
         "max_rounds": "5"
       }

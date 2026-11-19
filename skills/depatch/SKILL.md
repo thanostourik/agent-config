@@ -11,7 +11,8 @@ code would look if it had been written once, with the final requirements known
 from the start.
 
 This skill is read-only. Do not edit, commit, or delete anything. The redesign
-is a suggestion; the user decides later whether to do it.
+is a suggestion. The user decides later whether to do it, or the skill that
+ran this one.
 
 ## Target
 
@@ -141,4 +142,6 @@ folder. Liking today's code better is not a reason to drop a finding.
 Then link `spec.md`, `design.md`, `findings.md`, and `dropped.md`, and give
 the number of dropped findings. Do not repeat what those files say.
 
-End by asking whether the user wants the redesign. Do not start it yourself.
+When the user ran this skill, end by asking whether they want the redesign,
+and do not start it yourself. When another skill ran it, that skill says what
+happens with the result.
