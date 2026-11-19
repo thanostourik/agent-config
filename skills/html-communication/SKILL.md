@@ -1,6 +1,6 @@
 ---
 name: html-communication
-description: Use when the user asks for HTML or to communicate through an HTML document. Covers plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mockups shown as readable HTML.
+description: Use when the user asks for HTML, including converting plans or other Markdown to HTML. Covers plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mockups shown as readable HTML.
 ---
 
 # HTML Communication
