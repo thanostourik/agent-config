@@ -53,6 +53,7 @@ need zenity
 need uvx
 need python3
 need flock
+need setpriv
 need systemd-run
 need systemctl
 need timeout
@@ -200,7 +201,9 @@ unlock() {
   text='Same password that unlocks the Bitwarden app.
 NOT Client ID. NOT Client Secret. NOT Jira.'
   while :; do
-    pw=$(zenity --password --title='Bitwarden master password' --text="$text") || pw=""
+    # The dialog inherits the lock on fd 9, so it must not outlive this script.
+    pw=$(setpriv --pdeathsig TERM -- zenity --entry --hide-text \
+      --title='Bitwarden master password' --text="$text") || pw=""
     if [ -z "$pw" ]; then
       echo "Bitwarden unlock was cancelled." >&2
       exit 1
@@ -259,7 +262,6 @@ refresh_failed() {
 lookup() {
   login_once "$@"
   if [ "$login_status" -eq 0 ]; then
-    printf '%s\n' "$creds"
     return 0
   fi
   if [ "$login_status" -ne 2 ]; then
@@ -271,7 +273,6 @@ lookup() {
     if [ "${refresh_ok:-}" = 1 ]; then
       login_once "$@"
       if [ "$login_status" -eq 0 ]; then
-        printf '%s\n' "$creds"
         return 0
       fi
     fi
@@ -284,20 +285,9 @@ lookup() {
   return 1
 }
 
-read_creds() {
-  credfile=$(mktemp)
-  if lookup "$@" >"$credfile"; then
-    creds=$(cat "$credfile")
-    rm -f "$credfile"
-    return 0
-  fi
-  rm -f "$credfile"
-  return 1
-}
-
 start_gate() {
   gate_url=${url%/}/auth-gate
-  read_creds "$gate_url" exact
+  lookup "$gate_url" exact
   gate_creds=$creds
   eval "$gate_creds"
   export JIRA_UPSTREAM=$url
@@ -354,7 +344,7 @@ if [ "$unlock_only" = 1 ]; then
   exit 0
 fi
 
-read_creds "$url"
+lookup "$url"
 eval "$creds"
 jira_user=$user
 jira_token=$token

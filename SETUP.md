@@ -7,8 +7,8 @@ after that. Add a section when something new needs steps beyond `./sync`.
 
 Needs a Linux desktop session with systemd and these commands installed: `bw`
 (Bitwarden CLI, already logged in with `bw login`), `uvx`, `zenity`, `python3`,
-`flock`, `timeout`, `systemd-run`, and `systemctl`. `mcp-atlassian-start` stops
-with a message naming any that is missing.
+`flock`, `setpriv`, `timeout`, `systemd-run`, and `systemctl`.
+`mcp-atlassian-start` stops with a message naming any that is missing.
 
 1. If `config.json` is missing, create it containing `{}`.
 2. Ask for each Jira URL unless the user already gave it. Add each instance
