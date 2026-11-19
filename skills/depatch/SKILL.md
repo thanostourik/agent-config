@@ -64,8 +64,8 @@ Give the reviewer only:
   branch, or the paths of existing code
 - the two phases below and the list of typical findings, word for word
 
-It writes `design.md` and `findings.md` in the spec's folder and changes
-nothing else. It starts no subagents of its own.
+It writes `design.md` in the spec's folder and changes nothing else. It starts
+no subagents of its own.
 
 **Phase 1: design.** From the spec and the code around the target alone, it
 designs the target: the modules or functions with their responsibilities, the
@@ -77,7 +77,7 @@ then, including instructions the tool loaded by itself.
 
 **Phase 2: compare.** It reads the target's code and `git log -p` over it: the
 branch commits, or the target's paths for existing code. It no longer changes
-`design.md`. It writes to `findings.md`:
+`design.md`. Its answer holds:
 
 - every place where the real code is bigger, more tangled, or shaped
   differently than the design. For each: file and line, what it is, what the
@@ -111,6 +111,9 @@ that the review is not blind. Say the same when the reviewer's list shows it
 had read the target, or a text that describes how the target is built.
 
 ## 3. Check
+
+Save the reviewer's answer to `findings.md` in the spec's folder, word for
+word.
 
 The reviewer does not know the conversation, so it cannot tell a decision
 from an accident. Check each finding against the code and against what the

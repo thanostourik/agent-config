@@ -20,9 +20,10 @@ user wants the redesign.
      `.plans/scratch/<branch>/depatch/design.md`, before it opens the
      target's code. At the top it lists what it had read by then, so a leak
      shows.
-   - It then reads the target's code and `git log -p`, and writes every
-     place where the real code is bigger, more tangled, or shaped differently
-     to `findings.md`.
+   - It then reads the target's code and `git log -p`, and answers with
+     every place where the real code is bigger, more tangled, or shaped
+     differently. The main agent saves that answer to `findings.md`, because
+     Claude Code refuses a subagent that writes a report file.
 
    The main agent writes the spec, as today, and saves it to `spec.md` in the
    same folder. After the subagent answers, the main agent checks each
