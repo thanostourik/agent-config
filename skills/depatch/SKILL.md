@@ -40,47 +40,54 @@ mechanism in the spec leaks today's design to the designer.
 Mark behaviours that look accidental, such as a quirk callers may rely on, as
 open questions. Do not silently keep or drop them.
 
-## 2. Blind design
+Save the spec to `.plans/scratch/<branch>/depatch/spec.md`. The notes in that
+folder are the only files this skill writes.
 
-A designer who never saw the target's code or history designs it from scratch.
+## 2. Blind review
+
+A reviewer who never saw the target's code, its history, or this conversation
+designs the target from scratch, and then compares that design with the real
+code. You wrote or discussed the target, so you do not compare.
+
 Start one fresh subagent for this: in T3 Code use `delegate_task` with
 `mode: "async"`; otherwise use the tool's own subagent. Use the current
 provider and model unless the user chose others.
 
-Give the designer only:
+Give the reviewer only:
 
 - the spec, with its open questions
 - the code around the target: for a branch, the base commit; for existing
   code, the code that calls the target and the code the target calls. When
   that code is outside the repository, describe what it offers in a few
   sentences.
-- what it must not read: the target's files, installed copies of them, notes
-  or reviews that quote them, the branch diff, and the git history
+- where the target is, for the second phase: the base and head commits of a
+  branch, or the paths of existing code
+- the two phases below and the list of typical findings, word for word
 
-Ask for: the modules or functions with their responsibilities, the data flow,
-the names, and a rough size in lines. Tell it: read only, no edits, no
-subagents of its own.
+It writes `design.md` in the spec's folder and changes nothing else. It starts
+no subagents of its own.
 
-Do step 3 while the designer works, then wait for its design before step 4.
+**Phase 1: design.** From the spec and the code around the target alone, it
+designs the target: the modules or functions with their responsibilities, the
+data flow, the names, and a rough size in lines. It writes this to
+`design.md`. Until that file is written it must not read the target's files,
+installed copies of them, notes or reviews that quote them, the branch diff,
+or the git history.
 
-If no subagent is available, write the design yourself from the spec alone
-before you look at the target's code again, and say in the report that the
-design is not blind.
+**Phase 2: compare.** It reads the target's code and `git log -p` over it: the
+branch commits, or the target's paths for existing code. It no longer changes
+`design.md`. It reports:
 
-## 3. History
+- every place where the real code is bigger, more tangled, or shaped
+  differently than the design. For each: file and line, what it is, what the
+  design does instead, and where it came from. That is the commits that
+  produced it, or "written this way from the start". Lines rewritten again
+  and again, reverts, and fixes of earlier fixes show where to look closer.
+- every place where the real code is better than the design
+- the rough size of the design against the real code, and what the design
+  drops
 
-Read `git log -p` over the target: the branch commits, or the target's paths
-for existing code. Look for lines rewritten again and again, reverts, and fixes
-of earlier fixes. Churn shows where to look closer. It proves nothing alone.
-
-## 4. Compare
-
-Put the blind design next to the real code. Each place where the real code is
-bigger, more tangled, or shaped differently is a candidate patch scar. Keep it
-only if you can name the history that produced it and the spec does not need
-it. The real code may also be better than the blind design; say so when it is.
-
-Typical scars:
+Typical findings:
 
 - a flag or parameter that only one caller uses
 - a special case next to a general path that could cover it
@@ -91,19 +98,42 @@ Typical scars:
 - data converted to another shape and back
 - names that tell history: `new`, `v2`, `legacy`, `fallback`
 - tests that pin intermediate behaviour instead of the spec
+- code that is more complicated than the spec needs, even when it was written
+  in one commit
 
-Code that is only verbose but was written in one go is not a scar. Leave it
-out of the scars and count it in the redesign's size.
+Wait for the reviewer. Do not cancel it, and do not design or compare
+yourself while one can run.
+
+If no subagent is available, write the design yourself from the spec alone
+before you look at the target's code again, then compare. Say in the verdict
+that the review is not blind.
+
+## 3. Check
+
+The reviewer does not know the conversation, so it cannot tell a decision
+from an accident. Check each finding against the code and against what the
+user decided: in the conversation, the plan, the PR, or the issue. Drop a
+finding only when:
+
+- the code does not show what the finding says, or
+- the user asked for this shape or chose it
+
+Write each dropped finding and its reason to `dropped.md` in the spec's
+folder. Liking today's code better is not a reason to drop a finding.
 
 ## Report
 
 1. **Verdict:** clean, some patching, or a pile of patches, in one line.
-2. **Spec:** the behaviours, then the open questions.
-3. **Patch scars:** most important first. For each: file and line, what it is,
-   the history that produced it, and what the written-once version does
-   instead.
-4. **Redesign:** the structure written once, its rough size against today's
-   code, and what it drops. For existing code, add a safe order of steps where
-   each step leaves the code working.
+2. **Findings:** most important first, one line each: file and line, what it
+   is, where it came from, and what the written-once version does instead.
+   For example: "`sync:412`: `--force` is passed only by the tests (added in
+   `a1b2c3d`). Written once, the tests call `install()` directly."
+3. **Redesign:** its rough size against today's code, and what it drops. For
+   existing code, add a safe order of steps where each step leaves the code
+   working.
+4. **Open questions:** only the ones the user must answer.
+
+Then link `spec.md`, `design.md`, and `dropped.md`, and give the number of
+dropped findings. Do not repeat what those files say.
 
 End by asking whether the user wants the redesign. Do not start it yourself.

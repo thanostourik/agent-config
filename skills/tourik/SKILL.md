@@ -49,7 +49,7 @@ you again, so ending the turn early stops the work.
    - every decision you made alone
    - the declined findings, with reasons
    - follow-ups: the out-of-scope findings
-   - the `depatch` verdict and patch scars, when it ran
+   - the `depatch` verdict and findings, when it ran
 
 ## How to verify
 
