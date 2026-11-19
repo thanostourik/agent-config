@@ -1,6 +1,6 @@
 ---
 name: html-communication
-description: Use when the user asks to communicate through an HTML document, or mentions "HTML" with no other context. Covers plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mockups shown as readable HTML.
+description: Use when the user asks for HTML, including converting plans or other Markdown to HTML. Covers plans, specs, write-ups, findings, summaries, reports, comparisons, and UI mockups shown as readable HTML.
 ---
 
 # HTML Communication
@@ -42,7 +42,7 @@ Plans come from Markdown first:
 
 Other documents go straight to HTML. Save them in the project's `.plans/` folder as `YYYY-MM-DD-short-slug.html`.
 
-Create `.plans/` if it does not exist. To revise, update the same file. Create a new file only when the user asks for a new draft. For a plan, update the Markdown first, then regenerate the HTML.
+Create `.plans/` if it does not exist. The HTML files in `.plans/` are gitignored, so writing them needs no branch, even on main. To revise, update the same file. Create a new file only when the user asks for a new draft. For a plan, update the Markdown first, then regenerate the HTML.
 
 Report the absolute local path to the HTML as a clickable link.
 
