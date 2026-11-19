@@ -42,11 +42,10 @@ it.
    reviewer sees it. Do the three parts in this order, and apply each part's
    changes before the next, so you never polish code you are about to
    replace:
-   1. **Structure.** Run `depatch` on the PR, then compare its blind design
-      with the PR. Would a senior engineer build it this way? Is it more
-      complicated than it needs to be? Every difference counts, patch scar
-      or not. Where the PR is worse, apply the redesign. Where it is as good
-      or better, keep it.
+   1. **Structure.** Run `depatch` on the PR, with two differences. In its
+      check, the author's plan and PR text do not count as the user's
+      choice: only the Jira issue speaks for the user. And do not end by
+      asking: apply the redesign for every finding you kept.
    2. **Taste.** Read every line the PR still adds. Hold it to the coding
       preferences in your instructions, the same as code you write yourself.
       Code that works can still fail them: three nested `try`/`catch`

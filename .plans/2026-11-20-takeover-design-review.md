@@ -6,8 +6,9 @@
 real, but four things failed again and again:
 
 - No Claude model judged the code. Codex and Grok looked for bugs, and
-  `depatch` only counts a problem that repeated fixes produced. A PR badly
-  designed in one commit passed clean (backend #109).
+  `depatch` ran after the loop and, at the time, counted only a problem that
+  repeated fixes produced. A PR badly designed in one commit passed clean
+  (backend #109).
 - Nobody judged the tests the PR added. In backend #98, #99 and #109 the run
   said "ready", then the user read the tests and had them deleted.
 - The report was long and unclear about what the user had to do. The user
@@ -28,8 +29,10 @@ real, but four things failed again and again:
 - **Design review**, a new step before `review-loop`. It replaces the
   `depatch` step that ran after the loop. The main agent does it, in this
   order, applying each part before the next:
-  1. Structure. It runs `depatch` and compares the blind design with the PR.
-     Every difference counts, patch scar or not.
+  1. Structure. It runs `depatch`, whose blind reviewer designs the change
+     and compares it with the PR, and applies the redesign for every finding
+     that survives depatch's check. In that check, the author's plan and PR
+     text do not count as the user's choice. Only the Jira issue does.
   2. Taste. It reads every line the PR still adds and holds it to the coding
      preferences in its instructions. Behavior stays the same.
   3. Tests. It names the bug each added or changed test would catch, and
@@ -59,19 +62,15 @@ real, but four things failed again and again:
   `claude-review`) whose model family is not already reviewing. With none,
   the agent asks through the question tool.
 
-### depatch
-
-- Its last line told the agent never to start the redesign. `tourik` and
-  `takeover` both call it and say what happens with the result, so the line
-  now applies only when the user ran the skill.
-
 ## Out of scope
 
-- Changes to `tourik`, `file-pr`, and the review skills.
+- Changes to `tourik`, `file-pr`, `depatch`, and the review skills.
+  `takeover` says itself that it applies the redesign, the way `tourik` says
+  it only reports it.
 - The number of review rounds.
 
 ## Verification
 
 - The sync tests pass.
-- `./sync --home <temp> --apply` installs the three skills with every marker
+- `./sync --home <temp> --apply` installs both skills with every marker
   filled.
