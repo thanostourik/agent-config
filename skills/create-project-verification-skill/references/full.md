@@ -97,6 +97,10 @@ like a recorder that already finished.
 A recorder has returned when its result file appears, with or without the host's completion
 notice: notices can be lost. Read only that file's lines:
 
+- Run `verify uncovered <area>` for it at once. Send back right away each uncovered item
+  and each not-driven reason that does not hold under the Header rules, while the other
+  recorders still record. Held until the first `verify all`, they start a rework round
+  that every other step then waits for.
 - Add their traps to `PROJECT.md`'s Gotchas when they hold for other features.
 - Keep their dead code lines for the report.
 - A timer that `PROJECT.md`'s Timers section does not list: ask the user how the run should
