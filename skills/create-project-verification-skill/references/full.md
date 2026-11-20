@@ -86,7 +86,9 @@ A recorder with more than 6 features hands the rest over in `.cache/handoff/<are
 Watch that folder with a background command while recorders run, and start a recorder for
 each new file at once, with the same prompt and the line
 `the features in .cache/handoff/<area>.<n>.txt` in place of the area line. It writes
-`.cache/results/<area>.<n>.txt`. Send a feature back to the recorder that recorded it.
+`.cache/results/<area>.<n>.txt`. Stop the watching command once every recorder has
+returned: a command still running keeps a headless session from ending. Send a feature back
+to the recorder that recorded it.
 
 Before you start a recorder, or send work back to one, delete its result file
 `.cache/results/<area>.txt` (or `<area>.<n>.txt`). A file left from an earlier round looks
