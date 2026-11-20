@@ -224,6 +224,10 @@ At the other levels, write the scripts below into `bin/` and make each one execu
 - A helper also works when an agent calls it by hand, outside `bin/verify`. It sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and gives the other `VERIFY_*`
   variables it reads a default.
+- Under `pipefail`, it never pipes into `grep -q` or `head`: they stop reading at the first
+  match, the writer dies of SIGPIPE, and the pipe fails even when it matched. A readiness
+  wait built that way never succeeds. Capture the output first:
+  `out=$(curl -s "$url"); grep -q ready <<< "$out"`.
 - Its waits and error output follow the "Waits and errors" rules in the shipped `SKILL.md`.
   A helper that inserts rows directly follows the fixture rule in that file's Data section.
   `verify lint` checks only recipes, so check helpers yourself.
