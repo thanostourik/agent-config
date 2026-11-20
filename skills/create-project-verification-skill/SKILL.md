@@ -240,7 +240,10 @@ A driver helper that keeps state keeps it per `$VERIFY_SESSION`.
 Each account signs in once per run, through the real sign-in screen. A feature starts from
 fresh app state but keeps that login, and only the features about signing in go through the
 sign-in screen themselves. Signing in on every feature took half of the cinova app's drive
-time.
+time. An emulator or a fresh browser is a new device on every run, and a sign-in provider
+can ask a new device for more than the password: Clerk emails a code to the account. Before
+you build the environment, make sure the test account signs in with only what the run
+holds. When it cannot, ask me for an account that can.
 
 For a web UI without its own harness:
 
@@ -276,20 +279,31 @@ For an Android app:
   and a headless emulator from an AVD under `.cache/`. Never use the default ADB server: it
   also takes a phone someone connects. `env.sh` exports `ANDROID_ADB_SERVER_PORT`,
   `ANDROID_SERIAL` (`emulator-<port>`) and `MAESTRO_APP_ID`, which `adb` and `maestro.sh`
-  read.
-- `launch.sh` builds and installs the app once per run. An app with a development client,
-  such as Expo, gets its debug build and its bundler (Metro) on a port of the run, which the
-  emulator reaches through `adb reverse`.
+  read. The emulator's port is even, from 5554 to 5682, and its `adb` uses the next one.
+  The emulator leaves a defunct `adb` child whose environment cannot be read, so the
+  ownership check of `cleanup.sh` skips defunct processes.
+- `launch.sh` builds the app and installs it once per run. It keeps the built APK under
+  `.cache/`, named by a hash of the files the native build reads, so a later run only
+  installs it: the wovies build took 4.5 minutes. An app with a development client, such as
+  Expo, gets its debug build and its bundler (Metro) on a port of the run, which the
+  emulator reaches through `adb reverse`. The client opens the bundle through its own URL
+  scheme, `exp+<slug>://expo-development-client/?url=<bundler URL>`, not through the app's
+  scheme. `expo prebuild` writes `android/` and edits `package.json`: build in a copy of the
+  app, or put `package.json` back after the build.
 - A recipe step puts its taps and checks into one flow, `maestro.sh flow <name> <<'EOF'`.
   Each `maestro.sh` call takes 5 to 7 s to start, and a check inside a flow about 0.2 s.
 - A session helper starts each feature. It stops the app, deletes the app's own data but
-  not its login, and starts the app. React Native apps keep AsyncStorage and caches in
-  `databases`, `cache` and `app_webview`, and `react-native-keychain` and
-  `expo-secure-store` keep the login in `files` and `shared_prefs`: check with
+  not its login, and starts the app. React Native apps keep AsyncStorage in `databases`,
+  MMKV in `files/mmkv`, and caches in `cache` and `app_webview`. `react-native-keychain` and
+  `expo-secure-store` keep the login elsewhere in `files` and in `shared_prefs`: check with
   `adb shell run-as <app> find .` after one sign-in. Never use `pm clear` for this: it also
-  deletes the app's Keystore keys, so the kept login can no longer be read. When the app
-  shows its sign-in screen anyway, the helper signs in through it. Its `signed-out` variant
-  runs `pm clear`, for the features about signing in.
+  deletes the app's Keystore keys, so the kept login can no longer be read. `pm clear` also
+  forgot the permission prompts a feature refused, and Android shows another button on the
+  second refusal, so the helper forgets them itself:
+  `pm clear-permission-flags <app> <permission> user-set user-fixed`. When the app shows its
+  sign-in screen anyway, the helper signs in through it. A development client shows the
+  intro of its menu on its first start (Continue, then Close), and the helper gets past it.
+  Its `signed-out` variant runs `pm clear`, for the features about signing in.
 
 ### `PROJECT.md`
 
