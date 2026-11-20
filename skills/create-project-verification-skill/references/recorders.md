@@ -20,7 +20,8 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    step where it can be driven on its own. Name them `<area>-<goal>`. A recipe of your area
    that already exists is one of them.
 4. Look at the real app. Open each screen of your area once in a browser session of your
-   own (`VERIFY_SESSION=<area>-probe`), signed in as the role that uses it. Save its
+   own (`VERIFY_SESSION=<area>-probe`), signed in as the role that uses it. On Android,
+   read each screen with `bin/maestro.sh hierarchy`. Save its
    snapshots under `<skill>/.cache/snapshots/<area>/`. Call the API once, with the
    project's API helper, for each record a step will check.
 5. Write all your recipes, `<skill>/features/<feature>.sh`, with one `# expects:` line per

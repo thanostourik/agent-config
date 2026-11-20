@@ -20,7 +20,7 @@ of one area of the app.
 - `/create-project-verification-skill` (default): record every feature.
 - `/create-project-verification-skill quick`: write the environment and one recipe, with no
   recorders. Do steps 1 to 3, steps 4.1 and 4.3, the lifecycle checks of step 5, and
-  step 6. The one recipe proves that the environment, sign-in, the browser helper and
+  step 6. The one recipe proves that the environment, sign-in, the driver helper and
   cleanup work, and agents copy it. The other recipes grow with the code: `verify affected`
   fails while a change adds a screen, route or action no recipe covers, `verify uncovered`
   lists the rest, and `/verify-<app> full` records them when the user asks.
@@ -54,6 +54,7 @@ replace it (delete and generate again) or upgrade it with
   bin/reach           copied from <generator>/references/reach, unchanged (needs python3)
   bin/detach          copied from <generator>/references/detach, unchanged
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
+  bin/maestro.sh      copied from <generator>/references, unchanged, for an Android app; maestro-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
   bin/env.sh bin/after-feature.sh   optional
   bin/entrypoints.sh bin/actions.sh
@@ -98,7 +99,11 @@ Playwright, when needed, goes into the companion's own `package.json`.
 
 Answer from the codebase. Ask only what you cannot observe.
 
-- **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs.
+- **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs. Every surface
+  gets recipes. This skill ships drivers for a web UI (Playwright), an API (curl) and an
+  Android app (Maestro). When a surface needs another driver, ask me whether to write one
+  or leave the surface undriven, and write the answer into `PROJECT.md`'s Drivers section.
+  Example: a repo with a web app and an Expo app in `apps/mobile` gets recipes for both.
 - **Run:** how the app starts locally, its dependencies, ports, seed data and sign-in.
 - **Harness:** existing end-to-end specs, sign-in or seed helpers, curl-able endpoints.
 - **Entry points:** the files that define routes, screens, commands or endpoints, found
@@ -232,6 +237,11 @@ At the other levels, write the scripts below into `bin/` and make each one execu
 
 A driver helper that keeps state keeps it per `$VERIFY_SESSION`.
 
+Each account signs in once per run, through the real sign-in screen. A feature starts from
+fresh app state but keeps that login, and only the features about signing in go through the
+sign-in screen themselves. Signing in on every feature took half of the cinova app's drive
+time.
+
 For a web UI without its own harness:
 
 - Copy `pw.sh` and `pw-close` to `bin/` unchanged. The header of `pw.sh` says how to call
@@ -256,11 +266,37 @@ Then write:
 For an API, an `api` helper wraps `curl` with the base URL, auth and `--max-time`, and
 saves the last response for `observe.sh`.
 
+For an Android app:
+
+- Copy `maestro.sh` to `bin/` unchanged, and write a Maestro version, such as `2.12.1`,
+  into the skill's `maestro-version` file. The header of `maestro.sh` says how to call it
+  and what it needs: Java 17 or newer, `socat` and unprivileged user namespaces.
+  `doctor.sh` checks the three.
+- `launch.sh` starts an ADB server of the run's own (`adb -P <free port> server nodaemon`)
+  and a headless emulator from an AVD under `.cache/`. Never use the default ADB server: it
+  also takes a phone someone connects. `env.sh` exports `ANDROID_ADB_SERVER_PORT`,
+  `ANDROID_SERIAL` (`emulator-<port>`) and `MAESTRO_APP_ID`, which `adb` and `maestro.sh`
+  read.
+- `launch.sh` builds and installs the app once per run. An app with a development client,
+  such as Expo, gets its debug build and its bundler (Metro) on a port of the run, which the
+  emulator reaches through `adb reverse`.
+- A recipe step puts its taps and checks into one flow, `maestro.sh flow <name> <<'EOF'`.
+  Each `maestro.sh` call takes 5 to 7 s to start, and a check inside a flow about 0.2 s.
+- A session helper starts each feature. It stops the app, deletes the app's own data but
+  not its login, and starts the app. React Native apps keep AsyncStorage and caches in
+  `databases`, `cache` and `app_webview`, and `react-native-keychain` and
+  `expo-secure-store` keep the login in `files` and `shared_prefs`: check with
+  `adb shell run-as <app> find .` after one sign-in. Never use `pm clear` for this: it also
+  deletes the app's Keystore keys, so the kept login can no longer be read. When the app
+  shows its sign-in screen anyway, the helper signs in through it. Its `signed-out` variant
+  runs `pm clear`, for the features about signing in.
+
 ### `PROJECT.md`
 
 Write `PROJECT.md`, about 10 KB, with these sections:
 
-- **Drivers:** the tools that drive the app, such as `Playwright CLI and curl`, and why.
+- **Drivers:** the tools that drive the app, such as `Playwright CLI and curl` or `Maestro`,
+  and why.
 - **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
   markers, and the success paths the isolation cannot reach (such as a real payment that a
   stub replaces).
@@ -289,6 +325,16 @@ Write `PROJECT.md`, about 10 KB, with these sections:
   - The `run-code` function runs in a bare sandbox. Node and browser globals such as `URL`,
     `require` and `console` are not there, so parse URLs and log inside `page.evaluate`, or
     return the value.
+
+  For Maestro:
+  - A field the keyboard covers is not found: `hideKeyboard` after `inputText`.
+  - `tapOn` waits for the screen to settle, 2 to 3 s on an emulator. `assertVisible` and
+    `extendedWaitUntil` return as soon as the element is there.
+  - A `when:` condition is checked once, not waited for. To get past screens that may or may
+    not appear, such as a browser's first-run screens, loop with
+    `repeat: { while: { notVisible: ... } }`.
+  - `takeScreenshot: <name>` writes `$VERIFY_DIR/<name>.png`. A path outside that folder
+    fails.
 
 ### Bring it up
 
