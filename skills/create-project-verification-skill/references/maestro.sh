@@ -5,10 +5,10 @@
 # Maestro always uses the ADB server on port 5037 and forwards its driver through port 7001. It runs here in a private
 # network namespace whose port 5037 leads to the run's ADB server ($ANDROID_ADB_SERVER_PORT) and whose emulator ports lead
 # to the run's emulator ($ANDROID_SERIAL, emulator-<port>), so it never starts or uses another ADB server. `test` writes
-# screenshots and debug output under $VERIFY_DIR. Each call costs 5 to 7 s to start: put a step's taps and checks in one
-# flow. The Maestro version is in ../maestro-version; the first call downloads it under .cache/ and checks its checksum.
-# Needs Java 17+, socat and unprivileged user namespaces. Shipped by create-project-verification-skill; never edit it in
-# the project.
+# each `takeScreenshot: <name>` to $VERIFY_DIR/<name>.png and its debug output to $VERIFY_DIR/maestro-debug. Each call
+# costs 5 to 7 s to start: put a step's taps and checks in one flow. The Maestro version is in ../maestro-version; the
+# first call downloads it under .cache/ and checks its checksum. Needs Java 17+, socat and unprivileged user namespaces.
+# Shipped by create-project-verification-skill; never edit it in the project.
 set -euo pipefail
 : "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"
 cache=$VERIFY_SKILL/.cache
@@ -75,5 +75,8 @@ unshare --user --map-root-user --net bash -c '
   done
   "$MAESTRO" --device "$ANDROID_SERIAL" "$@" 2>&1 | grep -v "^Picked up JAVA_TOOL_OPTIONS"
   exit "${PIPESTATUS[0]}"' maestro "${args[@]}" || status=$?
-LC_ALL=C printf '%s %.1fs %s\n' "$(date +%T)" "$(echo "$(date +%s.%N) - $start" | bc)" "${args[*]:0:2}" | cut -c1-300 >> "$VERIFY_DIR/maestro-calls.log"
+if [[ -d $VERIFY_DIR/maestro-debug ]]; then
+  find "$VERIFY_DIR/maestro-debug" -path '*/takeScreenshot/*.png' -exec mv -t "$VERIFY_DIR" {} +
+fi
+LC_ALL=C printf '%s %.1fs %s\n' "$(date +%T)" "$(echo "$(date +%s.%N) - $start" | bc)" "$*" | cut -c1-300 >> "$VERIFY_DIR/maestro-calls.log"
 exit "$status"
