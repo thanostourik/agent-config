@@ -39,6 +39,30 @@ Each run generates all three, one after the other, so they never compete for the
    split areas by feature count, write each behavior once.
 3. Changes picked from run 2's data.
 
+## Runs 3 and 4, and what the logs say
+
+A tiny fixture, `tickets` (one Node file, 17 planted behaviors and one planted defect, kept
+outside the clone), makes a run cost 12 minutes and 15M tokens.
+
+- Run 3, the generator as of run 2: 12.3 minutes, all 17 behaviors and the defect found.
+- Run 4 started recorders before the environment, drove finished recorders' features while
+  the others recorded, and dropped the `verify all --failed` round: 16.2 minutes, same
+  quality. Reverted.
+
+Run 2's logs, with idle waiting between rounds left out:
+
+- Setup is one session writing: 90% of it is model time, 35k to 104k output tokens at
+  about 90 tokens a second. No step stands out.
+- Recorders: reading and listing is 10% of their time. Model time is 60% of their work on
+  scratch and collector and 40% on otis; the rest is tools, mostly drives (35 s each on
+  collector, 52 s on otis, 2.3 drives per feature).
+- 63% of recipes pass their first drive on scratch and collector, 35% on otis.
+- Proof is rounds of one full run plus the slowest repair. Collector's first round took 32
+  minutes because of one recorder's 12 drives.
+
+So the time is tokens written divided by writing speed, plus drive time on large projects.
+The fixture is too small to show recording and proof changes: its setup is 55% of the run.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
