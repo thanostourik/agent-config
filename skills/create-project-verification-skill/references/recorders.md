@@ -91,6 +91,9 @@ or when your area already has recipes besides the example. Do step 1, then:
 - Run every command you type by hand under `timeout 60`, except `bin/verify` and `pw.sh`,
   which stop themselves: a probe, a helper, a script. A command that never returns
   otherwise costs five minutes.
+- Write every file with your file-writing tool, never with `cat` in the shell. A `cat`
+  that gets no input waits until the shell tool gives up, five minutes later. When your
+  shell tool takes a time limit of its own, give every call that runs no drive 2 minutes.
 - For a product defect, add `# known failure: <step label>` to the recipe's header. Never
   weaken or drop a check to get past it: checking only the response when the stored result
   is wrong hides the defect. Keep the check, last in its step.

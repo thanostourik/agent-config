@@ -63,6 +63,35 @@ Run 2's logs, with idle waiting between rounds left out:
 So the time is tokens written divided by writing speed, plus drive time on large projects.
 The fixture is too small to show recording and proof changes: its setup is 55% of the run.
 
+## Runs 5 and 6: a larger fixture, planners and small recorders
+
+The fixture `desk` (1,000 lines in 8 files, 37 planted behaviors, 2 planted defects, shared
+settings, a background worker, a rate limit) gives 10 areas and 39 features.
+
+| | Run 5, generator as of run 2 | Run 6, planners and recorders of at most 2 features |
+| --- | --- | --- |
+| Total | 20.4 min | 18.1 min |
+| Setup | 9.4 min | 9.7 min |
+| Recording | 8.0 min | 7.2 min |
+| Proof | 2.2 min | 0.8 min, with one full drive instead of two |
+| Tokens | 36.5M | 38.8M |
+| Features, expects | 39, 293 | 28, 244 |
+| Planted behaviors, defects | 37 of 37, 1 of 2 | 34 of 37 in full, 0 of 2 |
+
+Run 6 is not kept. The patch is `.plans/scratch/gen/planner-small-recorders.patch`.
+
+- Recording was the same once a five-minute hang is taken out of each run: about 6.3
+  minutes. On this fixture a recorder takes about 4 minutes whatever its features: 6
+  features in 3.1 minutes, 3 features in 6.2.
+- On collector the time did grow with the features: 38 minutes and 34M tokens for 7
+  features, 5 minutes and 1.6M tokens for 1. A feature there costs minutes of drives and
+  repairs. The fixture has no such features, so it cannot show this change.
+- No feature failed in either proof, so the fixture shows no proof change either.
+- Planning apart from recording lost depth: fewer refusal cases, and the planted defect
+  that run 5 found by sending odd bodies was not found.
+- Every run so far lost five minutes at least once to a `cat` that waited for input, in a
+  command that wrote files in the shell. Recorders now write files with their file tool.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
