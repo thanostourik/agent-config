@@ -24,16 +24,16 @@ gives.
    - an uncovered item gets a step, or an `# expects:` line marked not driven with its
      reason;
    - a line whose reason does not hold gets a step.
-4. When every recorder has written its result file, run `verify all` again, with no
-   `--jobs`. It checks the repairs and is the final proof (the Done rule) in one drive, so
-   run no `verify all --failed` between: that only adds a round. Send each feature that
-   neither passes nor fails at its known failure back to its recorder, with its summary
-   line. A feature that passed in every smaller drive fails only under full load: ask its
-   recorder to drive it twice together with 20 features of other areas before it returns.
-   Repeat until each feature passes in one `verify all` or fails at its known failure.
-   Then run `verify uncovered`: nothing is left uncovered, and every not-driven reason
-   holds.
-5. Run `verify down`, commit, and report the features added, the features repaired, the
+4. When every recorder has written its result file, run `verify all --failed`. Send each
+   feature that neither passes nor fails at its known failure back to its recorder, with
+   its summary line. Repeat until none is left.
+5. Run `verify all` once more, with no `--jobs`, as the final proof (the Done rule). A
+   feature that fails there almost always fails only under full load. Send it back, and
+   ask its recorder to drive it twice together with 20 features of other areas before it
+   returns. When every repair is back, run the next final `verify all` directly, until
+   each feature passes in a final `verify all` or fails at its known failure. Then run
+   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
+6. Run `verify down`, commit, and report the features added, the features repaired, the
    expectations that now have a step, each product defect, and the dead code the recorders
    found.
 
@@ -82,14 +82,6 @@ You are a recorder for verify-<app>. Follow
 `<area>` in .agents/skills/verify-<app>/.cache/areas.txt.
 ```
 
-While the skill is being generated, recorders start before the environment is up. Until
-`.cache/ready` exists, add this line to the prompt of each recorder you start, a handoff's
-too:
-
-```
-The environment is not up yet: follow "When the environment is not up yet" first.
-```
-
 A recorder with more than 6 features hands the rest over in `.cache/handoff/<area>.<n>.txt`.
 Watch that folder with a background command while recorders run, and start a recorder for
 each new file at once, with the same prompt and the line
@@ -109,13 +101,6 @@ notice: notices can be lost. Read only that file's lines:
   and each not-driven reason that does not hold under the Header rules, while the other
   recorders still record. Held until the first `verify all`, they start a rework round
   that every other step then waits for.
-- Each time a third of the recorders have returned since the last such drive, and at
-  least two have returned in all, drive the features their result files list as passed,
-  all together and in the background: `verify <feature> <feature> ...`. Leave out the
-  features still being recorded: their recipes are half written. Send each feature that
-  fails back to its recorder at once, with its summary line. A recipe that passes alone
-  and fails beside the others is then repaired while the rest still record, not in a
-  round after the first `verify all`.
 - Add their traps to `PROJECT.md`'s Gotchas when they hold for other features.
 - Keep their dead code lines for the report.
 - A timer that `PROJECT.md`'s Timers section does not list: ask the user how the run should

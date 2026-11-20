@@ -39,22 +39,6 @@ Each run generates all three, one after the other, so they never compete for the
    split areas by feature count, write each behavior once.
 3. Changes picked from run 2's data.
 
-## Small loop, after run 2
-
-Runs 1 and 2 cost 100 minutes and 250M tokens per large project, too much to iterate on.
-From run 3 on, each change is measured on a tiny fixture first:
-
-- `tickets`: a help desk in one Node file with no dependencies, with sign-in, tickets,
-  user management and a JSON API. It holds 17 planted behaviors and one planted defect,
-  listed outside the clone, so quality has a known answer: how many of them the recipes
-  drive.
-- Run 3: the generator as of run 2, plus three changes that had not run yet.
-- Run 4: recorders start reading before the environment exists and wait for
-  `.cache/ready`; finished recorders' features are driven together while the others
-  still record; `verify all` replaces the `verify all --failed` round.
-- The machine limit for many recorders shows only at scale. It waits for a large run,
-  which happens only when the small runs show a clear gain.
-
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 

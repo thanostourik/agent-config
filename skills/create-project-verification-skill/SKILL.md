@@ -139,22 +139,6 @@ scripts and no recipes, and launch nothing.
 
 At the other levels, write the scripts below into `bin/` and make each one executable.
 
-### Start the recorders before the environment
-
-In default mode, do this before you write the environment. Recorders spend most of their
-time reading source and writing, which needs no running app:
-
-1. Copy the shipped files as the tree above shows, and write the Claude stub and
-   `.gitignore`.
-2. Write `entrypoints.sh` and `actions.sh`
-   ([Scripts that list what to cover](#scripts-that-list-what-to-cover)).
-3. Do steps 4.1 and 4.2, and choose the name of the first recipe (step 4.3).
-4. Start the recorders as the Recorders section of the copied `FULL.md` says, with its
-   line for an environment that is not up yet. Each one lists its area's behaviors, splits
-   them into features, hands over what is too much, and then waits for `.cache/ready`.
-
-Write the rest of this step and do step 4.3 while they read.
-
 ### Environment scripts
 
 - `launch.sh` creates and starts the run's environment. It registers each resource as it
@@ -316,7 +300,7 @@ Write `PROJECT.md`, about 10 KB, with these sections:
 ### Bring it up
 
 1. Copy the shipped files as the tree above shows, and write the Claude stub and
-   `.gitignore`, unless you did before starting the recorders.
+   `.gitignore`.
 2. Run `VERIFY_APP=build bin/verify up` in the background. While it builds, do the parts of
    step 4 that come before the first recipe.
 3. Run `bin/verify up` again, which keeps the production build. Time both calls.
@@ -372,8 +356,6 @@ Every recipe waits on the environment in every run.
 
 ## 4. Record every feature
 
-In default mode, steps 1 and 2 are done and the recorders are reading (step 3).
-
 1. Run `bin/areas > .cache/areas.txt`. It groups the entry points into areas of about 1,000
    lines of source, one line per area:
    `<area>: <n> lines; entry points: <...>; files: <...>`. The files are the entry points'
@@ -400,8 +382,8 @@ In default mode, steps 1 and 2 are done and the recorders are reading (step 3).
    this recipe as its example, so make it clean. Then:
    - Drive the main create path by hand once: create the same record twice, and read it as
      a second tenant or user. Write what that shows about ids, uniqueness and shared data
-     into `PROJECT.md`'s Gotchas before you write `.cache/ready`, so no recorder hits the
-     same trap.
+     into `PROJECT.md`'s Gotchas before any recorder starts, so no recorder hits the same
+     trap.
    - Write the setup helpers several features need, such as signing in as each role,
      creating an account with a role, provisioning a subscription or workspace, adding a
      member, or reading the run's mail.
@@ -418,14 +400,14 @@ In default mode, steps 1 and 2 are done and the recorders are reading (step 3).
 4. Run `bin/verify up --lanes 1`, or `bin/verify up` when two copies clash on ports
    (step 3). A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
-   copy, every drive runs its `# alone` features there instead. Then write `.cache/ready`
-   (`date +%s > .cache/ready`): the recorders have their feature lists by now and go on
-   with the real app from there.
+   copy, every drive runs its `# alone` features there instead. Then start recorders as the
+   Recorders section of the copied `FULL.md` says: one per area, every area at once,
+   heaviest first.
 5. Read only their result files, as the Recorders section of `FULL.md` says.
 
 ## 5. Prove it
 
-Run `bin/verify down`. Then do steps 2 to 4 of Full in the copied `FULL.md`. Its first
+Run `bin/verify down`. Then do steps 2 to 5 of Full in the copied `FULL.md`. Its first
 `verify all` starts a fresh environment on the production build, so every recipe runs once
 more with every other feature beside it. Send a failing feature, an uncovered line or a
 not-driven reason that does not hold back to the recorder that recorded its area, instead
