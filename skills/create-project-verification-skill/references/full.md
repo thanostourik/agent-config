@@ -27,9 +27,11 @@ gives.
 4. When every recorder has written its result file, run `verify all --failed`. Send each
    feature that neither passes nor fails at its known failure back to its recorder, with
    its summary line. Repeat until none is left.
-5. Run `verify all` once more, with no `--jobs`, as the final proof (the Done rule). When
-   a feature fails there, send it back and go on with `verify all --failed`, until each
-   feature passes in a final `verify all` or fails at its known failure. Then run
+5. Run `verify all` once more, with no `--jobs`, as the final proof (the Done rule). A
+   feature that fails there almost always fails only under full load. Send it back, and
+   ask its recorder to drive it twice together with 20 features of other areas before it
+   returns. When every repair is back, run the next final `verify all` directly, until
+   each feature passes in a final `verify all` or fails at its known failure. Then run
    `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
 6. Run `verify down`, commit, and report the features added, the features repaired, the
    expectations that now have a step, each product defect, and the dead code the recorders
