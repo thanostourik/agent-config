@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # maestro.sh <maestro command> [args]: Maestro on the run's Android emulator, for example `maestro.sh test flow.yaml`.
 # `maestro.sh flow [name] <<'EOF'` runs the flow commands on stdin against $MAESTRO_APP_ID, so a recipe step keeps its
-# flow inline.
+# flow inline. A flow reads an exported variable named MAESTRO_<NAME> as ${MAESTRO_<NAME>}, which is how a password
+# gets in; the text a flow types is in its debug output.
 # Maestro always uses the ADB server on port 5037 and forwards its driver through port 7001. It runs here in a private
 # network namespace whose port 5037 leads to the run's ADB server ($ANDROID_ADB_SERVER_PORT) and whose emulator ports lead
 # to the run's emulator ($ANDROID_SERIAL, emulator-<port>), so it never starts or uses another ADB server. `test` writes
