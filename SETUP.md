@@ -44,6 +44,22 @@ symlinks only `skills` from `~/.gemini/config/`. After `./sync --apply`, run
 `./sync-t3-gemini` to symlink `AGENTS.md`, `hooks.json`, `mcp_config.json`, and
 `agents` into T3 Code's Antigravity config folder(s).
 
+## Android verification
+
+A project verification skill drives an Android app with Maestro through
+`bin/maestro.sh`, which downloads the Maestro version it needs by itself. The
+machine needs:
+
+1. Java 17 or newer: `java -version`.
+2. `socat`: `sudo apt install socat`.
+3. Unprivileged user namespaces. Check: `unshare --user --map-root-user --net true && echo ok`.
+   On Ubuntu 24.04 and later this fails by default. Allow them with
+   `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`, and keep it after
+   a reboot with
+   `echo kernel.apparmor_restrict_unprivileged_userns=0 | sudo tee /etc/sysctl.d/60-userns.conf`.
+4. The Android SDK with an emulator and a system image, as the project's
+   verification skill says.
+
 ## Stacked PRs
 
 Needs `gh` installed and logged in (`gh auth login`).

@@ -29,6 +29,10 @@ if [[ -f "$skill/pw-version" ]]; then
   cp "$shipped/pw.sh" "$shipped/pw-close" "$skill/bin/"
   chmod +x "$skill/bin/pw.sh" "$skill/bin/pw-close"
 fi
+if [[ -f "$skill/maestro-version" ]]; then
+  cp "$shipped/maestro.sh" "$skill/bin/"
+  chmod +x "$skill/bin/maestro.sh"
+fi
 sed "s/<app>/$app/g" "$shipped/verify-skill.md" > "$skill/SKILL.md"
 sed "s/<app>/$app/g" "$shipped/full.md" > "$skill/FULL.md"
 cp "$shipped/recorders.md" "$skill/RECORDERS.md"
