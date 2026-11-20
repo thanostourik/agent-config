@@ -80,9 +80,15 @@ You are a recorder for verify-<app>. Follow
 `<area>` in .agents/skills/verify-<app>/.cache/areas.txt.
 ```
 
+A recorder with more than 6 features hands the rest over in `.cache/handoff/<area>.<n>.txt`.
+Watch that folder with a background command while recorders run, and start a recorder for
+each new file at once, with the same prompt and the line
+`the features in .cache/handoff/<area>.<n>.txt` in place of the area line. It writes
+`.cache/results/<area>.<n>.txt`. Send a feature back to the recorder that recorded it.
+
 Before you start a recorder, or send work back to one, delete its result file
-`.cache/results/<area>.txt`. A file left from an earlier round looks like a recorder that
-already finished.
+`.cache/results/<area>.txt` (or `<area>.<n>.txt`). A file left from an earlier round looks
+like a recorder that already finished.
 
 A recorder has returned when its result file appears, with or without the host's completion
 notice: notices can be lost. Read only that file's lines:

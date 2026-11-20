@@ -18,7 +18,11 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    same file, take only the behaviors behind your own entry points.
 3. Split that list into features by user goal, each 8 to 15 steps, with one behavior per
    step where it can be driven on its own. Name them `<area>-<goal>`. A recipe of your area
-   that already exists is one of them.
+   that already exists is one of them. When you have more than 6 features, keep 6 and hand
+   the rest to other recorders, at most 6 to each, before you go on: write each group to
+   `<skill>/.cache/handoff/<area>.<n>.txt` (`n` from 2), through a temporary file and `mv`,
+   one line per feature: `<feature>: <the line numbers of its behaviors in your behaviors
+   file>`. From then on, the behaviors and items behind those features are theirs.
 4. Look at the real app. Open each screen of your area once in a browser session of your
    own (`VERIFY_SESSION=<area>-probe`), signed in as the role that uses it. Save its
    snapshots under `<skill>/.cache/snapshots/<area>/`. Call the API once, with the
@@ -54,6 +58,13 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
      list: `timer: <name> (<file>): <what it delays>`. Its behaviors get no line until the
      user decides.
 
+## When you take over features
+
+The prompt names a handoff file, `.cache/handoff/<area>.<n>.txt`, instead of an area. Do
+step 1, read the behaviors file it points into and the files of the area, and record only
+the features it lists: steps 4 to 9, with the behaviors behind your features as your list.
+Write your result to `<skill>/.cache/results/<area>.<n>.txt`.
+
 ## When the area already has recipes
 
 Do not record the area again when the prompt names failing features or not-driven reasons,
@@ -77,6 +88,9 @@ or when your area already has recipes besides the example. Do step 1, then:
 - While iterating, drive only your own features. Run each drive in the foreground and read
   its summary. Never end your turn while a drive runs.
 - Stop a feature after 5 runs, and report it blocked with its last summary line.
+- Run every command you type by hand under `timeout 60`, except `bin/verify` and `pw.sh`,
+  which stop themselves: a probe, a helper, a script. A command that never returns
+  otherwise costs five minutes.
 - For a product defect, add `# known failure: <step label>` to the recipe's header. Never
   weaken or drop a check to get past it: checking only the response when the stored result
   is wrong hides the defect. Keep the check, last in its step.

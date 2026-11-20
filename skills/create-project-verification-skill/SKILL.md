@@ -215,6 +215,9 @@ At the other levels, write the scripts below into `bin/` and make each one execu
     for `const handle...` alone misses it.
   - `bin/verify uncovered` lists each action that no recipe's `# expects:` line cites by
     its file and name. `bin/verify affected` lists those in changed files.
+- Both scripts finish in a few seconds: `bin/verify` stops one after 30 s. Time
+  `bin/verify uncovered` once before recorders start, because every recorder runs it.
+  Matching a whole file with a pattern such as `(.|\n)*` can take minutes.
 
 ### Rules for every helper
 
