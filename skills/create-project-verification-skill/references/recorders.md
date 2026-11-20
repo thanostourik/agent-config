@@ -18,7 +18,8 @@ is the folder that holds this file, such as `.agents/skills/verify-shop`.
    same file, take only the behaviors behind your own entry points.
 3. Split that list into features by user goal, each 8 to 15 steps, with one behavior per
    step where it can be driven on its own. Name them `<area>-<goal>`. A recipe of your area
-   that already exists is one of them. When you have more than 6 features, keep 6 and hand
+   that already exists is one of them. So is the example recipe when it is named after
+   your area, even before its file exists: keep it yourself when you hand features over. When you have more than 6 features, keep 6 and hand
    the rest to other recorders, at most 6 to each, before you go on: write each group to
    `<skill>/.cache/handoff/<area>.<n>.txt` (`n` from 2), through a temporary file and `mv`,
    one line per feature: `<feature>: <the line numbers of its behaviors in your behaviors
@@ -64,6 +65,21 @@ The prompt names a handoff file, `.cache/handoff/<area>.<n>.txt`, instead of an 
 step 1, read the behaviors file it points into and the files of the area, and record only
 the features it lists: steps 4 to 9, with the behaviors behind your features as your list.
 Write your result to `<skill>/.cache/results/<area>.<n>.txt`.
+
+## When the environment is not up yet
+
+The prompt says so while the skill is being generated: the environment, `PROJECT.md` and
+the example recipe are still being written. Listing and splitting behaviors need none of
+them, so do that first:
+
+1. Read `<skill>/SKILL.md` (sections Recipes and When a drive fails) and your expectation
+   list.
+2. Do steps 2 and 3. When you take over features, read the behaviors file and the files of
+   the area instead.
+3. Wait for the environment: run
+   `timeout 110 bash -c 'until [[ -e <skill>/.cache/ready ]]; do sleep 2; done'` again
+   and again until it exits 0. Drive nothing and open no browser before it does.
+4. Read `PROJECT.md` and the example recipe, and go on from step 4.
 
 ## When the area already has recipes
 
