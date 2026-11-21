@@ -194,6 +194,33 @@ its context, and it makes one call a turn whatever its prompt says:
 - Run 12 marked no known failure: its recorder saw the RSS 1.0 defect that runs 8, 10 and
   11 marked, was unsure, and left it out.
 
+## Run 13: two more areas with run 12's flow
+
+Both ran at the same time, each from run 2's clone at the commit right before recording.
+
+| | `jobs` in collector, run 2 | run 13 | `sync` in scratch (browser), run 2 | run 13 |
+| --- | --- | --- | --- | --- |
+| Time to the first results | 26.4 min | 10.9 min | 19.0 min | 28.4 min |
+| Time until all was recorded | 26.4 min | 21.9 min | 19.0 min | 28.6 min |
+| Tokens of the area's subagents | 11.5M | 10.4M | 8.1M | 10.7M |
+| Cost at list prices, relative to run 2 | 1 | 1.09 | 1 | 1.95 |
+| Features, expects, steps | 8, 70, 78 | 10, 123, 103 | 6, 46, 38 | 7, 82, 79 |
+
+- Depth grew in all three areas tested: 6%, 76% and 78% more expects than run 2.
+- Speed did not hold: 3 times faster on `operator`, 1.2 times on `jobs`, 1.5 times slower
+  on `sync`.
+- `jobs`: the planner took a minute and cited none of the area's 24 expectation lines.
+  The recorders covered 21 on the way. For the other 3 the main session started a fifth
+  recorder after the first wave, which cost 11 minutes. A script can list what a plan
+  does not cite before any recorder starts.
+- `sync`: one recorder took 27 minutes, 17 of them in commands that hung on Playwright's
+  fake clock, four times for 150 to 200 seconds, before it drove anything. Two recorders
+  each built a helper that holds the sync socket's messages. The old flow's single
+  recorder built one.
+- So the slowest recorder still sets the time, and a split does not shorten a recorder
+  that is stuck. Recording a whole project ends with its slowest recorder, so only a
+  whole-project run shows the total.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
