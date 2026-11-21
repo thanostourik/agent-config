@@ -12,7 +12,8 @@ proof against the intent.
 
 ## Setup
 
-- **Reviewers:** three lists of review skills.
+- **Reviewers:** three lists of reviewers from [peer-review](../peer-review/SKILL.md)
+  (`codex`, `claude`, `grok`, `cursor-grok`, or `gemini`).
   - Round reviewers review in every round: `{{defaults.reviewers}}`.
   - One-pass reviewers review once, starting in round one:
     `{{defaults.one_pass_reviewers}}`. This list is for reviewers worth one
@@ -25,11 +26,11 @@ proof against the intent.
   stop. A list the user names replaces the default one. When the user names
   reviewers without saying which list, they are the round reviewers and there
   are no one-pass reviewers. A one-pass reviewer that is also a round reviewer
-  already reviews every round, so it is not a one-pass reviewer. Each entry is
-  a review skill. That skill's own defaults give the model and effort, and it
-  says how to run and wait for the review.
+  already reviews every round, so it is not a one-pass reviewer. Each entry's
+  reference file in [peer-review](../peer-review/SKILL.md) gives its default
+  model and effort, and says how to run and wait for the review.
 
-  A reviewer cannot run when its skill is not available to you, or when it
+  A reviewer cannot run when its route is not available to you, or when it
   failed twice in a row, for example on a usage limit. Then:
   - A one-pass reviewer: go on without it.
   - A round reviewer: replace it, for the rest of the loop, with the first
@@ -75,8 +76,8 @@ request wins.
    caller's rules; this skill never pushes.
 2. Start every round reviewer before you end your turn to wait. In round one,
    start the one-pass reviewers too. Each reviews the target the way its
-   skill says, the same way every round. Round two is not a review of the
-   changes since round one.
+   reference file in [peer-review](../peer-review/SKILL.md) says, the same way
+   every round. Round two is not a review of the changes since round one.
 3. Keep reviewers blind. Give them no intent, no ledger, no earlier or
    declined findings, and nothing else you wrote. Context from the author
    biases the reviewer.
@@ -120,8 +121,8 @@ budget is not approval; report what is still open.
    `.plans/scratch/<branch>/proof/`: screenshots, transcripts, and command
    output with exit codes.
 2. Run one evidence check with a fresh reviewer: the first round reviewer,
-   or its replacement, through its skill's custom-prompt mode. The prompt
-   holds only:
+   or its replacement, through [peer-review](../peer-review/SKILL.md)'s
+   custom-prompt mode. The prompt holds only:
    - The intent, quoted word for word: the Jira ticket or the user's request.
      When neither exists, the acceptance criteria in
      `.plans/scratch/<branch>/criteria.md`.

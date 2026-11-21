@@ -2,7 +2,7 @@
 name: create-jira-issue
 description: Use when the user asks to create or file Jira issues, or to draft them for review.
 metadata:
-  harness: "claude-code, codex, grok, opencode, cursor, antigravity"
+  harness: "claude-code, codex, grok, opencode, cursor, gemini"
 ---
 
 # Create Jira issues

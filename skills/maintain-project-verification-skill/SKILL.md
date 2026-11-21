@@ -1,7 +1,7 @@
 ---
 name: maintain-project-verification-skill
 metadata:
-  harness: "claude-code, codex, grok, cursor, antigravity"
+  harness: "claude-code, codex, grok, cursor, gemini"
 description: "Use for /maintain-project-verification-skill, or when asked to update a repo's verify skill to the current generator, including skills from before recipes were scripts."
 disable-model-invocation: true
 ---

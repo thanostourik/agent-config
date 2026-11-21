@@ -26,13 +26,21 @@ Needs a Linux desktop session with systemd and these commands installed: `bw`
    When Authentik no longer sits in front of Jira, set `"gate": false` and run
    `./sync --apply` again.
 
-## Claude review
+## Peer review
 
-`claude-review` runs the reviewer in Claude Code's sandbox. On Linux that
+`peer-review`'s `claude` reviewer runs in Claude Code's sandbox. On Linux that
 needs `bwrap` (package `bubblewrap`) and `socat`; without them Claude refuses
 to start. The command also needs `jq`; without it the command stops before
-Claude starts. `cursor-grok-review` needs `jq` to read its report; Cursor
+Claude starts. The `cursor-grok` reviewer needs `jq` to read its report; Cursor
 brings its own sandbox.
+
+## T3 Code Antigravity
+
+T3 Code runs Antigravity against its own
+`~/.t3/userdata/providers/antigravity/<hash>/config/` folder and currently
+symlinks only `skills` from `~/.gemini/config/`. After `./sync --apply`, run
+`./sync-t3-gemini` to symlink `AGENTS.md`, `hooks.json`, `mcp_config.json`, and
+`agents` into T3 Code's Antigravity config folder(s).
 
 ## Stacked PRs
 

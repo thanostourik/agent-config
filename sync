@@ -61,9 +61,9 @@ TOOLS = {
                  "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
     "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
-    "antigravity": {"instructions": ".gemini/config/AGENTS.md",
-                    "hooks": ".gemini/config/hooks.json",
-                    "skills": ".gemini/config/skills", "agents": ".gemini/config/agents"},
+    "gemini": {"instructions": ".gemini/config/AGENTS.md",
+               "hooks": ".gemini/config/hooks.json",
+               "skills": ".gemini/config/skills", "agents": ".gemini/config/agents"},
 }
 # Skill harness names. ~/.agents/skills gets only skills whose harness names "agents".
 SKILL_DESTINATIONS = {**{tool: paths["skills"] for tool, paths in TOOLS.items()},
@@ -77,7 +77,7 @@ HOOK_EVENTS = {
         "claude-code": ("PostToolUse", "Write|Edit|MultiEdit"),
         "codex": ("PostToolUse", None),
         "cursor": ("afterFileEdit", None),
-        "antigravity": ("PostToolUse", "edit_file|write_file"),
+        "gemini": ("PostToolUse", "edit_file|write_file"),
     },
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
@@ -754,7 +754,7 @@ def desired_files(config, home, hooks_by_tool):
             continue
         if tool == "cursor":
             wrapper = {"version": 1, "hooks": hooks}
-        elif tool == "antigravity":
+        elif tool == "gemini":
             wrapper = {"agent-config": hooks}
         else:
             wrapper = {"hooks": hooks}
