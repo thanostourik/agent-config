@@ -50,3 +50,18 @@ Add the phone app (`apps/mobile`, Expo dev client, Clerk, Convex) to `verify-wov
 `/maintain-project-verification-skill`: the mobile environment and one recipe (sign in,
 open the watchlist), driven through the new section. Measure `up` and the drive. Recording
 the rest of the mobile features is a later decision.
+
+## Results (2026-11-21)
+
+- cinova (eworx-org/cinova-iot-mobile#23): `verify all` takes 84 min against about 100 min,
+  with the sign-in step at about 21 s against 74–76 s. Keeping the login needed two more
+  things the full wipe did by itself: getting past the development-menu intro of a
+  never-opened app, and forgetting refused permission prompts.
+- Wovies (thanostourik/wovies#33): a Sonnet agent with the generator text and cinova's
+  emulator code as reference built the mobile environment in 24 minutes and stopped at
+  Clerk's emailed code for a new device. With a `+clerk_test` user a second agent finished
+  the sign-in and the recipe in 18 minutes. `verify up` takes about 2.5 min with the APK
+  cached, and `mobile-watchlist` 65 to 73 s.
+- Open: the generator has no procedure for adding a surface to an existing verify skill,
+  and wovies now starts the emulator on every `verify up`.
+
