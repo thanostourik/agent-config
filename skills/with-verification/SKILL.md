@@ -1,7 +1,7 @@
 ---
 name: with-verification
 metadata:
-  harness: "claude-code, codex, grok, cursor, antigravity"
+  harness: "claude-code, codex, grok, cursor, gemini"
 description: Use when the user adds "with verify" or "with verification" to a task as an instruction to verify it with the project's verify skill. Not when verification is only the topic.
 ---
 

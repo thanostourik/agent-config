@@ -122,7 +122,7 @@ metadata:
   harness: "grok, opencode"
 ```
 
-Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `antigravity`,
+Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `gemini`,
 `agents`.
 The list replaces the default. `agents` means `~/.agents/skills/`, which some
 tools also read; it is included only when listed explicitly. Use two spaces,
@@ -167,7 +167,7 @@ entry of another shape, or a malformed `{{allow` marker stops sync.
 | `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | none | `~/.grok/config.toml` (`mcp_servers`) |
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none | `~/.config/opencode/opencode.json` (`mcp`) |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` | `~/.cursor/mcp.json` (`mcpServers`) |
-| `antigravity` | `~/.gemini/config/AGENTS.md` | `~/.gemini/config/skills/` | `~/.gemini/config/agents/` | `~/.gemini/config/hooks.json` | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
+| `gemini` | `~/.gemini/config/AGENTS.md` | `~/.gemini/config/skills/` | `~/.gemini/config/agents/` | `~/.gemini/config/hooks.json` | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
 | `agents` (only through `harness`) | none | `~/.agents/skills/` | none | none | none |
 
 `bin/` is not in the table. Every file in it goes to `~/.local/bin/`.

@@ -2,7 +2,7 @@
 name: file-pr
 description: Use when creating or updating a pull request.
 metadata:
-  harness: "claude-code, codex, grok, opencode, cursor, antigravity"
+  harness: "claude-code, codex, grok, opencode, cursor, gemini"
 ---
 
 # File PR
