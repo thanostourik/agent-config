@@ -250,6 +250,36 @@ Both ran at the same time, each from run 2's clone at the commit right before re
 - With `operator` (run 12): 3 times, 1.3 times and 1.3 times faster than run 2, for 0.87,
   1.08 and 2.6 times its cost, and 6%, 67% and 224% more expects.
 
+## Run 15: the same two areas with rules against unwanted checks
+
+Read one by one, run 14's 149 `sync` expects were about 85 real ones, 45 that belong to
+other areas (the plan check had offered the actions of a shared file), 10 duplicates (a
+test line and a source line for one behavior) and 9 internals. Run 15 adds:
+
+- the plan check leaves out actions in files another area lists too, and `bin/finish`
+  shows them apart;
+- one line per behavior, citing the test and the function together;
+- only what a user or client can observe is a behavior;
+- the planner stays inside its area in a shared file;
+- before a recorder marks a line not driven for missing tooling, it asks in the traps file
+  and builds the tooling when no one has it.
+
+| | `jobs`, run 2 | run 14 | run 15 | `sync`, run 2 | run 14 | run 15 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time until all was recorded | 26.4 min | 19.9 min | 18.4 min | 19.0 min | 14.9 min | 13.3 min |
+| Cost at list prices, relative to run 2 | 1 | 1.08 | 0.86 | 1 | 2.6 | 1.12 |
+| Behavior lines in the plan | | 111 | 63 | | 149 | 44 |
+| Features, expects, steps | 8, 70, 78 | 9, 117, 101 | 8, 72, 70 | 6, 46, 38 | 12, 149, 120 | 6, 44, 45 |
+
+- The unwanted checks are gone, and no recorder marked a line not driven without reason.
+- The rules cut real checks too: run 15 has the depth of run 2, not run 14's. `sync`
+  lost behaviors run 2 had, such as the "Session ended" message, whose code is in a
+  shared file.
+- Recording was 1.4 times faster than run 2 in both areas at about its cost. The speed
+  held at every depth: the plan's size sets the cost, not the time.
+- The planner's rules swing the plan widely: 73, 149 and 44 behaviors for `sync`. With
+  the same rules it still varies by a fifth (152 and 181 for `operator`).
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
