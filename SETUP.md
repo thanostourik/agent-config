@@ -34,6 +34,14 @@ to start. The command also needs `jq`; without it the command stops before
 Claude starts. The `cursor-grok` reviewer needs `jq` to read its report; Cursor
 brings its own sandbox.
 
+## T3 Code Antigravity
+
+T3 Code runs Antigravity against its own
+`~/.t3/userdata/providers/antigravity/<hash>/config/` folder and currently
+symlinks only `skills` from `~/.gemini/config/`. After `./sync --apply`, run
+`./sync-t3-gemini` to symlink `AGENTS.md`, `hooks.json`, `mcp_config.json`, and
+`agents` into T3 Code's Antigravity config folder(s).
+
 ## Stacked PRs
 
 Needs `gh` installed and logged in (`gh auth login`).
