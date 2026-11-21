@@ -12,14 +12,15 @@ This skill gives a project a `verify-<app>` skill. That skill has an isolated en
 one bash recipe per feature, and the shipped runner `bin/verify`, which drives the recipes
 in parallel without an agent. Agents then drive the features a change touches before they
 call work done. You write for the next agent, which reads the result in the middle of
-another task, with no other context. Recorders are subagents. Each one writes the recipes
-of one area of the app.
+another task, with no other context. Planners and recorders are subagents. A planner
+splits one area of the app into features, and a recorder writes the recipes of up to 3 of
+them.
 
 ## Modes
 
 - `/create-project-verification-skill` (default): record every feature.
 - `/create-project-verification-skill quick`: write the environment and one recipe, with no
-  recorders. Do steps 1 to 3, steps 4.1 and 4.3, the lifecycle checks of step 5, and
+  planners or recorders. Do steps 1 to 3, steps 4.1 and 4.4, the lifecycle checks of step 5, and
   step 6. The one recipe proves that the environment, sign-in, the browser helper and
   cleanup work, and agents copy it. The other recipes grow with the code: `verify affected`
   fails while a change adds a screen, route or action no recipe covers, `verify uncovered`
@@ -52,6 +53,8 @@ replace it (delete and generate again) or upgrade it with
   bin/harvest         copied from <generator>/references/harvest, unchanged
   bin/areas           copied from <generator>/references/areas, unchanged (needs python3)
   bin/reach           copied from <generator>/references/reach, unchanged (needs python3)
+  bin/brief           copied from <generator>/references/brief, unchanged (needs python3)
+  bin/finish          copied from <generator>/references/finish, unchanged
   bin/detach          copied from <generator>/references/detach, unchanged
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
@@ -215,12 +218,19 @@ At the other levels, write the scripts below into `bin/` and make each one execu
     for `const handle...` alone misses it.
   - `bin/verify uncovered` lists each action that no recipe's `# expects:` line cites by
     its file and name. `bin/verify affected` lists those in changed files.
+- Both scripts finish in a few seconds: `bin/verify` stops one after 30 s. Time
+  `bin/verify uncovered` once before recorders start, because every recorder runs it.
+  Matching a whole file with a pattern such as `(.|\n)*` can take minutes.
 
 ### Rules for every helper
 
 - A helper also works when an agent calls it by hand, outside `bin/verify`. It sets
   `: "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"` and gives the other `VERIFY_*`
   variables it reads a default.
+- Under `pipefail`, it never pipes into `grep -q` or `head`: they stop reading at the first
+  match, the writer dies of SIGPIPE, and the pipe fails even when it matched. A readiness
+  wait built that way never succeeds. Capture the output first:
+  `out=$(curl -s "$url"); grep -q ready <<< "$out"`.
 - Its waits and error output follow the "Waits and errors" rules in the shipped `SKILL.md`.
   A helper that inserts rows directly follows the fixture rule in that file's Data section.
   `verify lint` checks only recipes, so check helpers yourself.
@@ -289,6 +299,21 @@ Write `PROJECT.md`, about 10 KB, with these sections:
   - The `run-code` function runs in a bare sandbox. Node and browser globals such as `URL`,
     `require` and `console` are not there, so parse URLs and log inside `page.evaluate`, or
     return the value.
+  - State set in one `run-code` call, such as a route or a variable, is gone in the next.
+    Keep it on `window` inside the page.
+  - `page.clock.pauseAt` left active when a `run-code` call ends makes every later call
+    hang. Pause, act and resume inside one call
+    (`try { ... } finally { await page.clock.resume() }`), or keep the clock running and
+    move it with `page.clock.runFor`.
+  - Under a paused fake clock `waitForFunction` hangs, because it polls on animation
+    frames: pass `{ polling: 100 }`.
+  - `verify lint` refuses `waitForTimeout`. To prove that an action changed nothing, wait
+    for two animation frames or one round trip to the server, then check.
+  - Text that a list repeats matches twice, and `getByText` then fails: scope the locator
+    to its container, or pass `exact: true`.
+  - `pw.sh snapshot --filename` needs an absolute path.
+  - `pw.sh` closes a session opened by hand that sat idle for 120 s: run `pw.sh open` again
+    before the next call.
 
 ### Bring it up
 
@@ -327,7 +352,7 @@ Every recipe waits on the environment in every run.
   without `-Xmx` takes a quarter of the machine. Start the project's own JVM apps with
   `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC`, which shortens startup.
 - Give every service of the run a memory limit (`mem_limit` for a container), third-party
-  ones included. Step 4.3 sizes it, once the example recipe passes.
+  ones included. Step 4.4 sizes it, once the example recipe passes.
   - A runtime that sizes its heap from the container, such as a JVM, then stays inside it.
   - Change only the limit of a third-party service, never its startup flags. Keycloak's
     start script picks a garbage collector that clashes with `UseSerialGC`, and then
@@ -352,11 +377,11 @@ Every recipe waits on the environment in every run.
 1. Run `bin/areas > .cache/areas.txt`. It groups the entry points into areas of about 1,000
    lines of source, one line per area:
    `<area>: <n> lines; entry points: <...>; files: <...>`. The files are the entry points'
-   folders and the project files they import. One recorder records one area. Review the
-   file:
+   folders and the project files they import. One planner splits one area into features.
+   Review the file:
    - Split a line marked `split:`, and any area much larger than the rest, by user goal
      into several areas. Each new line keeps the shared files and lists only its own entry
-     points. All recorders run at once, so the largest area sets when recording ends.
+     points. All planners run at once, so the largest area sets when planning ends.
    - Rename an area whose name does not say what the user calls the screen, such as one
      named `area2-<name>`.
    - Move a file the lines miss, such as a component two screens share, to the area that
@@ -365,14 +390,18 @@ Every recipe waits on the environment in every run.
      are named `<area>-<goal>`, and `bin/verify uncovered <area>` finds an area's features
      by that prefix.
 
-   Do not name features. Each recorder lists every behavior of its area from the source and
+   Do not name features. Each planner lists every behavior of its area from the source and
    splits that list into features itself.
 2. Write each area's expectation list, as the Expectation lists section of the copied
    `FULL.md` says.
-3. Write the first recipe yourself, for the simplest feature. Follow the Recipes section of
-   the copied `SKILL.md`, and name the recipe `<area>-<goal>` after its area. That area's
-   recorder keeps it. Run `bin/verify <feature>` until it passes. Every recorder copies
-   this recipe as its example, so make it clean. Then:
+3. Start the planners now, as the Recorders section of the copied `FULL.md` says: one per
+   area, every area at once. They read only source, so they work while the environment
+   builds and while you do the next step. Name the first recipe of the next step
+   `<area>-<goal>` before you start them, and tell its area's planner.
+4. Write the first recipe yourself, for the simplest feature. Follow the Recipes section of
+   the copied `SKILL.md`. The recorder of its group completes it. Run `bin/verify <feature>`
+   until it passes. Every recorder copies this recipe as its example, so make it clean.
+   Then:
    - Drive the main create path by hand once: create the same record twice, and read it as
      a second tenant or user. Write what that shows about ids, uniqueness and shared data
      into `PROJECT.md`'s Gotchas before any recorder starts, so no recorder hits the same
@@ -390,22 +419,22 @@ Every recipe waits on the environment in every run.
      after a busy run. A busy run is the example recipe's flow plus a few hundred sign-ins,
      30 at a time. Read the use with `docker stats`. Never size the limit from an idle
      stack.
-4. Run `bin/verify up --lanes 1`, or `bin/verify up` when two copies clash on ports
+5. Run `bin/verify up --lanes 1`, or `bin/verify up` when two copies clash on ports
    (step 3). A feature marked `# alone` waits until its copy is free
    of other features, so on a single copy every other drive stops meanwhile. With the extra
-   copy, every drive runs its `# alone` features there instead. Then start recorders as the
-   Recorders section of the copied `FULL.md` says: one per area, every area at once,
-   heaviest first.
-5. Read only their result files, as the Recorders section of `FULL.md` says.
+   copy, every drive runs its `# alone` features there instead. Then, when every planner
+   has returned, start the recorders as the Recorders section of the copied `FULL.md`
+   says: one per group, every group at once, the heaviest areas first.
+6. Read only their result files, as the Recorders section of `FULL.md` says.
 
 ## 5. Prove it
 
 Run `bin/verify down`. Then do steps 2 to 5 of Full in the copied `FULL.md`. Its first
 `verify all` starts a fresh environment on the production build, so every recipe runs once
 more with every other feature beside it. Send a failing feature, an uncovered line or a
-not-driven reason that does not hold back to the recorder that recorded its area, instead
-of starting a new one. In the final `verify all`, every feature runs on an environment
-where it already ran, which also proves each recipe repeats.
+not-driven reason that does not hold back to the recorder that recorded the feature,
+instead of starting a new one. In the final `verify all`, every feature runs on an
+environment where it already ran, which also proves each recipe repeats.
 
 The runner starts up to as many features at once as the machine has cores, each only when
 the machine-wide queue has room. Write a `jobs` file only when the project needs a lower
