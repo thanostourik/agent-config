@@ -100,22 +100,31 @@ commit right before recording, with the environment up, and the area runs alone.
 the area's drives never waited for room on the machine, so the idle machine explains
 little.
 
-| | Run 2, one recorder and a handoff | Run 7, planner and recorders of at most 2 features | Run 8, run 7 with depth rules |
-| --- | --- | --- | --- |
-| Time to the first results | 32.5 min, 5 of them a hang | 11.3 min | 12.7 min |
-| Tokens of the area's subagents | 15.6M | 19.5M | 30.5M |
-| Features, expects, steps | 10, 189, 104 | 8, 113, 79 | 11, 241, 132 |
-| Product defects found | 0 | 0 | 2 |
+| | Run 2, one recorder and a handoff | Run 7, groups of 2 | Run 8, groups of 2, depth rules | Run 9, groups of 4, depth rules |
+| --- | --- | --- | --- | --- |
+| Time to the first results | 32.5 min, 5 of them a hang | 11.3 min | 12.7 min | 17.2 min |
+| Tokens of the area's subagents | 15.6M | 19.5M | 30.5M | 30.5M |
+| Recorder cost | about $3.9 | $5.7 | $8.3 | $7.5 |
+| Features, expects, steps | 10, 189, 104 | 8, 113, 79 | 11, 241, 132 | 15, 250, 186 |
+| Tokens per step | 0.15M | 0.25M | 0.23M | 0.16M |
+| Product defects found | 0 | 0 | 2 | 0 |
+
+A planner splits the area into features, in groups of at most 2 or 4, and one recorder
+records each group, all at once.
 
 - Run 7's planner merged behaviors into one line, and its recorders checked only what the
-  plan listed. Run 8 tells the planner never to merge and the recorders to treat the plan
-  as the least they cover.
-- Run 8 records the area 2.5 times faster and deeper, for twice the tokens. Six recorders
-  each read the same files and found the same traps on their own: three of them reported
-  that a succeeding source could not be driven.
-- Not measured: groups of 3 or 4 features, and what small recorders do to proof.
-- The patch is `.plans/scratch/gen/planner-small-recorders-r8.patch`. It is not in the
-  generator: the token cost is a decision.
+  plan listed. Runs 8 and 9 tell the planner never to merge and the recorders to treat
+  the plan as the least they cover.
+- Both group sizes record the area about twice as fast or faster, with about 30% more
+  expects, for twice the tokens.
+- The tokens follow the work: groups of 4 cost per step what the old flow cost, and they
+  drove 79% more steps. Groups of 2 cost half more per step, because more recorders read
+  the same files and find the same traps on their own.
+- One run each, and the planner's split varies: 8, 11 and 15 features.
+- Not measured: what small recorders do to proof, and a whole project.
+- The patches are `.plans/scratch/gen/planner-small-recorders-r8.patch` and the generator
+  copies in `.plans/scratch/gen/r8` and `r9`. The change is not in the generator: the
+  token cost is a decision.
 
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
