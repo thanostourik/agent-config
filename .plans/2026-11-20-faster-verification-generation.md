@@ -221,6 +221,35 @@ Both ran at the same time, each from run 2's clone at the commit right before re
   that is stuck. Recording a whole project ends with its slowest recorder, so only a
   whole-project run shows the total.
 
+## Run 14: the same two areas with four fixes
+
+- The planner runs `bin/brief <area>` on its own plan. It lists each expectation line,
+  entry point and action the behaviors file does not cite, and the planner adds them.
+- No forced limit on by-hand commands: Claude Code skips a project agent's hooks in an
+  unattended run of a folder it was not told to trust, and a command that reaches its
+  limit moves to the background. The recorder agent's prompt sets a two-minute limit and
+  forbids chaining a command behind one that can hang.
+- Seven generic traps of the browser driver go into the project notes, the fake-clock hang
+  first.
+- A recorder announces a helper in the traps file before it builds it.
+
+| | `jobs`, run 2 | run 13 | run 14 | `sync`, run 2 | run 13 | run 14 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time until all was recorded | 26.4 min | 21.9 min | 19.9 min | 19.0 min | 28.6 min | 14.9 min |
+| Tokens of the area's subagents | 11.5M | 10.4M | 10.4M | 8.1M | 10.7M | 14.2M |
+| Cost at list prices, relative to run 2 | 1 | 1.09 | 1.08 | 1 | 1.95 | 2.6 |
+| Behavior lines in the plan | | 56 | 111 | | 73 | 149 |
+| Features, expects, steps | 8, 70, 78 | 10, 123, 103 | 9, 117, 101 | 6, 46, 38 | 7, 82, 79 | 12, 149, 120 |
+
+- `sync`: no command hung and no helper was built twice. The plan doubled, so the area
+  costs 2.6 times run 2 for 3.2 times its expects.
+- `jobs`: the plan was complete, and the first results came at 11.9 minutes. Two recorders
+  had marked six behaviors not driven for reasons the rules do not allow, such as the
+  SQLite store. The main session sent them back, which took until 19.9 minutes. In run 2
+  the same reasons were sent back only in proof.
+- With `operator` (run 12): 3 times, 1.3 times and 1.3 times faster than run 2, for 0.87,
+  1.08 and 2.6 times its cost, and 6%, 67% and 224% more expects.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
