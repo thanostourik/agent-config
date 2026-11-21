@@ -793,6 +793,10 @@ drive() {
     rm -f "$cache/passed/$feature"
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
+      if (($# <= 4)) && (($(cat "$run/rc-$feature") != 0)); then
+        tail -n 15 "$cache/drive/$feature/log" 2> /dev/null | cut -c1-300 | sed 's/^/    /'
+        echo "    evidence files: $(ls "$cache/evidence/$feature" 2> /dev/null | head -n 20 | tr '\n' ' ')"
+      fi
       [[ -n "$code" ]] && (($(cat "$run/rc-$feature") == 0)) && state_of "$feature" "$run/files" > "$cache/passed/$feature"
       (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || { result=1 not_passed+=("$feature"); }
     elif [[ -s "$run/stop" ]]; then

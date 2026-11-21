@@ -320,6 +320,34 @@ Recording with planner, review and recorders of at most 2 features:
 - So the depth of a run is not under control: for `sync` the plan was 44 to 186 lines
   across runs, and the cost follows the plan. The review step makes that worse.
 
+## Runs 18 and 19: the version that went into the generator
+
+Planner without a review step, recorders of at most 2 features, the plan check without
+shared-file actions, one line per behavior, the slim agent, `bin/brief`, `bin/finish`, the
+failure excerpt and the shared traps file. The proof steps are the old ones: no run
+measured proof.
+
+| | `jobs`, run 2 | run 18 | `operator`, run 2 | run 19 | `sync`, run 2 | run 18 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time until all was recorded | 26.4 min | 28.3 min | 32.5 min | 14.5 min | 19.0 min | 13.4 min |
+| Cost at list prices, relative to run 2 | 1 | 1.28 | 1 | 1.08 | 1 | 1.34 |
+| Behavior lines in the plan | | 74 | | 171 | | 48 |
+| Features, expects, steps | 8, 70, 78 | 11, 101, 87 | 10, 189, 104 | 10, 216, 113 | 6, 46, 38 | 6, 51, 50 |
+
+- `sync` and `operator`: 1.4 and 2.2 times faster, 11% and 14% more expects, 34% and 8%
+  more cost. `sync` holds the two behaviors run 15 lost.
+- `jobs`: slower than run 2. One recorder took 26 minutes: its features submit jobs to the
+  shared collector, which runs one job at a time, so recorders that work at once wait for
+  each other there. One of its commands waited 284 seconds for that queue. Across the five
+  runs of this area with the new flow the time was 16 to 28 minutes.
+- No run was cheaper in total at more expects. A recorder turn costs about 5 cents in the
+  old flow and the new one: every turn sends the context again, and about half of what a
+  recorder writes is its own reasoning. The new flow needs as many turns for a check as
+  the old one. It is faster because recorders work at the same time.
+- After run 19's last recorder returned, its session stayed open for 6 minutes on a
+  background watch for result files. `FULL.md` says again to stop such a watch.
+- Not measured: a whole generation, proof, and more than 20 recorders at once.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 

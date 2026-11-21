@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""brief <area> [<example feature>]: check an area's plan and write what its recorders read first.
+
+It first lists what the area's behaviors file does not cite: each line of its expectation list, and each entry
+point and action `verify uncovered <area>` still lists, except actions in files another area lists too. Those belong
+to the area whose entry points reach them. With only an area it stops there, for the planner.
+With an example feature it also writes the files below, so each recorder reads them in one turn.
+
+.cache/brief/common.md holds RECORDERS.md, the Recipes and When a drive fails sections of SKILL.md, PROJECT.md and
+the example recipe. .cache/brief/<area>.<n>.md holds one plan file, its behavior lines, and the source of each
+function those lines cite as `<file>: <function>`. A function is found by its name and its indentation, like reach
+finds a scope. Shipped by create-project-verification-skill.
+"""
+import glob
+import os
+import re
+import subprocess
+import sys
+
+MOST_LINES = 150
+MOST_FUNCTIONS = 14
+skill = os.environ.get('VERIFY_SKILL') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root = os.environ.get('VERIFY_ROOT') or os.path.abspath(os.path.join(skill, '..', '..', '..'))
+if len(sys.argv) not in (2, 3):
+    sys.exit('usage: brief <area> [<example feature>]')
+area, example = sys.argv[1], (sys.argv[2:] or [''])[0]
+out = os.path.join(skill, '.cache', 'brief')
+os.makedirs(out, exist_ok=True)
+
+
+def read(path):
+    with open(path, errors='replace') as handle:
+        return handle.read()
+
+
+def indent(line):
+    return len(line) - len(line.lstrip())
+
+
+def function(lines, name):
+    """The first and last line number of the block that defines `name`, or None."""
+    defines = re.compile(r'^\s*(?:(?:export|public|private|protected|static|async|final|override|abstract)\s+)*'
+                         r'(?:def|function|func|fn|fun|class|sub|const|let|var|val|[\w<>\[\],.?*&]+)?\s*\*?'
+                         + re.escape(name) + r'\s*(?:[(=:<{]|$)')
+    for index, line in enumerate(lines):
+        if not defines.match(line) or line.lstrip().startswith(('#', '//', '*', 'return ')):
+            continue
+        last = index
+        for later in range(index + 1, len(lines)):
+            if lines[later].strip() and indent(lines[later]) <= indent(line):
+                if lines[later].strip()[0] in '})]':
+                    last = later
+                break
+            if lines[later].strip():
+                last = later
+        if last > index:
+            return index + 1, last + 1
+    return None
+
+
+def uncited():
+    """The area's own expectation lines, entry points and actions that the behaviors file does not name."""
+    planned = read(os.path.join(skill, '.cache', 'behaviors', area + '.txt')).lower()
+    areas = read(os.path.join(skill, '.cache', 'areas.txt')).splitlines()
+    shared = {f for line in areas if not line.startswith(area + ':') for f in line.partition('files:')[2].split()}
+    own = []
+    expected = os.path.join(skill, '.cache', 'expect', area + '.txt')
+    for line in read(expected).splitlines() if os.path.isfile(expected) else []:
+        name = line.strip().lstrip('- ').partition(': ')[2].strip()
+        if name and name.lower() not in planned:
+            own.append('expectation: ' + line.strip().lstrip('- '))
+    listed = subprocess.run([os.path.join(skill, 'bin', 'verify'), 'uncovered', area], capture_output=True, text=True).stdout
+    for kind, name, file in re.findall(r'^\s+(entry point|action): (.+?)(?: \(([^()]*)\))?$', listed, re.M):
+        words = [w for w in re.findall(r'[\w/:.-]+', name.lower()) if len(w) > 2]
+        if not all(word in planned for word in words):
+            if kind != 'action' or file not in shared:
+                own.append(f'{kind}: {name} ({file})')
+    return own
+
+
+own = uncited()
+if own:
+    print(f'The behaviors file of {area} does not cite these {len(own)} items. Each needs a behavior line in a feature:')
+    print(''.join(f'  {item}\n' for item in own), end='')
+else:
+    print(f'The behaviors file of {area} cites every expectation line, entry point and action of its own.')
+if not example:
+    sys.exit(0)
+
+area_line = next((l for l in read(os.path.join(skill, '.cache', 'areas.txt')).splitlines() if l.startswith(area + ':')), '')
+area_files = area_line.partition('files:')[2].split()
+
+manual = read(os.path.join(skill, 'SKILL.md'))
+sections = re.search(r'^## Recipes\n.*?(?=^## Isolation)', manual, re.S | re.M)
+steps = read(os.path.join(skill, 'RECORDERS.md'))
+record = re.search(r'^## Record a group\n.*', steps, re.S | re.M)
+common = [
+    '# RECORDERS.md, from "Record a group" on\n\n' + (record.group(0) if record else steps),
+    '# SKILL.md, sections Recipes and When a drive fails\n\n' + (sections.group(0) if sections else manual),
+    '# PROJECT.md\n\n' + read(os.path.join(skill, 'PROJECT.md')),
+    f'# The example recipe, features/{example}.sh\n\n```bash\n' + read(os.path.join(skill, 'features', example + '.sh')) + '```\n',
+]
+with open(os.path.join(out, 'common.md'), 'w') as handle:
+    handle.write('\n'.join(common))
+
+behaviors = read(os.path.join(skill, '.cache', 'behaviors', area + '.txt')).splitlines(keepends=True)
+plans = sorted(glob.glob(os.path.join(skill, '.cache', 'plan', area + '.*.txt')))
+for plan in plans:
+    text = read(plan)
+    parts = [f'# Your plan, {os.path.relpath(plan, skill)}\n\n{text}']
+    wanted = set()
+    for line in text.splitlines():
+        numbers = line.partition(':')[2].partition(';')[0]
+        for first, last in re.findall(r'(\d+)(?:\s*-\s*(\d+))?', numbers):
+            wanted.update(range(int(first), int(last or first) + 1))
+    mine = [(n, behaviors[n - 1]) for n in sorted(wanted) if 0 < n <= len(behaviors)
+            and not re.match(r'\s*(duplicate of|other area)\b', behaviors[n - 1], re.I)]
+    parts.append(f'# Your behavior lines, from .cache/behaviors/{area}.txt\n\n' + ''.join(f'{n}\t{line}' for n, line in mine))
+    cited = []
+    for _, line in mine:
+        for file, names in re.findall(r'([\w./-]+\.\w+):\s*([\w.$]+(?:\s*,\s*[\w.$]+)*)', line):
+            for name in re.split(r'\s*,\s*', names):
+                if (file, name) not in cited:
+                    cited.append((file, name))
+    shown = []
+    for file, name in cited:
+        paths = [f for f in area_files if f == file or f.endswith('/' + file)] or ([file] if os.path.isfile(os.path.join(root, file)) else [])
+        if not paths or len(shown) >= MOST_FUNCTIONS:
+            continue
+        lines = read(os.path.join(root, paths[0])).splitlines(keepends=True)
+        found = function(lines, name.rpartition('.')[2])
+        if not found or (paths[0], found) in shown:
+            continue
+        shown.append((paths[0], found))
+        first, last = found[0], min(found[1], found[0] + MOST_LINES - 1)
+        cut = '' if last == found[1] else f' (the first {MOST_LINES} of {found[1] - found[0] + 1} lines)'
+        parts.append(f'# Source, {paths[0]}: {name}, lines {first} to {last}{cut}\n\n'
+                     + ''.join(f'{first + i}\t{line}' for i, line in enumerate(lines[first - 1:last])))
+    with open(os.path.join(out, os.path.basename(plan)[:-4] + '.md'), 'w') as handle:
+        handle.write('\n'.join(parts))
+print(f'{len(plans)} briefs and common.md in {out}')
