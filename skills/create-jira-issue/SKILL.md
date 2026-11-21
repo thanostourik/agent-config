@@ -8,159 +8,94 @@ metadata:
 # Create Jira issues
 
 Use the connected Jira tools. Drafting or discussing issues does not authorize
-creation. When the user asks to create them, proceed within that scope without
-another confirmation. Respect a request to create only the first issue of a
-batch. This skill does not authorize editing existing issues or creating Jira
-versions, sprints, components, or statuses.
+creation, and this skill never authorizes editing existing issues or creating
+Jira versions, sprints, components, or statuses.
 
-When you need me to make a choice before you can continue, use your question
-tool if you have one, or ask in your reply if you don't. If the question gets no
-answer, ask again in your reply and wait. Do not answer it yourself.
+- **Drafting:** write only the title and description for review. Do not ask for
+  a Jira project or resolve project fields yet.
+- **Creating:** proceed within the requested scope without another confirmation.
+  If the user has not named a project, ask which Jira project to use before
+  resolving fields or creating anything — never infer it from the repository,
+  issue keys, or available projects.
+- **Choices:** whenever you need a decision before continuing, use your question
+  tool if you have one, or ask in your reply. If the question gets no answer,
+  ask again in your reply and wait; do not answer it yourself.
 
-## Project
+## Fields
 
-When asked only to draft an issue, write the title and description for review
-without asking for the Jira project or resolving project fields; resolve those
-only when creating.
+Before creating, look up the selected project's issue types, priorities,
+creation fields, versions, and Scrum boards fresh (never carry IDs from another
+project or earlier conversation). Honor explicit user overrides; otherwise:
 
-If the user has not specified a project for these issues, ask which Jira
-project to use before resolving project fields or creating anything. Never
-default to a project or infer one from the repository, issue keys, or available
-Jira projects. Resolve the user-specified project to its key.
+- **Title:** `[Agent] <direct, specific title naming the change or bug>`. Add
+  the prefix once. Include a short surface prefix (service, app, or area) only
+  when it helps someone skimming the board see what is affected.
+- **Type:** pick from the project's types (`Bug` for faulty existing behavior,
+  `Task` for chores or decisions, `Story` for new user functionality when
+  available).
+- **Priority:** set explicitly from the project's priorities based on impact and
+  urgency (affected users, security or data loss, blocked work, workarounds). Do
+  not leave Jira's default or assume every bug is highest priority.
+- **Assignee:** `{{defaults.assignee}}`. When not `none`, resolve that user in
+  the instance and verify the project allows assigning to them (never substitute
+  another account). When `none`, leave unassigned.
+- **Label:** `agent-generated`, keeping any other requested labels too.
+- **Sprint:** the sole `active` sprint on the project's relevant board (never a
+  future or closed sprint). Ask if several boards or active sprints are
+  plausible, or if none is active.
+- **Fix version:** the unreleased, unarchived version matching that active
+  sprint (for example `1.2.0` for `PROJ-1.2.0`), or else the sole unreleased,
+  unarchived numbered release (not a catch-all like `Ongoing`). Ask if several
+  remain plausible or none exists. Do not set Affects Version.
+- **Component / Parent / Status:** omit component and parent/epic unless
+  requested (ask if Jira requires a component); leave initial status at Jira's
+  default.
 
-## Defaults
+## Writing the ticket
 
-Honor explicit user overrides. Otherwise use:
+Match length and structure to the size of the work. Write for the person who
+will work on it: assume they know their own system, say each fact once, and keep
+the scope strictly to what was asked.
 
-- Title: `[Agent] <direct, specific title naming the change or bug>`. Add the
-  prefix exactly once. Add a short surface prefix (such as a service, app, or
-  area name) only when it helps someone skimming the board see what is
-  affected; omit it when the project or title already makes that clear.
-- Label: `agent-generated`. Keep any other requested labels too.
-- Assignee: Athanasios Tourikas, Jira username `ato`. Resolve this user in the
-  selected instance and check that the project allows assigning to him. Do not
-  substitute the authenticated user or a similarly named account.
-- Component: omit unless the user explicitly requests one. If Jira requires
-  a component, ask the user which one to use.
-- Parent/epic: none; standalone issues.
-- Type: choose from the project's supported types. Use Bug for faulty existing
-  behavior, Task for chores or decisions, and Story for new user functionality
-  when that type is available. Honor a user-specified type.
-- Priority: choose from the priorities available for the selected project,
-  based on the issue's impact and urgency. Consider affected users, security
-  or data loss, blocked work, and available workarounds. Honor a user-specified
-  priority; otherwise select and set it explicitly rather than leaving Jira's
-  default. Do not assume every bug deserves the highest priority.
-- Initial status: Jira default unless specified.
-- Footer: one italic line, `Filed by <harness> <model>`, at the very bottom.
-  The harness is the coding tool running the model, such as Claude Code or
-  Codex. Use the actual harness and known model name; if the model name is
-  unavailable, say `model unknown` rather than guessing. Example:
-  `Filed by Claude Code Claude Sonnet 5.5`. Add no separator, PR link, or
-  explanation to the footer.
+- **Tasks, Stories, and requests:** lead in 1–2 sentences with what is being
+  asked for, then add only the context needed. Let the content pick the
+  structure: 1–3 plain paragraphs for a small request, bullets for several rules
+  or edge cases, or natural headings when helpful (such as `Endpoint` /
+  `Request` / `Response`, `Acceptance criteria` for multi-part features where
+  "done" would otherwise be unclear, or `Notes` for related links or
+  constraints).
+- **Bugs:** open with 1–2 sentences naming what breaks and its impact, then use
+  `Steps to reproduce` (prerequisites and exact requests or actions when known),
+  `Actual`, `Expected`, and `Notes` when useful (environment limits, evidence,
+  or an unverified suspected cause). Never invent evidence or claim unrun checks
+  passed.
+- **Interface vs. implementation:** include observable behavior and external
+  contracts (routes, parameters, complete request and response shapes, status or
+  error codes, UI flows). Keep internal code details out of the description (file
+  paths, class or function names, internal queries or constants, step-by-step
+  code changes).
+- **Suggested approach comment:** add a `Suggested approach` comment right after
+  creating the issue (covered by creation authorization) only when asked, or
+  when discussion or investigation uncovered non-obvious context, trade-offs, or
+  traps in a codebase you own that would otherwise be lost. Skip it for
+  straightforward changes or another team's codebase. Start with `Suggested
+  approach` and end with the same footer.
+- **Footer and formatting:** end the description (and any comment) with one
+  italic line `_Filed by <harness> <model>_` (`model unknown` if unavailable; no
+  separator or extra text). Match the Jira tool's documented format — Markdown
+  (`###`, fenced code blocks) for `mcp-atlassian`, or wiki markup (`h3.`, `#`,
+  `{code}`) when sending wiki markup directly; never mix them. Keep JSON and
+  request/response bodies in code blocks, use `<orgId>` instead of `{orgId}`
+  outside code blocks, and send real newlines.
 
-## Resolve the current version and sprint
+## Filing and verifying
 
-Read the selected project's issue types, available priorities, creation fields,
-versions, and relevant Scrum boards before creating. Look up components only
-when requested or required. Resolve user-specified values too; do not carry IDs
-from another project or an earlier conversation.
-
-- Sprint: get sprints with state `active` from the relevant project board. Use
-  the sole relevant active sprint. If several boards or active sprints remain
-  plausible, ask which one; do not choose a future or closed sprint. If none
-  is active, ask whether to leave the issue outside a sprint.
-- Fix version: use an unreleased, unarchived version clearly associated with
-  that active sprint, for example version `1.2.0` for sprint `PROJ-1.2.0`.
-  Otherwise use the sole unreleased, unarchived numbered release. A catch-all
-  such as `Ongoing` is not a numbered release. If several releases remain
-  plausible or none exists, ask; Jira has no universal active-version flag.
-- Use the resolved IDs for `fixVersions` and sprint membership. Do not set
-  Affects Version merely because a fix version was selected.
-
-## Description
-
-Match the length and structure to the size of the work. Write for the person
-who will work on the ticket: assume they know their own system, do not explain
-their product back to them, and say each fact once.
-
-### Tasks, Stories, and requests
-
-Lead in the first 1–2 sentences with what is being asked for, then add only the
-context or boundaries needed to understand it (such as what must stay
-unchanged). Let the content pick the structure:
-
-- A small request needs only 1–3 short paragraphs, with no headings.
-- Use a short bullet list when there are several behaviors, rules, or edge
-  cases.
-- Use natural headings when they help structure the ticket — for example,
-  `Endpoint` / `Request` / `Response` for an API contract, `Acceptance
-  criteria` for a multi-part feature where "done" would otherwise be unclear,
-  or `Notes` for related links, constraints, or side details.
-
-Keep the scope strictly to what was asked; do not invent extra requirements.
-
-### Bugs
-
-Open with 1–2 sentences naming what breaks and its impact. Then use `Steps to
-reproduce` (with prerequisites and exact requests or actions when known),
-`Actual`, `Expected`, and `Notes` when useful (environment limits, supporting
-evidence, or an unverified suspected cause). Do not invent reproduction
-evidence or claim unrun checks passed.
-
-### Interface vs. implementation
-
-- Include in the description: observable behavior and external contracts —
-  routes, parameters, complete request and response shapes, status or error
-  codes, and UI flows.
-- Keep out of the description: internal implementation details — source file
-  paths, class or function names, internal queries or constants, and
-  step-by-step code changes.
-
-## Suggested approach
-
-Add a `Suggested approach` comment right after creating the issue only when the
-user asks for one, or when discussion or investigation uncovered non-obvious
-implementation context, trade-offs, or traps in a codebase you own that the
-next person or agent would otherwise lose.
-
-Skip the comment for straightforward changes, for tickets targeting another
-team's codebase, or when you would only be restating the description. Keep the
-requested interface and parameters in the description, not the comment.
-
-This comment on your own new issue is covered by the authorization to create
-it. Start it with the heading `Suggested approach`, use the same input format
-as the description, and end it with the same footer.
-
-## Formatting
-
-Use the input format the Jira tool documents. With mcp-atlassian's Markdown
-description input, use `###` headings, numbered lists, fenced code blocks, and
-`_Filed by <harness> <model>_`. It converts these to Jira wiki markup. When
-sending wiki markup directly, use `h3.` headings, `#` numbered steps, `{code}`
-blocks, and the same underscore-delimited italic footer. Do not mix the two
-formats or send wiki markup through a Markdown converter.
-
-Keep JSON and request/response bodies in code blocks. Use `<orgId>`-style
-placeholders in paths instead of `{orgId}`. Literal braces outside code blocks
-can become Jira macros. Pass real newlines, not literal backslash-n text.
-
-## Create and verify
-
-Resolve required fields before creating. Set the prefix, label, assignee,
-type, priority, fix version, and description in the creation request. Set a
-component only when the user specified it. If the tool cannot set sprint during
-creation, add the returned issue key to the resolved active sprint afterwards.
-
-Read back each created issue and verify its project, title, labels, assignee,
-type, priority, fix version, description, parent/epic, and sprint membership.
-Check that any component matches the user's explicit request, and that the
-suggested-approach comment exists when you wrote one.
+Create the issue with the resolved fields (adding it to the active sprint
+afterwards if the tool cannot set sprint on creation), then read it back to
+verify all fields, the description, and any `Suggested approach` comment.
 
 If creation times out or the outcome is uncertain, check whether the issue
-exists before retrying. If a later step fails, report the created key and the
-incomplete field; do not create a replacement or alter an existing issue
-without authorization.
-
-Return the issue links and chosen fields, plus any incomplete operation. In a
-batch, apply the same resolved defaults consistently.
+exists before retrying. If a later step fails, report the created key and what
+failed instead of creating a duplicate or editing without authorization. Return
+the issue link(s) and chosen fields, applying the same resolved defaults across
+a batch.
