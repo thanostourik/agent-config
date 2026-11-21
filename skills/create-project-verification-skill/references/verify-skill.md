@@ -276,6 +276,9 @@ wait_for 10 api GET /notes?title=verify-create-note-1
     them.
   - `# alone: <the shared state it changes>` when every other feature would break
     meanwhile, such as a clock change or a service restart. The feature runs by itself.
+  - `# needs: <part>` when the feature uses a part of the environment that `bin/verify up`
+    does not start, such as the phone emulator. `PROJECT.md` names the parts. The runner
+    starts the part before the feature (`bin/start-<part>.sh`), outside its deadline.
   - `# deadline: <seconds>` when the whole feature needs longer than 180 s. Give it at
     least one and a half times its time in a `verify all` pass. The runner marks a pass
     that used two thirds of its deadline.

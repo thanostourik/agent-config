@@ -6,7 +6,7 @@
 # verify affected [--dry]   drive the features whose recipe a change against the default branch edited, and the five closest features with an expects line that cites the code it edited, but none that passed on this code already; list the features one use from that code, and name the ones farther away; --base <ref> picks another base; fails while the change adds entry points or actions no recipe covers; ends with the expects lines the change marked not driven
 # verify all [--failed]     drive every feature on the production build: it brings the run up on it, first removing a run on the dev server
 #                           --failed drives only the features the last all did not pass, plus those whose recipe changed since
-# verify <feature>...       drive those features
+# verify <feature>...       drive those features; before a feature with '# needs: <part>' it runs bin/start-<part>.sh, outside the feature's deadline
 # verify list
 # verify lint [feature...]  check the recipe rules; then list the expects lines that cite code the checkouts do not have
 # verify uncovered [area]   entry points, actions (bin/actions.sh) and area expectation lines no recipe covers; ends with every reason an expects line is marked not driven
@@ -333,7 +333,7 @@ not_driven_by_change() {
 }
 
 lint() {
-  local feature file path problems=0 other names
+  local feature file path part problems=0 other names
   mapfile -t names < <(all_features)
   for feature in "$@"; do
     file=$skill/features/$feature.sh
@@ -356,6 +356,8 @@ lint() {
       (($(grep -c '^# shares' "$file") == 1)) || report "more than one '# shares' line; name one group for the state its features take turns on"
       grep -q '^# alone' "$file" && report "'# alone' and '# shares' together; '# alone' already keeps every other feature off its copy"
     fi
+    part=$(header "$feature" needs)
+    [[ -z "$part" || -x "$skill/bin/start-$part.sh" ]] || report "'# needs: $part' has no executable bin/start-$part.sh"
     grep -q '^step ' "$file" || report "no step"
     grep -n '^step ' "$file" | grep -v -E '^[0-9]+:step "[^"]*" "[^"]+"' | sed "s/^\([0-9]*\):.*/$feature: step on line \1 has no sentence of what it proves (step \"<label>\" \"<action and expected result>\")/" | grep . && problems=1
     if [[ -f "$cache/expect/$feature.txt" ]]; then
@@ -631,7 +633,7 @@ take_lock() {
 run_feature() {
   local lane=$2
   export VERIFY_LANE=$lane VERIFY_RUN_ID=$(lane_id "$lane") VERIFY_APP=$(app_mode "$lane")
-  local feature=$1 dir=$cache/drive/$1 start=$SECONDS status limit
+  local feature=$1 dir=$cache/drive/$1 start=$SECONDS status=0 limit part
   limit=$(header "$feature" deadline)
   limit=${limit:-$deadline}
   mkdir -p "$cache/drive"
@@ -646,9 +648,18 @@ run_feature() {
   mkdir -p "$dir" "$cache/evidence/$feature"
   echo "$limit" > "$dir/deadline"
   echo "$waited" > "$dir/waited"
-  VERIFY_RUNNER=$$ VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
-    timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 6>&- 7>&-
-  status=$?
+  part=$(header "$feature" needs)
+  if [[ -n "$part" ]]; then
+    # The start script runs without fd 8, so a server it starts cannot keep the lock.
+    (flock 8 2> /dev/null; "$skill/bin/start-$part.sh" 8>&-) > "$dir/log" 2>&1 < /dev/null 6>&- 7>&- 8> "$cache/drive/.start-$part-$VERIFY_RUN_ID" || status=$?
+    ((status)) && { echo "Start $part" > "$dir/step"; echo "bin/start-$part.sh" > "$dir/error"; }
+    start=$SECONDS
+  fi
+  if ((status == 0)); then
+    VERIFY_RUNNER=$$ VERIFY_FEATURE=$feature VERIFY_SESSION=$feature VERIFY_DIR=$dir EVIDENCE=$cache/evidence/$feature \
+      timeout -k 30 "$limit" bash "$skill/bin/lib.sh" "$skill/features/$feature.sh" > "$dir/log" 2>&1 < /dev/null 6>&- 7>&-
+    status=$?
+  fi
   exec 6>&-
   rm -f "$room_pool/slot-$BASHPID"
   echo $((SECONDS - start)) > "$dir/seconds"
