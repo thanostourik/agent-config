@@ -1,6 +1,6 @@
 ---
 name: peer-review
-description: Use when the user asks for a peer review or an independent review by Codex, Claude, Grok, Cursor Grok, or Gemini (Antigravity), or when review-loop runs one.
+description: Use when the user asks for a "peer review", a review by or with Codex, Claude, Grok, Cursor Grok, or Gemini (for example "codex review" or "review with gemini"), or when review-loop runs one.
 ---
 
 # Peer review
