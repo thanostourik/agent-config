@@ -15,20 +15,19 @@ gives.
 2. Run `verify all`, which brings the run up on the production build. Then run
    `verify uncovered`. Check each not-driven reason it prints against the Header rules:
    recipes keep reasons that were written under older rules.
-3. Start repair recorders, all at once ([Recorders](#recorders)), for the features that
-   fail, the uncovered items, and the not-driven reasons that do not hold. No recorder gets
-   more than 3 features, so the slowest repair ends close to the others. A feature belongs
-   to the area its name starts with, else to the area that lists its `# touches:` files.
-   An uncovered item goes with the feature of its area that shares its file, and an area
-   that has no recipe at all gets a planner first. Give each recorder the summary lines of
-   its failing features, and its items and reasons with their features. In each area:
+3. Run `bin/brief --repair-all` in one call: it groups all features in `.cache/all/failed`
+   into batches of at most 3, writes `.cache/brief/repair.<n>.md`, clears stale repair
+   result files, and prints the dispatch list (for extra uncovered items or invalid
+   not-driven reasons, pass their features too or call `bin/brief --repair <id>
+   <feature>...`). Start all repair recorders at once ([Recorders](#recorders)). An area
+   that has no recipe at all gets a planner first. In each area:
    - a failing recipe is repaired, or its product defect marked `# known failure:`;
    - an uncovered item gets a step, or an `# expects:` line marked not driven with its
      reason;
    - a line whose reason does not hold gets a step.
-4. When every recorder has written its result file, run `verify all --failed`. Send each
-   feature that neither passes nor fails at its known failure back to its recorder, with
-   its summary line. Repeat until none is left.
+4. When every repair recorder has written its result file, run `bin/brief --collect` once
+   to read all results, then run `verify all --failed`. Repeat `bin/brief --repair-all` and
+   fresh repair recorders for any feature that still fails until none is left.
 5. Run `verify all` once more, with no `--jobs`, as the final proof (the Done rule). A
    feature that fails there almost always fails only under full load. Send it back to its
    recorder to fix and run `bin/finish`. When every repair is back, drive all repaired
@@ -123,8 +122,8 @@ follow "Record a group" from the first file for your group, <area>.<n>.
 
 A repair starts a **fresh** `verify-recorder` with a slim brief instead of resuming a
 finished recorder (whose old context holds 50k+ tokens and costs more on every turn). Run
-`bin/brief --repair <id> <feature>...` (at most 3 features per group, e.g. `repair.1`),
-delete `.cache/results/<id>.txt`, and give it this prompt:
+`bin/brief --repair-all` (or `bin/brief --repair <id> <feature>...` for at most 3 features
+per group) and give each batch this prompt:
 
 ```
 You are a repair recorder for verify-<app>, with the repository root <absolute path>. Read
@@ -139,14 +138,14 @@ Before you start a recorder, or send work back to one, delete its result file
 that already finished.
 
 A planner or recorder has returned when its result file appears, with or without the host's
-completion notice: notices can be lost. Read only that file's lines (batching several
-completed result files in one turn when they finish close together). For a recorder:
+completion notice: notices can be lost. Do not open result files one by one: run
+`bin/brief --collect` in one call to read all finished results, see `verify uncovered` for
+every completed area, and collect traps, product defects, dead code and timers together:
 
 - `bin/finish` already lints and flags invalid not-driven reasons before a recorder returns.
-  Run `verify uncovered <area>` once all groups of `<area>` have returned (not after every
-  group). Send back each not-driven reason that still does not hold under the Header rules
-  and each item still uncovered to the recorder whose recipe it fits into. A behavior that
-  needs a recipe of its own goes to a new recorder instead: add it to the area's map, run
+  When `bin/brief --collect` reports uncovered items or invalid not-driven reasons for a
+  completed area, batch them into fresh repair recorders (`bin/brief --repair`). A behavior
+  that needs a recipe of its own goes to a new recorder: add it to the area's map, run
   `bin/brief` for it and start the recorder. Held until the first `verify all`, these start
   a rework round that every other step then waits for.
 - Add its traps to `PROJECT.md`'s Gotchas when they hold for other features.
