@@ -1,8 +1,8 @@
 # agent-config
 
 My personal instructions, skills, and settings for Claude Code, Codex, Grok, Cursor,
-and OpenCode, kept in one place. I edit the files here. Then `./sync` copies them into
-each tool's configuration folder.
+and OpenCode, kept in one place. Antigravity gets the skills. I edit the files here.
+Then `./sync` copies them into each tool's configuration folder.
 
 ## Install
 

@@ -2,6 +2,7 @@
 
 This repository holds my personal instructions, skills, and agent definitions
 for five AI coding tools: Claude Code, Codex, Grok, Cursor, and OpenCode.
+Antigravity gets the skills only.
 I edit the files here. Then I run `./sync`, which copies them into each tool's
 configuration folder in my home directory.
 
@@ -113,7 +114,7 @@ so the menu stays complete. Never put a Jira URL in that file.
 ## Skill destinations
 
 Keep each skill in `skills/<name>/`. Without `metadata.harness`, it installs
-into all five tools' skill folders. To select destinations, use this exact
+into all five tools' skill folders and Antigravity's. To select destinations, use this exact
 format in the opening `SKILL.md` frontmatter:
 
 ```yaml
@@ -121,7 +122,8 @@ metadata:
   harness: "grok, opencode"
 ```
 
-Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `agents`.
+Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `antigravity`,
+`agents`.
 The list replaces the default. `agents` means `~/.agents/skills/`, which some
 tools also read; it is included only when listed explicitly. Use two spaces,
 double quotes, and one comma-separated line. Invalid or repeated names and
@@ -165,14 +167,14 @@ entry of another shape, or a malformed `{{allow` marker stops sync.
 | `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | none | `~/.grok/config.toml` (`mcp_servers`) |
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none | `~/.config/opencode/opencode.json` (`mcp`) |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` | `~/.cursor/mcp.json` (`mcpServers`) |
+| `antigravity` (skills only) | none | `~/.gemini/config/skills/` | none | none | none |
 | `agents` (only through `harness`) | none | `~/.agents/skills/` | none | none | none |
 
 `bin/` is not in the table. Every file in it goes to `~/.local/bin/`.
 
 The `TOOLS` dictionary at the top of `sync` holds the instruction, skill, agent,
-and hook paths. `SKILL_DESTINATIONS` adds `agents` to the skill paths. MCP
-destinations sit next to them. To change a path, change it
-there.
+and hook paths. `SKILL_DESTINATIONS` adds `antigravity` and `agents` to the skill
+paths. MCP destinations sit next to them. To change a path, change it there.
 
 Sync merges Jira MCP into those MCP files without converting formats. Cursor and
 Claude Code get a `command` / `args` / `env` stdio server. Codex and Grok get a

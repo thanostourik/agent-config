@@ -1,7 +1,7 @@
 ---
 name: create-project-verification-skill
 metadata:
-  harness: "claude-code, codex, grok, cursor"
+  harness: "claude-code, codex, grok, cursor, antigravity"
 description: "Use for /create-project-verification-skill, /create-project-verification-skill quick, or when asked to set up verification for a repo."
 disable-model-invocation: true
 ---

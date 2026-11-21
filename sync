@@ -62,9 +62,11 @@ TOOLS = {
     "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
 }
-# Skill harness names. ~/.agents/skills gets only skills whose harness names "agents".
+# Skill harness names. Antigravity gets only skills. ~/.agents/skills gets only
+# skills whose harness names "agents".
 SKILL_DESTINATIONS = {**{tool: paths["skills"] for tool, paths in TOOLS.items()},
-                      "agents": ".agents/skills"}
+                      "antigravity": ".gemini/config/skills", "agents": ".agents/skills"}
+DEFAULT_SKILL_HARNESSES = [name for name in SKILL_DESTINATIONS if name != "agents"]
 # Source folder for skills and hooks that go to every tool. It is not a destination.
 SHARED = "shared"
 # Neutral event name -> per tool (native event name, matcher). A shared hook is
@@ -566,7 +568,7 @@ def skill_harnesses(entry):
     """Read our single-line metadata.harness string, not general YAML."""
     lines = entry.read_text().splitlines()
     if not lines or lines[0] != "---":
-        return list(TOOLS)
+        return DEFAULT_SKILL_HARNESSES
     try:
         end = lines.index("---", 1)
     except ValueError:
@@ -594,7 +596,7 @@ def skill_harnesses(entry):
                 f"{entry}: harness names must be one of {', '.join(SKILL_DESTINATIONS)}")
         if len(set(harnesses)) != len(harnesses):
             raise ValueError(f"{entry}: duplicate harness names")
-    return harnesses if harnesses is not None else list(TOOLS)
+    return harnesses if harnesses is not None else DEFAULT_SKILL_HARNESSES
 
 
 def hook_harnesses(path, data):

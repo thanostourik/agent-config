@@ -1,7 +1,7 @@
 ---
 name: create-project-local-stack
 metadata:
-  harness: "claude-code, codex, grok, cursor"
+  harness: "claude-code, codex, grok, cursor, antigravity"
 description: "Generate the project's isolated local stack, committed in the repo as local-stack/. Developers run it next to the app in their IDE. Agents run it with the app included, many at once and across the project's repos, to check their work. Use for /create-project-local-stack or \"set up a local stack for this repo\"."
 disable-model-invocation: true
 ---
