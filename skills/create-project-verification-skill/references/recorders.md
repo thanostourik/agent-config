@@ -13,97 +13,109 @@ gets no input waits until the shell tool gives up, five minutes later.
 
 ## Plan an area
 
-The prompt names your area. Its line in `<skill>/.cache/areas.txt` lists its entry points
-and files. You split the area into features, and recorders then record them, a few
-features each and all at once. You only read source and write the files named below. Start
-no app, browser or drive of a feature: the environment may not exist yet.
+The prompt names your area and your plan brief `<skill>/.cache/brief/<area>.plan.md`. Read
+that file first: it already holds these instructions, your area's entry points, own actions,
+numbered expectations (`E1..En`), and a deterministic code inventory of its primary and
+shared files with line and branch counts. You only read source and write the map below.
+Start no app, browser or drive of a feature: the environment may not exist yet.
 
-1. Read the Recipes section of `<skill>/SKILL.md` and your area's expectation list
-   `<skill>/.cache/expect/<area>.txt`.
-2. Read every file of your area in full. Write its behaviors, one per line as the Recipes
-   section lists them, each with its source, to `<skill>/.cache/behaviors/<area>.txt`.
-   - Never merge two into one line: each refusal, each limit on each side, each error
-     message and each default is a line of its own, so "a missing table, a bad flag or an
-     empty name is refused" is three lines. The recorders check what you list, and a
-     behavior you leave out is likely never checked.
-   - Never write one behavior twice. When a line of the expectation list and the source
-     state the same behavior, write one line that cites both, joined with `; `:
-     `(<test file>: <test name>; <file>: <function>)`.
-   - A file another area lists too holds both areas' behaviors. Take from it what your
-     area's work shows or causes there, such as the message a user sees when a save of
-     yours fails. Leave the actions of other screens to their areas: a behavior two areas
-     list is recorded twice. When another area's line lists the same file, take only the
-   behaviors behind your own entry points.
-   Then run `<skill>/bin/brief <area>`, which needs no environment. It lists each
-   expectation line, entry point and action of the area that your file does not cite.
-   Add a behavior line for each, citing an expectation line by its file and name as the
-   Recipes section says, and run it again until it lists none. It leaves out the actions
-   in files another area lists too. A behavior left out here is found only after the recorders return, and then
-   costs a second round of recording.
-3. Split that list into features by user goal, each 8 to 15 steps, with one behavior per
-   step where it can be driven on its own. Name them `<area>-<goal>`. No name equals
-   another or starts with another followed by `-`: `verify lint` refuses that. When the prompt names
-   a recipe that is already being written for this area, keep its name for the feature
-   that holds its behaviors.
-4. Put the features into groups of at most 3 that share screens or setup. Write each group
-   to `<skill>/.cache/plan/<area>.<n>.txt` (`n` from 1), one line per feature:
-   `<feature>: <the line numbers of its behaviors in your behaviors file>; files: <the
-   files of your area those behaviors live in>`. Every behavior line is in exactly one
-   feature. `bin/brief` copies the function each behavior line cites into the recorder's
-   first reading, so cite on every line the file and the function that produces the
-   behavior, by its name in the code: `(<file>: <function>)`.
-5. As your last action, write `<skill>/.cache/results/<area>.plan.txt`, through a
-   temporary file and `mv`: one line per group file, with its features. Then return the
-   same lines.
+1. Read `<skill>/.cache/brief/<area>.plan.md`. Inspect source files only where the inventory
+   signatures are not enough to group functions or decide what belongs to your area in a
+   shared file (read only the linked line ranges of shared files, batched in one turn).
+2. Write ONE structured feature map to `<skill>/.cache/plan/<area>.map.txt`. Do not write
+   prose behavior lists, and do not split features into recorder groups (`bin/brief` packs
+   groups deterministically by shared files and weight).
+   - Group entry points, primary functions, linked shared-file functions, own actions and
+     expectations into features by user goal, aiming for **15 to 30 weight**
+     (`branches + 2 * expectations`) per feature (roughly 8 to 15 steps).
+   - Name features `<area>-<goal>`. No name equals another or starts another followed by
+     `-` (`verify lint` refuses that). When the prompt names a recipe that is already
+     written or being written for this area, keep its name for that feature.
+   - Use this exact format:
+
+     ```
+     feature <area>-<goal>
+     covers: <comma-separated entry points, or none>
+     functions: <file>: <func1>, <func2>; <other_file>: <func3>
+     expectations: E1, E2, E5
+     notes: <optional 1-line scope note: dispatcher branch, shared-file boundary, or # alone/# shares hint>
+
+     ignored: <file>: <func> (<reason: internal helper | other area | dead code>)
+     ```
+
+   - Rules:
+     - Every entry point of the area goes in `covers:` of at least one feature.
+     - Every expectation `E#` goes in `expectations:` of **exactly one** feature.
+     - Every non-trivial function of a primary file goes in `functions:` of a feature OR in
+       `ignored:` with a short reason.
+     - A dispatcher function (such as `cli.py: main` or `server.py: do_POST`) may be cited
+       by each feature that exercises one of its branches, with `notes:` naming that branch.
+     - In a shared file (listed by other areas too), cite only the functions behind your
+       area's work (what your area triggers, saves, syncs or displays there), with `notes:`
+       saying what your area owns. Leave other screens' actions to their areas.
+3. Run `<skill>/bin/brief <area>` (needs no environment). It checks every entry point,
+   expectation `E#`, own action, primary function, symbol resolution and feature name
+   prefix. Fix every reported issue in `<skill>/.cache/plan/<area>.map.txt` and run
+   `<skill>/bin/brief <area>` again until it reports complete and exits 0.
+4. As your last action, write `<skill>/.cache/results/<area>.plan.txt`, through a temporary
+   file and `mv`: one line per feature (`<feature>: <covers or none>; expectations: <E#s>`).
+   Then return the same lines.
 
 ## Record a group
 
 The prompt names two files, which you read in one turn: `<skill>/.cache/brief/common.md`
-and your brief `<skill>/.cache/brief/<area>.<n>.md`. The first holds this file, the
-Recipes and When a drive fails sections of `<skill>/SKILL.md`, `<skill>/PROJECT.md`, the
-example recipe and the source of the project's helpers. The second holds your group file
-`<skill>/.cache/plan/<area>.<n>.txt`, your behavior lines, the functions those lines cite
-and the bodies of the tests they cite. Every turn you take sends your whole context again,
-so each file you open and each command you run alone costs its share of the whole. The features of your group are yours.
-The other features of the area belong to other recorders, who work at the same time. You
-share what you learn with them through `<skill>/.cache/traps.txt`, as the Rules say.
+and your brief `<skill>/.cache/brief/<area>.<n>.md`. The first holds this file, the Recipes
+and When a drive fails sections of `<skill>/SKILL.md`, `<skill>/PROJECT.md`, the example
+recipe and the source of the project's helpers. The second holds your group's feature map,
+their `# covers:` and `# touches:` hints, full assigned expectation lines, the complete
+source of every assigned function (with decorators), referenced constants and schemas, and
+the bodies of cited tests. Every turn you take sends your whole context again, so batch
+reads, writes and drives. The features of your group are yours; other recorders work on the
+rest of the area at the same time, sharing what they learn in `<skill>/.cache/traps.txt`.
 
-1. Read nothing those two files hold a second time: no helper, no cited function, no
-   cited test, not the example. Read `<skill>/.cache/traps.txt` when it exists, and more
-   source only where a behavior needs a function the brief does not show, every range you
-   need in one call.
-2. Look at the real app. Open each screen your features use once in a browser session of
-   your own (`VERIFY_SESSION=<area>-<n>-probe`), signed in as the role that uses it. Save
-   its snapshots under `<skill>/.cache/snapshots/<area>/`. Call the API once, with the
-   project's API helper, for each record a step will check.
-3. Write all your recipes, `<skill>/features/<feature>.sh`, with one `# expects:` line per
-   behavior line of the feature, before driving any. The plan is the least you cover. It
-   was written in one reading, so it misses and merges behaviors, and a plan differs from
-   run to run. The code does not: go through each function your brief shows, branch by
-   branch, and give every refusal, limit, state and side effect some input can reach an
-   `# expects:` line and a step, whether the plan lists it or not. Split each plan line
-   that holds several. Add nothing that belongs to another feature or another area. A recipe of yours that
-   already exists, such as the example, is completed, not written again.
-4. Drive them together once: `<skill>/bin/verify <feature> <feature> ...`. Fix the failing
-   ones together, with small edits rather than rewriting a recipe. After that, drive only
-   the recipes you edited, together, until each passes. A failing feature's line comes with
-   the end of its log and the names of its evidence files: open a file only when that is
-   not enough. When a pass is marked slow, read the slowest calls in `pw-calls.log` next to
-   the feature's log, or its step times, once. Remove what is plainly avoidable, and spend
-   no further runs on speed.
-5. Run `<skill>/bin/finish <feature> <feature> ...` with your features. Run no lint and
-   no `verify uncovered` of your own before it: in one call it lints them, drives them once together with three features other recorders have reported
-   passed, and prints what `verify uncovered <area>` still lists. Then:
-   - Fix a feature of yours that fails there. Check only data your recipe created. This
-     drive is not acceptance: in Full mode and while the skill is generated, `verify all`
-     runs every feature at once after you return, and a recipe that fails there comes back
-     to you. Size every wait for that load.
-   - Cover each uncovered entry point, action and expectation line that sits behind your
-     behaviors with a step, or with an `# expects:` line marked not driven for a reason the
-     Recipes section allows. Leave the others: they belong to the area's other groups, or
-     to another area whose line lists the same file.
-   - Check each not-driven reason in your recipes against the Header rules of the Recipes
-     section, and give each line whose reason does not hold a step.
+1. Read nothing those two files hold a second time: no helper, no cited function, no cited
+   test, not the example. Read `<skill>/.cache/traps.txt` when it exists, and extra source
+   only if the brief lists an omitted/unfound citation or a needed helper function, every
+   range in one call.
+2. Look at the real app only where needed. If `<skill>/.cache/snapshots/<area>/` already
+   has snapshots for your screens, read them instead of opening a browser probe. Otherwise
+   open each screen your features use once in a browser session of your own
+   (`VERIFY_SESSION=<area>-<n>-probe`), save its snapshots under
+   `<skill>/.cache/snapshots/<area>/`, and close the probe session. Call the API once with
+   the project's API helper for any response shape not clear from the brief.
+3. Write **all** recipes of your group, `<skill>/features/<feature>.sh`, in **one turn**
+   (parallel Write calls) before driving any of them.
+   - Every assigned expectation `E#` gets at least one `# expects:` line citing it verbatim
+     (splitting a multi-case test into one line per case, each citing that test).
+   - Go through every function your brief shows, branch by branch, and give every reachable
+     refusal, limit, state, default and side effect its own `# expects:` line and step,
+     citing `<file>: <function>`. Never merge two behaviors into one line, and never write
+     two lines for one behavior (when a test and a function state the same behavior, write
+     one line citing both joined with `; `).
+   - Respect `notes:` for dispatcher branches and shared files; add nothing that belongs to
+     another feature or another area. A recipe that already exists (such as the example) is
+     completed, not rewritten from scratch.
+   - Keep recipes fast (under 45 s) and parallel-safe: never write a loop of hundreds of
+     live requests just to hit an in-memory cache eviction cap or fill a huge fixed limit
+     (if no env setting lowers a cap of hundreds, mark that cap not driven), and mark a
+     feature `# alone` only when it genuinely restarts or breaks a shared service for
+     other features.
+4. Drive all your features together once: `<skill>/bin/verify <feature> <feature> ...`.
+   Fix all failing recipes together in one turn (parallel Edit calls) rather than one at a
+   time. After that, drive only the recipes you edited, together in one call, until each
+   passes. A failing feature's line comes with the end of its log and evidence excerpts:
+   open a log or evidence file only when that is not enough. When a pass is marked slow,
+   check `pw-calls.log` or step times once, remove what is plainly avoidable, and spend no
+   further runs on speed.
+5. Run `<skill>/bin/finish <feature> <feature> ...` with all your features. Run no lint and
+   no `verify uncovered` of your own before it: in one call it lints them, flags invalid
+   not-driven reasons, drives them once together with up to three other passed features,
+   and prints what `verify uncovered <area>` still lists. Then:
+   - Fix any lint error, invalid not-driven reason, or failed feature of yours. Check only
+     data your recipe created and size waits for `verify all` load.
+   - Cover each uncovered entry point, action and expectation line that belongs to your
+     group's features with a step (or a valid not-driven reason). Leave items belonging to
+     other groups or other areas.
    - Run `bin/finish` again after such a change, three times at most.
 6. As your last action, write your result to `<skill>/.cache/results/<area>.<n>.txt`,
    through a temporary file and `mv`. Then return the same lines:
@@ -125,8 +137,8 @@ then:
    line is not enough. Classify the failure as "When a drive fails" says. Then fix the
    recipe, or mark a product defect as the Rules below say.
 2. Give each not-driven line and each uncovered item the prompt names a step. A screen or
-   route that has no recipe at all gets a recipe of its own: list its behaviors in the
-   area's behaviors file, then do steps 2 and 3 of "Record a group" for it.
+   route that has no recipe at all gets a recipe of its own: do steps 2 and 3 of "Record a
+   group" for it.
 3. Go on from step 4 of "Record a group", and drive only the recipes you edited.
 
 ## Rules
@@ -151,7 +163,6 @@ then:
 - A command you typed by hand that stops at its time limit means something hangs. Find
   out what before you run it again, and put no further command behind one that can hang:
   three commands of 60 s in one call cost three minutes.
-
 - The environment is already up and shared. Never run `verify up`, `down` or `all`,
   `launch.sh`, `cleanup.sh`, or anything that stops containers or closes browser sessions
   other than your own feature's.
@@ -174,8 +185,8 @@ then:
   in your result. Write a copy and move it over the helper with `mv`: other drives are
   running the helper, and bash reads a script while it runs. Otherwise report
   `blocked: helper <name>: <defect>`.
-- Apart from such a helper or stub fix, edit only your own recipes. Make no git branch, commit or
-  stash, and no edit to `PROJECT.md`.
+- Apart from such a helper or stub fix, edit only your own recipes. Make no git branch,
+  commit or stash, and no edit to `PROJECT.md`.
 - Name data you make by hand while exploring `verify-<area>-probe-...`, and delete it by
   that prefix only.
 - Name a browser session you open by hand `VERIFY_SESSION=<area>-<n>-probe`. Recorders that

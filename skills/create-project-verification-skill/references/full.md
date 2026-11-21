@@ -30,11 +30,12 @@ gives.
    feature that neither passes nor fails at its known failure back to its recorder, with
    its summary line. Repeat until none is left.
 5. Run `verify all` once more, with no `--jobs`, as the final proof (the Done rule). A
-   feature that fails there almost always fails only under full load. Send it back, and
-   ask its recorder to drive it twice together with 20 features of other areas before it
-   returns. When every repair is back, run the next final `verify all` directly, until
-   each feature passes in a final `verify all` or fails at its known failure. Then run
-   `verify uncovered`: nothing is left uncovered, and every not-driven reason holds.
+   feature that fails there almost always fails only under full load. Send it back to its
+   recorder to fix and run `bin/finish`. When every repair is back, drive all repaired
+   features together with 15 to 20 other features once to confirm they hold under load, then
+   run the next final `verify all`, until each feature passes in a final `verify all` or
+   fails at its known failure. Then run `verify uncovered`: nothing is left uncovered, and
+   every not-driven reason holds.
 6. Run `verify down`, commit, and report the features added, the features repaired, the
    expectations that now have a step, each product defect, and the dead code the recorders
    found.
@@ -61,19 +62,24 @@ An area is a line of `.cache/areas.txt`: a screen or a few that share setup, abo
 lines of source. Two kinds of subagent record it, and `RECORDERS.md` holds the steps of
 both:
 
-- A planner reads one area and splits its behaviors into features, in groups of at most 3:
-  the files `.cache/plan/<area>.<n>.txt`. It needs no environment.
+- A planner reads one area's deterministic code inventory (`.cache/brief/<area>.plan.md`)
+  and maps its entry points, functions and expectations into features in
+  `.cache/plan/<area>.map.txt`. It needs no environment.
+- `bin/brief` validates each feature map, packs features deterministically into balanced
+  groups of at most 3 (`.cache/plan/<area>.<n>.txt`) and writes one brief per group.
 - A recorder records one group, or repairs up to 3 features. A recorder's time and its
   tokens per feature both grow with its features, and every later step waits for the
   slowest recorder, so none gets more.
 
-Start one planner per area, every area at once. When a planner has written its result
-file `.cache/results/<area>.plan.txt`, run `bin/brief <area> <example feature>`: it writes
-what that area's recorders read first, `.cache/brief/common.md` and one brief per group
-file. When every planner has returned and the environment is up, start one recorder per
-group file, every group at once, the heaviest areas first. Their feature runs wait in the
-machine's queue, so they need no limit of their own. In T3 Code use `delegate_task` with
-`mode: "async"`. Otherwise use your tool's own background subagent: the agent type
+First run `bin/brief --plan` (or `bin/brief --plan <area>` for one area) to generate the
+plan briefs in one call. Then start one planner per area, every area at once. When every
+planner has written its result file `.cache/results/<area>.plan.txt`, run
+`bin/brief --all <example feature>` (or `bin/brief <area> <example feature>` for one area)
+in one call: it validates each map, writes `.cache/brief/common.md` and one brief per group
+file, and prints the groups heaviest first. When the environment is up, start one recorder
+per group file, every group at once, in that heaviest-first order. Their feature runs wait
+in the machine's queue, so they need no limit of their own. In T3 Code use `delegate_task`
+with `mode: "async"`. Otherwise use your tool's own background subagent: the agent type
 `verify-recorder` when your tool lists it, else its fast model (such as `sonnet`) when it
 offers one. When your tool will not start more subagents:
 
@@ -84,8 +90,8 @@ offers one. When your tool will not start more subagents:
   `codex exec -m <model> --full-auto "<short prompt>"`. Each is a process of its own, so run
   `verify room` before starting each one: it returns once the machine has room.
 - Otherwise start the next one each time a planner or recorder returns. Claude Code runs
-  at most 20 subagents at once: start the groups with the most behavior lines first, since
-  one that starts late ends late.
+  at most 20 subagents at once: start the heaviest groups first (the order `bin/brief`
+  prints), since one that starts late ends late.
 - With no subagents and no CLI, plan and record the areas yourself.
 
 Never block on a foreground command while planners or recorders run, or their returns
@@ -97,10 +103,9 @@ headless session from ending: stop every watch once the last recorder has return
 A planner:
 
 ```
-You are a planner for verify-<app>. Follow "Plan an area" in
-<absolute path>/.agents/skills/verify-<app>/RECORDERS.md, with the repository root
-<absolute path> and your area, the line named `<area>` in
-.agents/skills/verify-<app>/.cache/areas.txt.
+You are a planner for verify-<app>, with the repository root <absolute path>. Read
+<absolute path>/.agents/skills/verify-<app>/.cache/brief/<area>.plan.md and follow "Plan an
+area" for `<area>`.
 ```
 
 When a recipe is already written or being written for the area, such as the generator's
@@ -125,16 +130,16 @@ Before you start a recorder, or send work back to one, delete its result file
 that already finished.
 
 A planner or recorder has returned when its result file appears, with or without the host's
-completion notice: notices can be lost. Read only that file's lines. For a recorder:
+completion notice: notices can be lost. Read only that file's lines (batching several
+completed result files in one turn when they finish close together). For a recorder:
 
-- Run `verify uncovered <area>` at once. Send back right away each not-driven reason in
-  its recipes that does not hold under the Header rules, while the other recorders still
-  record. When it was the last group of its area, also send each item still uncovered to
-  the recorder whose recipe it fits into. A behavior that needs a recipe of its own goes
-  to a new recorder instead: add its lines to the area's behaviors file, write a group
-  file for it, run `bin/brief` again and start the recorder. A recorder that has returned
-  holds a large context, so new work costs more there and ends later. Held until the first `verify all`,
-  these start a rework round that every other step then waits for.
+- `bin/finish` already lints and flags invalid not-driven reasons before a recorder returns.
+  Run `verify uncovered <area>` once all groups of `<area>` have returned (not after every
+  group). Send back each not-driven reason that still does not hold under the Header rules
+  and each item still uncovered to the recorder whose recipe it fits into. A behavior that
+  needs a recipe of its own goes to a new recorder instead: add it to the area's map, run
+  `bin/brief` for it and start the recorder. Held until the first `verify all`, these start
+  a rework round that every other step then waits for.
 - Add its traps to `PROJECT.md`'s Gotchas when they hold for other features.
 - Keep its dead code lines for the report.
 - A timer that `PROJECT.md`'s Timers section does not list: ask the user how the run should

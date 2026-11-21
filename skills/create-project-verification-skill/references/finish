@@ -1,18 +1,45 @@
 #!/usr/bin/env bash
-# finish <feature> ...: a recorder's closing checks in one call. It lints the features, drives them once together
-# with three features other recorders have reported passed, and lists what each feature's area still leaves
-# uncovered. It exits 1 when one of the named features does not pass. Shipped by create-project-verification-skill.
+# finish <feature> ...: a recorder's closing checks in one call. It lints the features, rejects invalid not-driven
+# reasons, drives them once together with up to three fast non-alone features other recorders reported passed, and
+# lists what each feature's area still leaves uncovered. Exits 1 when lint fails or a named feature fails.
+# Shipped by create-project-verification-skill.
 set -uo pipefail
 skill=$(cd "$(dirname "$0")/.." && pwd)
 (($#)) || { echo "usage: finish <feature> ..." >&2; exit 2; }
 cache=$skill/.cache
 
 echo "== lint"
-"$skill/bin/verify" lint "$@" 2>&1 | tail -n 20
+lint_out=$("$skill/bin/verify" lint "$@" 2>&1)
+lint_rc=$?
+echo "$lint_out"
+if ((lint_rc != 0)); then
+  echo "finish: fix the lint errors above before driving"
+  exit 1
+fi
+
+bad_reasons=()
+for feature in "$@"; do
+  file=$skill/features/$feature.sh
+  [[ -f "$file" ]] || continue
+  while IFS= read -r line; do
+    reason=${line#* -> not driven:}
+    if grep -iqE '(unit test|another feature|covered by|not implemented|missing helper|no helper|stub (does|can|cannot)|fake (does|can|cannot)|fixture|shared service|needs alone)' <<< "$reason"; then
+      bad_reasons+=("$feature: $line")
+    fi
+  done < <(grep -E '^# expects:.* -> not driven:' "$file" 2> /dev/null)
+done
+if ((${#bad_reasons[@]})); then
+  echo "== invalid not-driven reasons (give each a step, or build the missing helper/stub)"
+  printf '  %s\n' "${bad_reasons[@]}"
+fi
 
 others=()
 while read -r feature; do
-  [[ " $* " == *" $feature "* || ! -f "$skill/features/$feature.sh" ]] && continue
+  file=$skill/features/$feature.sh
+  [[ " $* " == *" $feature "* || ! -f "$file" ]] && continue
+  grep -q '^# alone' "$file" && continue
+  secs=$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 0)
+  [[ "$secs" =~ ^[0-9]+$ ]] && ((secs > 30)) && continue
   others+=("$feature")
   ((${#others[@]} == 3)) && break
 done < <(sed -n 's/^\([a-z0-9-]*\): passed.*/\1/p' "$cache"/results/*.txt 2> /dev/null | shuf)
@@ -21,7 +48,7 @@ echo "== drive with ${others[*]:-no other feature yet}"
 out=$("$skill/bin/verify" "$@" "${others[@]}" 2>&1)
 status=0
 summary=$(sed -n '/^Summary/,$p' <<< "$out")
-[[ -n "$summary" ]] || summary=$(tail -n 15 <<< "$out")
+[[ -n "$summary" ]] || summary=$(tail -n 20 <<< "$out")
 while IFS= read -r line; do
   feature=${line%%:*}
   if [[ " $* " == *" $feature "* ]]; then
@@ -34,15 +61,20 @@ while IFS= read -r line; do
   fi
 done <<< "$summary"
 
+((${#bad_reasons[@]})) && status=1
+if ((status != 0)); then
+  exit "$status"
+fi
+
 areas=()
 for feature in "$@"; do
-  area=$(cut -d: -f1 "$cache/areas.txt" | awk -v f="$feature" 'index(f, $0 "-") == 1 && length($0) > length(best) { best = $0 } END { print best }')
+  area=$(sed 's/^split: //' "$cache/areas.txt" | cut -d: -f1 | awk -v f="$feature" 'index(f, $0 "-") == 1 && length($0) > length(best) { best = $0 } END { print best }')
   [[ -n "$area" && " ${areas[*]} " != *" $area "* ]] && areas+=("$area")
 done
 # An action in a file another area lists too is shown apart: it is the recorder's only behind its own entry points.
 for area in "${areas[@]}"; do
   echo "== uncovered $area"
-  shared=$(grep -v "^$area:" "$cache/areas.txt" | sed 's/.*files://' | tr ' ' '\n' | sort -u)
+  shared=$(grep -v -E "^(split: )?$area:" "$cache/areas.txt" | sed 's/.*files://' | tr ' ' '\n' | sort -u)
   theirs=()
   while IFS= read -r line; do
     file=$(sed -n 's/^  action: .* (\(.*\))$/\1/p' <<< "$line")
@@ -54,4 +86,4 @@ for area in "${areas[@]}"; do
   done < <("$skill/bin/verify" uncovered "$area" 2>&1)
   ((${#theirs[@]})) && echo "  In files another area lists too, yours only behind your own entry points: $(IFS=,; echo "${theirs[*]}")"
 done
-exit $status
+exit "$status"

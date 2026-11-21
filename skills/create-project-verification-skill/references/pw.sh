@@ -66,9 +66,13 @@ if [[ ${1:-} == open ]]; then
   grep -qxF "$session" "$cache/pw-sessions-$VERIFY_RUN_ID" 2> /dev/null || echo "$session" >> "$cache/pw-sessions-$VERIFY_RUN_ID"
   ws=$(endpoint) || { echo "$ws" >&2; exit 1; }
   out=$(cli_in "$session" attach --endpoint="$ws")
-  # attach, unlike open, does not grant clipboard-write; a Copy button's check fails without it
-  out+=$'\n'$(cli_in "$session" --raw run-code "async page => page.context().grantPermissions(['clipboard-write'])")
-  [[ -n ${2:-} && $2 != about:blank ]] && out+=$'\n'$(cli_in "$session" --raw goto "$2")
+  # attach, unlike open, does not grant clipboard-write; combine grantPermissions and goto into one CLI call.
+  if [[ -n ${2:-} && $2 != about:blank ]]; then
+    url_json=$(printf '%s' "$2" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    out+=$'\n'$(cli_in "$session" --raw run-code "async page => { await page.context().grantPermissions(['clipboard-write']); await page.goto(\"$url_json\"); }")
+  else
+    out+=$'\n'$(cli_in "$session" --raw run-code "async page => page.context().grantPermissions(['clipboard-write'])")
+  fi
   status=0
 else
   out=$(cli_in "$session" --raw "${args[@]}")
