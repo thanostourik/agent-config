@@ -92,6 +92,31 @@ Run 6 is not kept. The patch is `.plans/scratch/gen/planner-small-recorders.patc
 - Every run so far lost five minutes at least once to a `cat` that waited for input, in a
   command that wrote files in the shell. Recorders now write files with their file tool.
 
+## Runs 7 and 8: one area of collector
+
+A fixture cannot show a change to recording, so runs 7 and 8 record only the `operator`
+area of collector (4,134 lines of source). They start from a copy of run 2's clone at the
+commit right before recording, with the environment up, and the area runs alone. In run 2
+the area's drives never waited for room on the machine, so the idle machine explains
+little.
+
+| | Run 2, one recorder and a handoff | Run 7, planner and recorders of at most 2 features | Run 8, run 7 with depth rules |
+| --- | --- | --- | --- |
+| Time to the first results | 32.5 min, 5 of them a hang | 11.3 min | 12.7 min |
+| Tokens of the area's subagents | 15.6M | 19.5M | 30.5M |
+| Features, expects, steps | 10, 189, 104 | 8, 113, 79 | 11, 241, 132 |
+| Product defects found | 0 | 0 | 2 |
+
+- Run 7's planner merged behaviors into one line, and its recorders checked only what the
+  plan listed. Run 8 tells the planner never to merge and the recorders to treat the plan
+  as the least they cover.
+- Run 8 records the area 2.5 times faster and deeper, for twice the tokens. Six recorders
+  each read the same files and found the same traps on their own: three of them reported
+  that a succeeding source could not be driven.
+- Not measured: groups of 3 or 4 features, and what small recorders do to proof.
+- The patch is `.plans/scratch/gen/planner-small-recorders-r8.patch`. It is not in the
+  generator: the token cost is a decision.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
