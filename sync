@@ -61,12 +61,13 @@ TOOLS = {
                  "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
     "cursor": {"instructions": ".cursor/rules/agent-config.mdc", "hooks": ".cursor/hooks.json",
                "skills": ".cursor/skills", "agents": ".cursor/agents"},
+    "antigravity": {"instructions": ".gemini/config/AGENTS.md",
+                    "hooks": ".gemini/config/hooks.json",
+                    "skills": ".gemini/config/skills", "agents": ".gemini/config/agents"},
 }
-# Skill harness names. Antigravity gets only skills. ~/.agents/skills gets only
-# skills whose harness names "agents".
+# Skill harness names. ~/.agents/skills gets only skills whose harness names "agents".
 SKILL_DESTINATIONS = {**{tool: paths["skills"] for tool, paths in TOOLS.items()},
-                      "antigravity": ".gemini/config/skills", "agents": ".agents/skills"}
-DEFAULT_SKILL_HARNESSES = [name for name in SKILL_DESTINATIONS if name != "agents"]
+                      "agents": ".agents/skills"}
 # Source folder for skills and hooks that go to every tool. It is not a destination.
 SHARED = "shared"
 # Neutral event name -> per tool (native event name, matcher). A shared hook is
@@ -76,6 +77,7 @@ HOOK_EVENTS = {
         "claude-code": ("PostToolUse", "Write|Edit|MultiEdit"),
         "codex": ("PostToolUse", None),
         "cursor": ("afterFileEdit", None),
+        "antigravity": ("PostToolUse", "edit_file|write_file"),
     },
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
@@ -91,6 +93,7 @@ MCP_JSON = (
     (".cursor/mcp.json", "mcpServers", "stdio"),
     (".claude.json", "mcpServers", "stdio"),
     (".config/opencode/opencode.json", "mcp", "opencode"),
+    (".gemini/config/mcp_config.json", "mcpServers", "stdio"),
 )
 MCP_TOML = (".codex/config.toml", ".grok/config.toml")
 
@@ -370,6 +373,8 @@ def read_shared(home, relative):
     if not path.is_file():
         raise ValueError(f"{path} is not a file")
     raw = path.read_bytes()
+    if not raw.strip():
+        return path, raw, {}
     data = tomllib.loads(raw.decode()) if relative.endswith(".toml") else json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError(f"{path} must be a JSON object")
@@ -568,7 +573,7 @@ def skill_harnesses(entry):
     """Read our single-line metadata.harness string, not general YAML."""
     lines = entry.read_text().splitlines()
     if not lines or lines[0] != "---":
-        return DEFAULT_SKILL_HARNESSES
+        return list(TOOLS)
     try:
         end = lines.index("---", 1)
     except ValueError:
@@ -596,7 +601,7 @@ def skill_harnesses(entry):
                 f"{entry}: harness names must be one of {', '.join(SKILL_DESTINATIONS)}")
         if len(set(harnesses)) != len(harnesses):
             raise ValueError(f"{entry}: duplicate harness names")
-    return harnesses if harnesses is not None else DEFAULT_SKILL_HARNESSES
+    return harnesses if harnesses is not None else list(TOOLS)
 
 
 def hook_harnesses(path, data):
@@ -747,7 +752,12 @@ def desired_files(config, home, hooks_by_tool):
     for tool, hooks in hooks_by_tool.items():
         if tool == "claude-code":
             continue
-        wrapper = {"version": 1, "hooks": hooks} if tool == "cursor" else {"hooks": hooks}
+        if tool == "cursor":
+            wrapper = {"version": 1, "hooks": hooks}
+        elif tool == "antigravity":
+            wrapper = {"agent-config": hooks}
+        else:
+            wrapper = {"hooks": hooks}
         files[home / TOOLS[tool]["hooks"]] = (json.dumps(wrapper, indent=2) + "\n").encode()
 
     for script in sorted((ROOT / "bin").glob("*")):

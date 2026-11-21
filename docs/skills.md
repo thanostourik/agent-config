@@ -1,6 +1,6 @@
 # Skills and scripts
 
-Every skill installs to all five tools and Antigravity unless noted. The agent starts most of them by
+Every skill installs to all six tools unless noted. The agent starts most of them by
 itself when the task fits. Skills marked *Manual* run only when you name them:
 
 - Claude Code, Cursor, Grok: type `/skill-name`, for example `/squash-merge-pr`.

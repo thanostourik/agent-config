@@ -13,6 +13,7 @@ SKILL_DIRS = (
     ".grok/skills",
     ".config/opencode/skill",
     ".cursor/skills",
+    ".gemini/config/skills",
 )
 
 
