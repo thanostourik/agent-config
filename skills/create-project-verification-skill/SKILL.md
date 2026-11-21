@@ -2,7 +2,7 @@
 name: create-project-verification-skill
 metadata:
   harness: "claude-code, codex, grok, cursor"
-description: "Use for /create-project-verification-skill, /create-project-verification-skill quick, or when asked to set up verification for a repo."
+description: "Use for /create-project-verification-skill, its quick and add modes, or when asked to set up verification for a repo or to add a surface, such as a phone app, to a repo's verify skill."
 disable-model-invocation: true
 ---
 
@@ -24,6 +24,17 @@ of one area of the app.
   cleanup work, and agents copy it. The other recipes grow with the code: `verify affected`
   fails while a change adds a screen, route or action no recipe covers, `verify uncovered`
   lists the rest, and `/verify-<app> full` records them when the user asks.
+- `/create-project-verification-skill add <surface>`: add a surface that the project's
+  `verify-<app>` skill does not drive yet, such as a phone app beside the web app. It stays
+  one skill. When the skill is behind this generator, run
+  `/maintain-project-verification-skill` first. Then do what `quick` does, for that surface
+  only and inside the existing skill: its driver helpers, its part of the environment
+  (`launch.sh`, or `start-<part>.sh` when only its features need it), its screens and
+  actions in `entrypoints.sh` and `actions.sh`, its facts in `PROJECT.md`, and one recipe.
+  Prove that `bin/verify up` takes as long as before, that a feature of another surface
+  still passes, and that `bin/verify down` leaves nothing. End the report with the number
+  of entry points and actions `bin/verify uncovered` now lists, and say that
+  `/verify-<app> full` records them.
 
 A request with the same meaning picks the same mode. Do not ask which mode to use. Keep
 your own context small: write the environment and the first recipe yourself, and leave the
@@ -33,9 +44,9 @@ When you need me to make a choice before you can continue, use your question too
 have one, or ask in your reply if you don't. If the question gets no answer, ask again in
 your reply and wait. Do not answer it yourself.
 
-If `.agents/skills/verify-*` already exists, stop before writing anything. Ask whether to
-replace it (delete and generate again) or upgrade it with
-`/maintain-project-verification-skill`.
+If `.agents/skills/verify-*` already exists and the mode is not `add`, stop before writing
+anything. Ask whether to replace it (delete and generate again), upgrade it with
+`/maintain-project-verification-skill`, or add a surface to it.
 
 `<generator>` below is this skill's folder.
 
@@ -56,7 +67,7 @@ replace it (delete and generate again) or upgrade it with
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
   bin/maestro.sh      copied from <generator>/references, unchanged, for an Android app; maestro-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
-  bin/env.sh bin/after-feature.sh   optional
+  bin/env.sh bin/after-feature.sh bin/start-<part>.sh   optional
   bin/entrypoints.sh bin/actions.sh
   bin/<driver helpers>
   features/<feature>.sh
@@ -174,6 +185,15 @@ At the other levels, write the scripts below into `bin/` and make each one execu
 - `after-feature.sh` (optional) runs after every recipe's `cleanup`, for example to close
   the feature's browser session. A finished feature then holds nothing until
   `bin/verify down`.
+- `start-<part>.sh` (optional) starts a part of the environment that only some features use
+  and that is slow or heavy to start, such as the phone emulator of a project that also has
+  a web app. `launch.sh` does not start that part, so `bin/verify up` and a change to the
+  web app never pay for the emulator.
+  - Each feature that uses the part carries `# needs: <part>`. The runner calls the script
+    before each of them, one call at a time, outside the feature's deadline.
+  - The script starts what is missing and returns at once when the part is healthy. It is
+    the part's health check too: `doctor.sh` does not check the part.
+  - `cleanup.sh` stops the part like everything else the run created.
 - `doctor.sh` is one fast, read-only check that the environment belongs to this run and is
   healthy: processes up, right checkout, ports owned, sign-in works. It never treats a
   process outside the run's record as the run's.
@@ -207,11 +227,15 @@ At the other levels, write the scripts below into `bin/` and make each one execu
     [`references/discovery.md`](references/discovery.md), list them the way it says.
   - List only what a user or client calls: not update or deploy hooks, migrations, compose
     services or schemas.
+  - It lists every surface that has a driver. When two surfaces can have the same path,
+    the entries of the one added later name it: `phone /search` beside `/search`. A surface
+    it leaves out gets no recorder, and a new screen there passes `bin/verify affected`
+    with no recipe.
   - `bin/verify uncovered` compares its output with the recipes' `# covers:` lines.
 - `actions.sh` prints every user action, one per line, as `<name><TAB><file>`: each
   function a screen runs when the user acts (event handlers such as `handleDelete`, form
   submits). For a project without a UI, it prints each handler method behind an entry
-  point. It searches the source, like `entrypoints.sh`.
+  point. It searches the source, like `entrypoints.sh`, in every surface that script lists.
   - Name an inline handler (`onClick={() => remove(id)}`) after its element's label or test
     id, such as `Delete button`. Never use a line number: it changes whenever the file
     shifts.
@@ -243,7 +267,10 @@ sign-in screen themselves. Signing in on every feature took half of the cinova a
 time. An emulator or a fresh browser is a new device on every run, and a sign-in provider
 can ask a new device for more than the password: Clerk emails a code to the account. Before
 you build the environment, make sure the test account signs in with only what the run
-holds. When it cannot, ask me for an account that can.
+holds. When it cannot, ask me for an account that can. When the sign-in provider has an API
+for users and the checkout already holds its key, the environment creates the test account
+itself and derives the password from that key. A new checkout then needs no credential of
+its own for that account.
 
 For a web UI without its own harness:
 
@@ -290,6 +317,11 @@ For an Android app:
   scheme, `exp+<slug>://expo-development-client/?url=<bundler URL>`, not through the app's
   scheme. `expo prebuild` writes `android/` and edits `package.json`: build in a copy of the
   app, or put `package.json` back after the build.
+- In a project with another driven surface, the phone side is a part of its own. What the
+  two points above give `launch.sh` goes into `bin/start-phone.sh`, with the sign-in, and
+  each phone feature carries `# needs: phone`. The run has one emulator, so each also
+  carries the same `# shares: phone: <the state>` line and they take turns. The phone side
+  of wovies takes 2 minutes to start.
 - A recipe step puts its taps and checks into one flow, `maestro.sh flow <name> <<'EOF'`.
   Each `maestro.sh` call takes 5 to 7 s to start, and a check inside a flow about 0.2 s.
 - A session helper starts each feature. It stops the app, deletes the app's own data but

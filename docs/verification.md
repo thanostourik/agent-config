@@ -15,6 +15,8 @@ Both setup skills are manual. Run them from the project's root, each in a new se
 
 `/create-project-verification-skill quick` writes one recipe instead of one per feature.
 The other recipes are added later, as changes touch features that have none.
+`/create-project-verification-skill add <surface>` adds a surface, such as a phone app, to
+a skill that already exists.
 
 If the project already has a verification skill, `create-project-verification-skill`
 stops and asks whether to replace or upgrade it.
