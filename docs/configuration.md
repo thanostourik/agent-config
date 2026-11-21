@@ -42,7 +42,7 @@ reviewer uses. Copy the key you want into `config.json` and give it a new value.
 replaces the whole shipped list.
 
 ```json
-{ "skills": { "codex-review": { "defaults": { "model": "<model id>" } } } }
+{ "skills": { "peer-review": { "defaults": { "codex_model": "<model id>" } } } }
 ```
 
 These are only defaults. A model or effort you name in a request always wins.
