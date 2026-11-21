@@ -62,6 +62,12 @@ the rest of the mobile features is a later decision.
   Clerk's emailed code for a new device. With a `+clerk_test` user a second agent finished
   the sign-in and the recipe in 18 minutes. `verify up` takes about 2.5 min with the APK
   cached, and `mobile-watchlist` 65 to 73 s.
-- Open: the generator has no procedure for adding a surface to an existing verify skill,
-  and wovies now starts the emulator on every `verify up`.
+- Both open points of the first round are closed. A recipe with `# needs: <part>` makes
+  `bin/verify` run `bin/start-<part>.sh` before it, outside the feature's deadline, so the
+  phone side starts only for phone features: wovies' `verify up` takes 21 s again, and the
+  first phone feature of a run waits about 2 min for the start. The generator has an
+  `add <surface>` mode for a skill that exists.
+- Wovies creates its phone test user itself and derives the password from the Clerk key
+  the web side already needs, and its coverage scripts list the phone screens: 9 screens
+  and 40 actions wait for `/verify-wovies full`.
 

@@ -318,8 +318,8 @@ For an Android app:
   scheme. `expo prebuild` writes `android/` and edits `package.json`: build in a copy of the
   app, or put `package.json` back after the build.
 - In a project with another driven surface, the phone side is a part of its own. What the
-  two points above give `launch.sh` goes into `bin/start-phone.sh`, with the sign-in, and
-  each phone feature carries `# needs: phone`. The run has one emulator, so each also
+  points above give `launch.sh` and `doctor.sh` goes into `bin/start-phone.sh`, with the
+  sign-in, and each phone feature carries `# needs: phone`. The run has one emulator, so each also
   carries the same `# shares: phone: <the state>` line and they take turns. The phone side
   of wovies takes 2 minutes to start.
 - A recipe step puts its taps and checks into one flow, `maestro.sh flow <name> <<'EOF'`.
