@@ -401,9 +401,14 @@ doctor() {
 
 header() { sed -n "s/^# $2:[[:space:]]*//p" "$skill/features/$1.sh"; }
 
+listing() {
+  timeout 30 "$skill/bin/$1" || { echo "verify: bin/$1 failed or ran over 30 s; a listing script must finish in seconds" >&2; return 2; }
+}
+
 uncovered_items() {
   local feature list name source
-  "$skill/bin/entrypoints.sh" | sort -u > "$work/entrypoints"
+  listing entrypoints.sh > "$work/entrypoints.raw" || exit 2
+  sort -u "$work/entrypoints.raw" > "$work/entrypoints"
   if grep -q $'\t' "$work/entrypoints"; then
     cat "$skill"/features/*.sh 2> /dev/null | sed -n 's/^# covers:[[:space:]]*//p' | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d' | sort -u > "$work/covered"
     awk -F '\t' 'FILENAME == ARGV[1] { covered[$0]; next } !($1 in covered) { print "entry point\t" $1 "\t" $2 }' "$work/covered" "$work/entrypoints"
@@ -413,7 +418,8 @@ uncovered_items() {
   fi
   if [[ -x "$skill/bin/actions.sh" ]]; then
     cat "$skill"/features/*.sh 2> /dev/null | sed -n 's/^# expects:[[:space:]]*//p' > "$work/cited"
-    "$skill/bin/actions.sh" | sort -u | awk -F '\t' '
+    listing actions.sh > "$work/actions.raw" || exit 2
+    sort -u "$work/actions.raw" | awk -F '\t' '
       FILENAME == ARGV[1] { cited[++n] = $0; next }
       {
         base = $2; sub(/.*\//, "", base); word = "(^|[^A-Za-z0-9_$])" $1 "([^A-Za-z0-9_$]|$)"
@@ -787,6 +793,10 @@ drive() {
     rm -f "$cache/passed/$feature"
     if [[ -f "$run/line-$feature" ]]; then
       cat "$run/line-$feature"
+      if (($# <= 4)) && (($(cat "$run/rc-$feature") != 0)); then
+        tail -n 15 "$cache/drive/$feature/log" 2> /dev/null | cut -c1-300 | sed 's/^/    /'
+        echo "    evidence files: $(ls "$cache/evidence/$feature" 2> /dev/null | head -n 20 | tr '\n' ' ')"
+      fi
       [[ -n "$code" ]] && (($(cat "$run/rc-$feature") == 0)) && state_of "$feature" "$run/files" > "$cache/passed/$feature"
       (($(cat "$run/rc-$feature") == 0)) || [[ "$(head -n 1 "$run/line-$feature")" == "$feature: known failure at "* ]] || { result=1 not_passed+=("$feature"); }
     elif [[ -s "$run/stop" ]]; then

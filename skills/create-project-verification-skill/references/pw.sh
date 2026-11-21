@@ -3,7 +3,9 @@
 # Every session of a run is a context of its own (cookies, storage) in one shared browser. `pw.sh open [url]` attaches
 # one; every run-code function ends by loading a hidden frame of the page's origin, so the CLI stops waiting for requests
 # at once. Output is raw on stdout; a failed call prints its "### Error" text on stderr and exits 1, so the error reaches the
-# feature's log even when the caller pipes or discards stdout. The Playwright version is in ../pw-version.
+# feature's log even when the caller pipes or discards stdout. A call that runs over $VERIFY_PW_TIMEOUT seconds (default 90)
+# is stopped and fails, so a wait that never ends costs a minute, not the caller's whole limit. The Playwright version is in
+# ../pw-version.
 # Shipped by create-project-verification-skill; never edit it in the project. bin/pw-close closes sessions.
 set -uo pipefail
 : "${VERIFY_SKILL:=$(cd "$(dirname "$0")/.." && pwd)}"
@@ -18,7 +20,13 @@ if [[ ! -f $cli ]]; then
   (flock 8 && { [[ -f $cli ]] || npm install --silent --prefix "$cache/pw" "playwright@$(cat "$VERIFY_SKILL/pw-version")" > /dev/null; }) 8> "$cache/pw-install.lock" || exit 1
 fi
 session=$VERIFY_RUN_ID-$VERIFY_SESSION
-cli_in() { (cd "$cache/pw-out" && node "$cli" -s="$1" "${@:2}" 2>&1); }
+limit=${VERIFY_PW_TIMEOUT:-90}
+cli_in() {
+  (cd "$cache/pw-out" && timeout -k 5 "$limit" node "$cli" -s="$1" "${@:2}" 2>&1)
+  local status=$?
+  ((status == 124 || status == 137)) && printf '### Error\npw.sh: the call ran over %s s and was stopped (VERIFY_PW_TIMEOUT sets the limit)\n' "$limit"
+  return "$status"
+}
 
 for marker in "$cache/pw-idle"/*; do
   [[ -f $marker ]] && ((EPOCHSECONDS - $(stat -c %Y "$marker") > 120)) || continue
