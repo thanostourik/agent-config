@@ -3,9 +3,11 @@
 
 Authentik takes the Authorization header for its own login and deletes it, so
 Jira never sees a login in that header. This process sends the Authentik
-username and app password in that header, logs in to Jira with the normal
-username and password, and forwards every request with the session cookie.
-mcp-atlassian talks only to this process.
+username and app password in that header, logs in to Jira lazily on the first
+request with the real username and password, and forwards every request with
+the session cookie. mcp-atlassian talks only to this process using a random
+per-session token, so mcp-atlassian never sees the real Jira or Authentik
+passwords.
 """
 
 import base64
@@ -64,8 +66,10 @@ class Gate:
         self.gate = basic_auth(os.environ["JIRA_GATE_USERNAME"], os.environ["JIRA_GATE_PASSWORD"])
         self.user = os.environ["JIRA_USERNAME"]
         self.password = os.environ["JIRA_API_TOKEN"]
+        self.proxy_token = os.environ.get("JIRA_PROXY_TOKEN") or self.password
         self.cookies = {}
         self.lock = threading.Lock()
+        self.login_lock = threading.Lock()
         self.listen_host = ""
 
     def origin_path(self, raw):
@@ -165,18 +169,32 @@ class Gate:
 
     def caller_allowed(self, inbound):
         # 127.0.0.1 is shared by every account on this machine. Require the
-        # Jira password mcp-atlassian already sends before attaching the session.
+        # per-session token mcp-atlassian sends before attaching the session.
         presented = ""
         for key, value in inbound.items():
             if key.lower() == "authorization":
                 presented = value.strip()
                 break
-        expected = basic_auth(self.user, self.password)
+        expected = basic_auth(self.user, self.proxy_token)
         if len(presented) != len(expected):
             return False
         return hmac.compare_digest(presented, expected)
 
+    def ensure_logged_in(self, force=False):
+        with self.login_lock:
+            with self.lock:
+                if self.cookies and not force:
+                    return
+            self.login()
+
     def exchange(self, method, path, inbound, body):
+        with self.lock:
+            has_session = bool(self.cookies)
+        if not has_session:
+            try:
+                self.ensure_logged_in()
+            except LoginFailed as exc:
+                return 502, [("Content-Type", "text/plain; charset=utf-8")], exc.message.encode()
         try:
             status, headers, payload = self.round_trip(
                 method, path, self.outbound(inbound, body), body)
@@ -185,7 +203,7 @@ class Gate:
             return 502, [("Content-Type", "text/plain; charset=utf-8")], message.encode()
         if status == 401:
             try:
-                self.login()
+                self.ensure_logged_in(force=True)
             except LoginFailed as exc:
                 return 502, [("Content-Type", "text/plain; charset=utf-8")], exc.message.encode()
             try:
@@ -261,13 +279,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("usage: jira-gate-proxy <port-file>", file=sys.stderr)
+    if len(sys.argv) == 3 and sys.argv[1] == "--port-fd":
+        port_fd = int(sys.argv[2])
+        port_file = None
+    elif len(sys.argv) == 2:
+        port_fd = None
+        port_file = sys.argv[1]
+    else:
+        print("usage: jira-gate-proxy (<port-file> | --port-fd <fd>)", file=sys.stderr)
         raise SystemExit(1)
     die_with_parent()
     try:
         gate = Gate()
-        gate.login()
     except KeyError as exc:
         print(f"jira-gate-proxy: missing {exc.args[0]}", file=sys.stderr)
         raise SystemExit(1) from exc
@@ -276,12 +299,16 @@ def main():
         raise SystemExit(1) from exc
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     Handler.gate = gate
-    gate.listen_host = f"127.0.0.1:{server.server_address[1]}"
-    port_file = sys.argv[1]
-    temporary = port_file + ".tmp"
-    with open(temporary, "w", encoding="utf-8") as handle:
-        handle.write(gate.listen_host.split(":", 1)[1])
-    os.rename(temporary, port_file)
+    port = str(server.server_address[1])
+    gate.listen_host = f"127.0.0.1:{port}"
+    if port_fd is not None:
+        os.write(port_fd, (port + "\n").encode("ascii"))
+        os.close(port_fd)
+    else:
+        temporary = port_file + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            handle.write(port)
+        os.rename(temporary, port_file)
     server.serve_forever()
 
 

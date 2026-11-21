@@ -1,87 +1,125 @@
-#!/bin/bash
-# Start mcp-atlassian for one Jira URL. Username and password come from the
-# Bitwarden login whose URI is that URL. Sync writes this command into each
-# tool's MCP config. The URL is the first argument, and --gate is optional.
-# With --unlock instead of a URL it only starts and unlocks the agent, then
-# exits. Sync installs a login
-# autostart entry that runs it, so the first Jira thread finds the vault open.
-#
-# --gate is for a Jira behind Authentik. Authentik takes Authorization for its
-# own login and deletes it, so Jira never sees a login in that header. The flag
-# starts jira-gate-proxy and points mcp-atlassian at it. The Authentik username
-# and app password are the Bitwarden login whose URI is the Jira URL plus
-# /auth-gate. Drop the flag to send the Jira password directly again.
-#
-# The unlocked vault lives in one `bw serve` agent, the systemd user unit
-# bw-agent, on a socket in XDG_RUNTIME_DIR. Only the first start asks for the
-# master password, and later lookups take milliseconds instead of bw's
-# seconds-long startup. `systemctl --user stop bw-agent` locks it again.
-set -eu
+#!/usr/bin/env python3
+"""Start a sandboxed, version-pinned mcp-atlassian for one Jira URL.
 
-unlock_only=0
-gate=0
-url=""
-if [ "${1:-}" = "--unlock" ]; then
-  unlock_only=1
-elif [ "${1:-}" = "" ]; then
-  echo "usage: mcp-atlassian-start <jira-url> [--gate] | --unlock" >&2
-  exit 1
-else
-  url=$1
-  if [ "${2:-}" = "--gate" ]; then
-    gate=1
-  elif [ -n "${2:-}" ]; then
-    echo "usage: mcp-atlassian-start <jira-url> [--gate] | --unlock" >&2
-    exit 1
-  fi
-fi
+Credentials come from Bitwarden once per desktop session and are cached in RAM
+by jira-cred-agent (systemd user unit) on a private Unix socket. Bitwarden is
+locked again immediately after fetching only the configured Jira and gate
+logins, so the rest of the vault is never exposed to agents.
 
-uid=$(id -u)
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$uid}"
-export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
-export DISPLAY="${DISPLAY:-:0}"
-export PATH="${HOME}/.local/bin:/usr/bin:/bin:${PATH}"
+With --gate, jira-gate-proxy handles the Authentik gate and Jira session
+cookies. mcp-atlassian receives only a random per-session token and never sees
+the real Jira or Authentik passwords.
+"""
 
-need() {
-  command -v "$1" >/dev/null 2>&1 || {
-    echo "mcp-atlassian-start: $1 is not on PATH" >&2
-    exit 1
-  }
-}
-need bw
-need zenity
-need uvx
-need python3
-need flock
-need setpriv
-need systemd-run
-need systemctl
-need timeout
+import fcntl
+import json
+import os
+import secrets
+import select
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.parse
+from pathlib import Path
 
-sock="${XDG_RUNTIME_DIR}/bw-agent.sock"
+MCP_ATLASSIAN_SPEC = "mcp-atlassian==0.24.7"
+SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Client for the agent's HTTP API. Commands: status, unlock (password on
-# stdin), sync, login <url> (prints shell assignments, or exits 2 when no
-# login exists).
-client='
-import http.client, json, shlex, socket, sys, urllib.parse
 
-class Agent(http.client.HTTPConnection):
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX)
-        self.sock.connect(sys.argv[1])
+def die(message, code=1):
+    print(message, file=sys.stderr)
+    raise SystemExit(code)
 
-def call(method, path, body=None):
-    # bw serve accepts only this Host header, even on a unix socket.
-    conn = Agent("localhost:8087")
-    conn.request(method, path, body, {"Content-Type": "application/json"})
-    return json.loads(conn.getresponse().read())
 
-def item(needle):
-    return call("GET", "/object/item/" + urllib.parse.quote(needle, safe=""))
+def setup_env():
+    uid = os.getuid()
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
+    os.environ["XDG_RUNTIME_DIR"] = runtime
+    os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path={runtime}/bus")
+    os.environ.setdefault("DISPLAY", ":0")
+    home = os.environ.get("HOME") or str(Path.home())
+    os.environ["HOME"] = home
+    path_parts = os.environ.get("PATH", "").split(":")
+    for prefix in (f"{home}/.local/bin", "/usr/bin", "/bin"):
+        if prefix not in path_parts:
+            path_parts.insert(0, prefix)
+    os.environ["PATH"] = ":".join(p for p in path_parts if p)
+    return Path(home), Path(runtime)
 
-def uris_of(data):
-    login = (data or {}).get("login") or {}
+
+def need(*names):
+    for name in names:
+        if shutil.which(name) is None:
+            die(f"mcp-atlassian-start: {name} is not on PATH")
+
+
+def agent_call(sock_path, payload):
+    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    conn.settimeout(5.0)
+    try:
+        conn.connect(str(sock_path))
+        conn.sendall((json.dumps(payload) + "\n").encode("utf-8"))
+        raw = b""
+        while b"\n" not in raw and len(raw) < 65536:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            raw += chunk
+        return json.loads(raw.split(b"\n", 1)[0].decode("utf-8"))
+    finally:
+        conn.close()
+
+
+def agent_alive(sock_path):
+    try:
+        return bool(agent_call(sock_path, {"op": "ping"}).get("ok"))
+    except (OSError, ValueError):
+        return False
+
+
+def cache_get(sock_path, url):
+    try:
+        res = agent_call(sock_path, {"op": "get", "url": url})
+    except (OSError, ValueError):
+        return None
+    if res.get("ok"):
+        return res["username"], res["password"]
+    return None
+
+
+def start_agent(sock_path):
+    subprocess.run(
+        ["systemctl", "--user", "stop", "jira-cred-agent.service"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    sock_path.unlink(missing_ok=True)
+    subprocess.run(
+        [
+            "systemd-run",
+            "--user",
+            "--quiet",
+            "--collect",
+            "--unit=jira-cred-agent",
+            f"--setenv=PATH={os.environ['PATH']}",
+            str(SCRIPT_DIR / "jira-cred-agent"),
+            str(sock_path),
+        ],
+        check=True,
+    )
+    for _ in range(50):
+        if agent_alive(sock_path):
+            return
+        time.sleep(0.1)
+    die("Jira credential agent did not start. See: journalctl --user -u jira-cred-agent")
+
+
+def uris_of(item):
+    login = (item or {}).get("login") or {}
     found = []
     for entry in login.get("uris") or []:
         uri = entry.get("uri") if isinstance(entry, dict) else entry
@@ -89,276 +127,377 @@ def uris_of(data):
             found.append(uri)
     return found
 
+
 def norm(value):
     return value.strip().rstrip("/").lower()
 
-def exact_uri(data, needle):
-    want = norm(needle)
-    return any(norm(uri) == want for uri in uris_of(data))
 
-def host_only(data, host):
-    for uri in uris_of(data):
+def exact_uri(item, needle):
+    want = norm(needle)
+    return any(norm(uri) == want for uri in uris_of(item))
+
+
+def host_only(item, host):
+    for uri in uris_of(item):
         parsed = urllib.parse.urlsplit(uri if "://" in uri else "https://" + uri)
         if (parsed.hostname or "").lower() == host.lower() and (parsed.path or "").rstrip("/") == "":
             return True
     return False
 
-def result_ids(res):
-    data = res.get("data")
-    if not isinstance(data, list):
-        return []
-    ids = []
-    for entry in data:
-        if isinstance(entry, str):
-            ids.append(entry)
-        elif isinstance(entry, dict) and entry.get("id"):
-            ids.append(entry["id"])
-    return ids
 
-# Bitwarden treats the query as a substring of the URI, so the gate login also
-# matches the Jira URL. Keep the item whose URI is the whole query.
-def pick(res, needle, allow_host):
-    if res.get("success") and exact_uri(res.get("data"), needle):
-        return res["data"]
-    candidates = [res["data"]] if res.get("success") else []
-    for ident in result_ids(res):
-        one = item(ident)
-        if one.get("success"):
-            candidates.append(one["data"])
-    for data in candidates:
-        if exact_uri(data, needle):
-            return data
+def pick_item(items, needle, allow_host):
+    for item in items:
+        if exact_uri(item, needle):
+            return item
     if not allow_host:
         return None
     host = urllib.parse.urlsplit(needle).hostname or needle
-    for data in candidates:
-        if host_only(data, host):
-            return data
+    for item in items:
+        if host_only(item, host):
+            return item
     return None
 
-def missed(res):
-    message = res.get("message") or ""
-    return res.get("success") or message == "Not found." or message.startswith("More than one result")
 
-command = sys.argv[2]
-if command == "status":
-    print(call("GET", "/status")["data"]["template"]["status"])
-elif command == "unlock":
-    res = call("POST", "/unlock", json.dumps({"password": sys.stdin.read()}))
-    sys.exit(0 if res.get("success") else 1)
-elif command == "sync":
-    sys.exit(0 if call("POST", "/sync").get("success") else 1)
-elif command == "login":
-    url = sys.argv[3]
-    exact = len(sys.argv) > 4 and sys.argv[4] == "exact"
-    res = item(url)
-    data = pick(res, url, allow_host=not exact)
-    host = urllib.parse.urlsplit(url).netloc
-    if data is None and not exact and host and host != url and missed(res):
-        res = item(host)
-        data = pick(res, host, allow_host=True)
-    if data is None:
-        if missed(res):
-            sys.stderr.write(
-                f"Bitwarden has no login for {url}. The login URI must match this URL.\n"
-            )
-            sys.exit(2)
-        sys.exit(res.get("message") or "Bitwarden lookup failed.")
-    login = data.get("login") or {}
+def bw_status():
+    res = subprocess.run(
+        ["bw", "--nointeraction", "status"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        return ""
+    try:
+        return json.loads(res.stdout).get("status", "")
+    except json.JSONDecodeError:
+        return ""
+
+
+def bw_unlock():
+    if bw_status() == "unauthenticated":
+        die("Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry.")
+    text = (
+        "Same password that unlocks the Bitwarden app.\n"
+        "NOT Client ID. NOT Client Secret. NOT Jira."
+    )
+    while True:
+        # zenity --password ignores --text, and setpriv ensures the dialog closes if this script dies.
+        prompt = subprocess.run(
+            [
+                "setpriv",
+                "--pdeathsig",
+                "TERM",
+                "--",
+                "zenity",
+                "--entry",
+                "--hide-text",
+                "--title=Bitwarden master password",
+                f"--text={text}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        password = prompt.stdout.rstrip("\n")
+        if prompt.returncode != 0 or not password:
+            die("Bitwarden unlock was cancelled.")
+        env = os.environ.copy()
+        env["BW_PASSWORD"] = password
+        unlock = subprocess.run(
+            ["bw", "--nointeraction", "unlock", "--passwordenv", "BW_PASSWORD", "--raw"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        del password, env
+        session = unlock.stdout.strip()
+        if unlock.returncode == 0 and session:
+            return session
+        if bw_status() == "unauthenticated":
+            die("Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry.")
+        text = "Wrong master password. Try again."
+
+
+def bw_sync(session):
+    env = os.environ.copy()
+    env["BW_SESSION"] = session
+    try:
+        res = subprocess.run(
+            ["bw", "--nointeraction", "sync"],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10,
+            check=False,
+        )
+        return res.returncode == 0, res.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return False, "Bitwarden sync timed out."
+
+
+def bw_list_url(session, query):
+    env = os.environ.copy()
+    env["BW_SESSION"] = session
+    res = subprocess.run(
+        ["bw", "--nointeraction", "list", "items", "--url", query],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    if res.returncode != 0:
+        die(res.stderr.strip() or "Bitwarden lookup failed.")
+    try:
+        data = json.loads(res.stdout)
+    except json.JSONDecodeError:
+        die("Bitwarden returned invalid JSON.")
+    return data if isinstance(data, list) else []
+
+
+def bw_lookup_one(session, url, exact):
+    items = bw_list_url(session, url)
+    found = pick_item(items, url, allow_host=not exact)
+    if found is None and not exact:
+        host = urllib.parse.urlsplit(url).netloc
+        if host and host != url:
+            found = pick_item(bw_list_url(session, host), host, allow_host=True)
+    if found is None:
+        return None
+    login = found.get("login") or {}
     user = login.get("username") or ""
-    token = login.get("password") or ""
-    if not user or not token:
-        sys.exit("Bitwarden login for this URL has no username or password.")
-    print("user=" + shlex.quote(user))
-    print("token=" + shlex.quote(token))
-'
+    password = login.get("password") or ""
+    if not user or not password:
+        die(f"Bitwarden login for {url} has no username or password.")
+    return user, password
 
-agent() {
-  python3 -c "$client" "$sock" "$@"
-}
 
-agent_status() {
-  agent status 2>/dev/null || true
-}
+def ensure_cached(sock_path, lock_path, targets, sync_first=False):
+    missing = [(url, exact) for url, exact in targets if cache_get(sock_path, url) is None]
+    if not missing:
+        return {url: cache_get(sock_path, url) for url, _ in targets}
 
-start_agent() {
-  systemctl --user stop bw-agent.service >/dev/null 2>&1 || true
-  rm -f "$sock"
-  systemd-run --user --quiet --collect --unit=bw-agent --setenv=PATH="$PATH" \
-    bw --nointeraction serve --hostname "unix://$sock"
-  tries=0
-  while [ "$tries" -lt 50 ]; do
-    status=$(agent_status)
-    [ -n "$status" ] && return
-    sleep 0.2
-    tries=$((tries + 1))
-  done
-  echo "Bitwarden agent did not start. See: journalctl --user -u bw-agent" >&2
-  exit 1
-}
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        if not agent_alive(sock_path):
+            start_agent(sock_path)
+        missing = [(url, exact) for url, exact in targets if cache_get(sock_path, url) is None]
+        if missing:
+            session = bw_unlock()
+            synced = False
+            sync_err = ""
+            if sync_first:
+                synced, sync_err = bw_sync(session)
+            fetched = {}
+            for url, exact in missing:
+                creds = bw_lookup_one(session, url, exact)
+                if creds is None and not synced:
+                    synced, sync_err = bw_sync(session)
+                    if synced:
+                        creds = bw_lookup_one(session, url, exact)
+                if creds is None:
+                    if not synced and sync_err:
+                        die(f"Bitwarden vault refresh failed.\n{sync_err}")
+                    die(f"Bitwarden has no login for {url}. The login URI must match this URL.")
+                fetched[url] = {"username": creds[0], "password": creds[1]}
+            del session
+            res = agent_call(sock_path, {"op": "put", "items": fetched})
+            if not res.get("ok"):
+                die(f"Failed to cache Jira credentials: {res.get('error', 'unknown error')}")
 
-unlock() {
-  text='Same password that unlocks the Bitwarden app.
-NOT Client ID. NOT Client Secret. NOT Jira.'
-  while :; do
-    # The dialog inherits the lock on fd 9, so it must not outlive this script.
-    pw=$(setpriv --pdeathsig TERM -- zenity --entry --hide-text \
-      --title='Bitwarden master password' --text="$text") || pw=""
-    if [ -z "$pw" ]; then
-      echo "Bitwarden unlock was cancelled." >&2
-      exit 1
-    fi
-    if printf %s "$pw" | agent unlock; then
-      unset pw
-      return
-    fi
-    unset pw
-    if [ "$(agent_status)" != locked ]; then
-      echo "Bitwarden agent stopped while unlocking. Retry." >&2
-      exit 1
-    fi
-    text='Wrong master password. Try again.'
-  done
-}
+    return {url: cache_get(sock_path, url) for url, _ in targets}
 
-# Refresh the agent's vault copy once per run. The deadline is ten seconds,
-# past a normal sync. After that, this start uses the copy it already has.
-refresh() {
-  if [ "${refresh_tried:-}" = 1 ]; then
-    [ "${refresh_ok:-}" = 1 ] && return 0
-    return 1
-  fi
-  refresh_tried=1
-  errfile=$(mktemp)
-  if timeout 10 python3 -c "$client" "$sock" sync >/dev/null 2>"$errfile"; then
-    refresh_ok=1
-    rm -f "$errfile"
-    return 0
-  fi
-  refresh_ok=0
-  refresh_err=$(cat "$errfile")
-  rm -f "$errfile"
-  return 1
-}
 
-login_once() {
-  errfile=$(mktemp)
-  set +e
-  creds=$(agent login "$@" 2>"$errfile")
-  login_status=$?
-  set -e
-  login_err=$(cat "$errfile")
-  rm -f "$errfile"
-}
+def read_configured_urls(home):
+    path = home / ".config/agent-config/jira-urls"
+    if not path.is_file():
+        return []
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
-refresh_failed() {
-  echo "Bitwarden vault refresh failed." >&2
-  if [ -n "${refresh_err:-}" ]; then
-    printf '%s\n' "$refresh_err" >&2
-  fi
-}
 
-# Use the copy already in memory. Refresh once only when that copy has no login.
-lookup() {
-  login_once "$@"
-  if [ "$login_status" -eq 0 ]; then
-    return 0
-  fi
-  if [ "$login_status" -ne 2 ]; then
-    printf '%s\n' "$login_err" >&2
-    return 1
-  fi
-  if [ "${refresh_tried:-}" != 1 ]; then
-    refresh || true
-    if [ "${refresh_ok:-}" = 1 ]; then
-      login_once "$@"
-      if [ "$login_status" -eq 0 ]; then
-        return 0
-      fi
-    fi
-  fi
-  if [ "${refresh_ok:-}" != 1 ]; then
-    refresh_failed
-    return 1
-  fi
-  printf '%s\n' "$login_err" >&2
-  return 1
-}
+def build_sandbox_cmd(home):
+    uvx_which = shutil.which("uvx")
+    uv_which = shutil.which("uv")
+    uvx_real = os.path.realpath(uvx_which)
+    uv_cache = Path(
+        os.environ.get("UV_CACHE_DIR")
+        or Path(os.environ.get("XDG_CACHE_HOME") or home / ".cache") / "uv"
+    )
+    uv_data = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "uv"
+    uv_cache.mkdir(parents=True, exist_ok=True)
+    uv_data.mkdir(parents=True, exist_ok=True)
 
-start_gate() {
-  gate_url=${url%/}/auth-gate
-  lookup "$gate_url" exact
-  gate_creds=$creds
-  eval "$gate_creds"
-  export JIRA_UPSTREAM=$url
-  export JIRA_GATE_USERNAME=$user
-  export JIRA_GATE_PASSWORD=$token
-  unset user token
-  portfile=$(mktemp)
-  "$(dirname "$0")/jira-gate-proxy" "$portfile" &
-  proxy_pid=$!
-  tries=0
-  while [ ! -s "$portfile" ]; do
-    if ! kill -0 "$proxy_pid" 2>/dev/null; then
-      wait "$proxy_pid" || true
-      rm -f "$portfile"
-      echo "jira-gate-proxy exited before it was ready." >&2
-      exit 1
-    fi
-    tries=$((tries + 1))
-    if [ "$tries" -ge 150 ]; then
-      kill "$proxy_pid" 2>/dev/null || true
-      rm -f "$portfile"
-      echo "jira-gate-proxy did not become ready." >&2
-      exit 1
-    fi
-    sleep 0.2
-  done
-  port=$(cat "$portfile")
-  rm -f "$portfile"
-  unset JIRA_UPSTREAM JIRA_GATE_USERNAME JIRA_GATE_PASSWORD
-  export JIRA_URL="http://127.0.0.1:${port}"
-}
+    cmd = [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--ro-bind", "/usr", "/usr",
+        "--ro-bind", "/etc", "/etc",
+        "--ro-bind-try", "/lib", "/lib",
+        "--ro-bind-try", "/lib64", "/lib64",
+        "--ro-bind-try", "/bin", "/bin",
+        "--ro-bind-try", "/sbin", "/sbin",
+        "--ro-bind-try", "/opt", "/opt",
+        "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
+        "--ro-bind-try", "/home/linuxbrew", "/home/linuxbrew",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--tmpfs", str(home),
+        "--bind", str(uv_data), str(uv_data),
+        "--bind", str(uv_cache), str(uv_cache),
+    ]
+    home_prefix = str(home) + os.sep
+    bound = set()
+    for candidate in (uvx_which, uvx_real, uv_which, os.path.realpath(uv_which) if uv_which else None):
+        if candidate and candidate.startswith(home_prefix) and candidate not in bound:
+            cmd.extend(["--ro-bind", candidate, candidate])
+            bound.add(candidate)
+    cmd.extend([uvx_which, MCP_ATLASSIAN_SPEC])
+    return cmd
 
-# One start or unlock at a time, so parallel sessions show one password window.
-exec 9>"${XDG_RUNTIME_DIR}/bw-agent.lock"
-flock 9
-status=$(agent_status)
-[ -n "$status" ] || start_agent
-just_unlocked=0
-case $status in
-  unauthenticated)
-    echo "Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry." >&2
-    exit 1
-    ;;
-  locked)
-    unlock
-    just_unlocked=1
-    ;;
-esac
-exec 9>&-
-if [ "$just_unlocked" = 1 ] || [ "$unlock_only" = 1 ]; then
-  refresh || true
-fi
-if [ "$unlock_only" = 1 ]; then
-  exit 0
-fi
 
-lookup "$url"
-eval "$creds"
-jira_user=$user
-jira_token=$token
-unset user token
+def build_mcp_env(jira_url, jira_user, jira_token):
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ["HOME"],
+        "JIRA_URL": jira_url,
+        "JIRA_USERNAME": jira_user,
+        "JIRA_API_TOKEN": jira_token,
+    }
+    for key in (
+        "LANG",
+        "LC_ALL",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "UV_CACHE_DIR",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+    ):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
 
-export JIRA_USERNAME=$jira_user
-export JIRA_API_TOKEN=$jira_token
-unset READ_ONLY_MODE jira_user jira_token
 
-if [ "$gate" = 1 ]; then
-  start_gate
-  # mcp-atlassian builds issue links from JIRA_URL, which is the proxy. Point them at Jira.
-  exec uvx mcp-atlassian > >(sed -u "s#$JIRA_URL#${url%/}#g")
-fi
+def start_gate_proxy(url, jira_user, jira_password, gate_user, gate_password, proxy_token):
+    read_fd, write_fd = os.pipe()
+    os.set_inheritable(write_fd, True)
+    proxy_env = os.environ.copy()
+    proxy_env.update({
+        "JIRA_UPSTREAM": url,
+        "JIRA_GATE_USERNAME": gate_user,
+        "JIRA_GATE_PASSWORD": gate_password,
+        "JIRA_USERNAME": jira_user,
+        "JIRA_API_TOKEN": jira_password,
+        "JIRA_PROXY_TOKEN": proxy_token,
+    })
+    proc = subprocess.Popen(
+        [str(SCRIPT_DIR / "jira-gate-proxy"), "--port-fd", str(write_fd)],
+        env=proxy_env,
+        pass_fds=(write_fd,),
+    )
+    os.close(write_fd)
+    try:
+        ready, _, _ = select.select([read_fd], [], [], 10.0)
+        if not ready:
+            proc.terminate()
+            die("jira-gate-proxy did not become ready.")
+        data = b""
+        while b"\n" not in data:
+            chunk = os.read(read_fd, 64)
+            if not chunk:
+                break
+            data += chunk
+        port = data.decode("ascii").strip()
+        if not port.isdigit():
+            proc.terminate()
+            die("jira-gate-proxy exited before it was ready.")
+        return proc, f"http://127.0.0.1:{port}"
+    finally:
+        os.close(read_fd)
 
-export JIRA_URL=$url
-exec uvx mcp-atlassian
+
+def run_with_gate(home, url, jira_user, jira_password, gate_user, gate_password):
+    proxy_token = secrets.token_urlsafe(32)
+    proxy, proxy_url = start_gate_proxy(
+        url, jira_user, jira_password, gate_user, gate_password, proxy_token
+    )
+    mcp_cmd = build_sandbox_cmd(home)
+    mcp_env = build_mcp_env(proxy_url, jira_user, proxy_token)
+    mcp = subprocess.Popen(mcp_cmd, env=mcp_env, stdout=subprocess.PIPE)
+
+    def forward_signal(signum, _frame):
+        for child in (mcp, proxy):
+            if child.poll() is None:
+                child.send_signal(signum)
+
+    signal.signal(signal.SIGTERM, forward_signal)
+    signal.signal(signal.SIGINT, forward_signal)
+
+    proxy_bytes = proxy_url.encode("utf-8")
+    upstream_bytes = url.rstrip("/").encode("utf-8")
+    try:
+        # mcp-atlassian builds issue links from JIRA_URL, which is the proxy. Point them at Jira.
+        for line in mcp.stdout:
+            sys.stdout.buffer.write(line.replace(proxy_bytes, upstream_bytes))
+            sys.stdout.buffer.flush()
+    finally:
+        mcp.stdout.close()
+        code = mcp.wait()
+        if proxy.poll() is None:
+            proxy.terminate()
+            try:
+                proxy.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proxy.kill()
+    raise SystemExit(code)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        die("usage: mcp-atlassian-start <jira-url> [--gate] | --unlock [<url> ...]")
+
+    home, runtime = setup_env()
+    sock_path = runtime / "jira-cred-agent.sock"
+    lock_path = runtime / "jira-cred-agent.lock"
+
+    if args[0] == "--unlock":
+        need("bw", "zenity", "setpriv", "systemd-run", "systemctl")
+        urls = args[1:] or read_configured_urls(home)
+        if not urls:
+            return
+        targets = [(u, u.rstrip("/").endswith("/auth-gate")) for u in urls]
+        ensure_cached(sock_path, lock_path, targets, sync_first=True)
+        return
+
+    url = args[0]
+    gate = False
+    if len(args) == 2 and args[1] == "--gate":
+        gate = True
+    elif len(args) != 1:
+        die("usage: mcp-atlassian-start <jira-url> [--gate] | --unlock [<url> ...]")
+
+    need("bw", "zenity", "setpriv", "uvx", "bwrap", "systemd-run", "systemctl")
+    gate_url = f"{url.rstrip('/')}/auth-gate"
+    targets = [(url, False)]
+    if gate:
+        targets.append((gate_url, True))
+
+    cached = ensure_cached(sock_path, lock_path, targets)
+    jira_user, jira_password = cached[url]
+
+    if gate:
+        gate_user, gate_password = cached[gate_url]
+        run_with_gate(home, url, jira_user, jira_password, gate_user, gate_password)
+
+    mcp_cmd = build_sandbox_cmd(home)
+    mcp_env = build_mcp_env(url, jira_user, jira_password)
+    os.execvpe(mcp_cmd[0], mcp_cmd, mcp_env)
+
+
+if __name__ == "__main__":
+    main()

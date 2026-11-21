@@ -43,38 +43,31 @@ Two things to keep as they are:
   `verify-time` reads the Claude Code session logs and prints where the time
   of fix and build runs went inside a project's `bin/verify`. It needs only
   Python.
-  `mcp-atlassian-start` takes a Jira URL, reads that login's username and
-  password from Bitwarden, and execs `uvx mcp-atlassian`. Pass `--gate` when
-  Authentik sits in front of that Jira. Authentik takes the Authorization
-  header for its own login and deletes it. The flag starts `jira-gate-proxy`,
-  which sends the Authentik username and app password in that header, logs in to Jira with the normal Bitwarden
-  login, and keeps the session cookie. mcp-atlassian talks to the proxy on
-  localhost, and its output goes through `sed`, which turns the proxy's
-  localhost links back into Jira links. The proxy answers only when the
-  request carries that same Jira login, so another account on this computer
-  cannot use the session. The
-  Authentik username and app password are a second Bitwarden login
-  whose URI is the Jira URL plus `/auth-gate`. Sync adds `--gate` when
-  the instance sets `"gate": true`. Set it back to `false` and run sync to
-  connect directly again.
-  `mcp-atlassian-start` asks a `bw serve`
-  agent (systemd user unit `bw-agent`, socket in `XDG_RUNTIME_DIR`) that keeps
-  the vault unlocked in memory, and starts and unlocks that agent when needed.
-  The agent never refreshes its copy of the vault by itself. A lookup through
-  the agent takes milliseconds; plain `bw` takes about 3 seconds, which is too
-  slow for Codex to list Jira's tools in a thread's first turn, so a thread
-  whose login is already in that copy does not sync. The copy is refreshed
-  after the vault is unlocked and whenever `--unlock` runs. That refresh has
-  a ten-second deadline and does not hold the startup lock. When a lookup
-  cannot see its login, that start refreshes once, looks again, and reports a
-  failed refresh. The `--unlock` run exits after its refresh with no failure
-  message. A login the refresh added is in memory
-  for the next thread. `systemctl --user stop bw-agent` locks the vault again. When a Jira
-  instance is configured, sync also writes the login autostart entry
-  `~/.config/autostart/jira-vault-unlock.desktop`, which runs
-  `mcp-atlassian-start --unlock` so the password dialog appears at login, not in
-  a thread's first turn. Desktops without XDG autostart (a bare window manager)
-  need that command in their own startup config.
+  `mcp-atlassian-start` takes a Jira URL, fetches that login's username and
+  password from Bitwarden into `jira-cred-agent`, and launches a pinned
+  `uvx mcp-atlassian==<version>` inside a `bwrap` (bubblewrap) sandbox with no
+  access to the user's home directory or runtime sockets. Pass `--gate` when
+  Authentik sits in front of that Jira and deletes the Authorization header.
+  The flag starts `jira-gate-proxy`, which sends the Authentik username and app
+  password in that header, logs in to Jira lazily on the first request with the
+  real Bitwarden login, and keeps the session cookie. `mcp-atlassian` talks
+  only to the proxy using a random per-session token, so `mcp-atlassian` never
+  sees the real Jira or Authentik passwords, and `mcp-atlassian-start` rewrites
+  proxy localhost links back into Jira links. The Authentik username and app
+  password are a second Bitwarden login whose URI is the Jira URL plus
+  `/auth-gate`. Sync adds `--gate` when the instance sets `"gate": true`.
+  `jira-cred-agent` (systemd user unit `jira-cred-agent`, `0600` Unix socket in
+  `XDG_RUNTIME_DIR`) caches only the fetched Jira and gate logins in RAM.
+  Bitwarden is unlocked once per desktop session via a short-lived `bw unlock`
+  call, only those URLs are read, and Bitwarden is never left unlocked or
+  running. A cache lookup takes milliseconds (avoiding `bw`'s ~3-second startup
+  delay on Codex thread initialization). `systemctl --user stop jira-cred-agent`
+  clears the cached credentials from RAM and removes the socket. When a Jira
+  instance is configured, sync also writes `~/.config/agent-config/jira-urls`
+  and the login autostart entry `~/.config/autostart/jira-vault-unlock.desktop`,
+  which runs `mcp-atlassian-start --unlock` so the password dialog appears at
+  login, not in a thread's first turn. Desktops without XDG autostart (a bare
+  window manager) need that command in their own startup config.
 - `config.defaults.json`: the shipped settings for skills, agents, hooks, and
   Jira MCP. The optional, gitignored `config.json` overrides single settings:
   sync merges objects key by key, and any other value replaces the shipped

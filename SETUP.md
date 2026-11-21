@@ -6,8 +6,8 @@ after that. Add a section when something new needs steps beyond `./sync`.
 ## Jira MCP
 
 Needs a Linux desktop session with systemd and these commands installed: `bw`
-(Bitwarden CLI, already logged in with `bw login`), `uvx`, `zenity`, `python3`,
-`flock`, `setpriv`, `timeout`, `systemd-run`, and `systemctl`.
+(Bitwarden CLI, already logged in with `bw login`), `uvx`, `bwrap` (bubblewrap),
+`zenity`, `python3`, `setpriv`, `systemd-run`, and `systemctl`.
 `mcp-atlassian-start` stops with a message naming any that is missing.
 
 1. If `config.json` is missing, create it containing `{}`.
@@ -18,8 +18,9 @@ Needs a Linux desktop session with systemd and these commands installed: `bw`
    create or rename Bitwarden items. Do not run `bw login`.
 3. `./sync --apply --replace-existing`
 4. Tell the user to log out and in again, or run
-   `~/.local/bin/mcp-atlassian-start --unlock`, so the vault is open before the
-   first thread. Then restart the coding tools.
+   `~/.local/bin/mcp-atlassian-start --unlock`, so the Jira logins are cached in
+   `jira-cred-agent` before the first thread (Bitwarden locks again immediately
+   afterward). Then restart the coding tools.
 5. When an instance sets `"gate": true`, the user adds a Bitwarden login whose
    URI is that Jira URL plus `/auth-gate`. Its username is the Authentik
    username and its password an Authentik app password, not the Jira account.

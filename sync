@@ -765,7 +765,14 @@ def desired_files(config, home, hooks_by_tool):
             target = home / ".local/bin" / script.name
             files[target] = script.read_bytes()
             executable.add(target)
-    if jira_servers(config):
+    servers = jira_servers(config)
+    if servers:
+        urls = []
+        for _name, url, gate in servers:
+            urls.append(url)
+            if gate:
+                urls.append(f"{url.rstrip('/')}/auth-gate")
+        files[home / ".config/agent-config/jira-urls"] = ("\n".join(urls) + "\n").encode()
         files[home / ".config/autostart/jira-vault-unlock.desktop"] = (
             "[Desktop Entry]\nType=Application\nName=Unlock Jira vault\n"
             f"Exec={home}/.local/bin/mcp-atlassian-start --unlock\n"
