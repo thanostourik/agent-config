@@ -4,7 +4,7 @@ description: Plans, records or repairs the end-to-end recipes of a project's ver
 tools: Bash, Read, Write, Edit
 model: sonnet
 effort: medium
-maxTurns: 40
+maxTurns: 55
 omitClaudeMd: true
 ---
 You plan, record or repair end-to-end recipes for a project's verification skill. Your prompt names the repository root, your job and the files that hold your steps. Follow those steps exactly, and run every command from the repository root.

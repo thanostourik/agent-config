@@ -33,7 +33,7 @@ HELPER_LINES = 60
 CONST_LINES = 50
 MAX_EXTRA_LINES = 320
 GROUP_MAX_FEATURES = 3
-GROUP_WEIGHT_CAP = 85
+GROUP_WEIGHT_CAP = 115
 SHIPPED = {
     'verify', 'lib.sh', 'harvest', 'areas', 'reach', 'detach', 'brief', 'finish',
     'pw.sh', 'pw-close', 'launch.sh', 'cleanup.sh', 'doctor.sh', 'observe.sh',
@@ -69,6 +69,42 @@ out = os.path.join(skill, '.cache', 'brief')
 os.makedirs(out, exist_ok=True)
 
 
+def clone_of(repo, name):
+    target = repo.lower().removesuffix('.git').rstrip('/')
+    try:
+        common = subprocess.run(
+            ['git', '-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        parent = os.path.dirname(os.path.dirname(common))
+    except Exception:
+        parent = os.path.dirname(root)
+    matches = []
+    for base_parent in dict.fromkeys([os.path.dirname(root), parent]):
+        if not os.path.isdir(base_parent):
+            continue
+        for entry in sorted(os.listdir(base_parent)):
+            folder = os.path.join(base_parent, entry)
+            if not os.path.isdir(os.path.join(folder, '.git')):
+                continue
+            out_r = subprocess.run(
+                ['git', '-C', folder, 'config', '--get-regexp', r'^remote\..*\.url$'],
+                capture_output=True, text=True,
+            ).stdout
+            for line in out_r.splitlines():
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                url = parts[1].strip().lower().rstrip('/').removesuffix('.git')
+                if url.endswith('/' + target) or url.endswith(':' + target):
+                    matches.append(os.path.abspath(folder))
+                    break
+        if matches:
+            return matches[0]
+    sibling = os.path.join(os.path.dirname(root), name)
+    return os.path.abspath(sibling) if os.path.isdir(sibling) else None
+
+
 def app_roots():
     roots = {'': root}
     apps = os.path.join(skill, 'apps')
@@ -80,6 +116,10 @@ def app_roots():
                 env_val = os.environ.get('APP_' + name.upper().replace('-', '_'))
                 if env_val:
                     roots[name + '/'] = os.path.abspath(env_val)
+                elif len(parts) >= 2:
+                    found = clone_of(parts[1], name)
+                    if found:
+                        roots[name + '/'] = found
     return roots
 
 

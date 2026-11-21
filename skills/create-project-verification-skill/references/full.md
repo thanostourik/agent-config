@@ -88,8 +88,9 @@ offers one. When your tool will not start more subagents:
   `claude -p "<short prompt>" --model sonnet --permission-mode bypassPermissions` or
   `codex exec -m <model> --full-auto "<short prompt>"`. Each is a process of its own, so run
   `verify room` before starting each one: it returns once the machine has room.
-- Otherwise start the next one each time a planner or recorder returns. Claude Code runs
-  at most 20 subagents at once: start the heaviest groups first (the order `bin/brief`
+- Otherwise start the next wave of queued planners or recorders as slots free up (batching
+  4 to 6 newly free slots in one turn instead of waking for each single return). Claude Code
+  runs at most 20 subagents at once: start the heaviest groups first (the order `bin/brief`
   prints), since one that starts late ends late.
 - With no subagents and no CLI, plan and record the areas yourself.
 
