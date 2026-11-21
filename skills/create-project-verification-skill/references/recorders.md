@@ -129,17 +129,24 @@ rest of the area at the same time, sharing what they learn in `<skill>/.cache/tr
 
 ## Repair features
 
-The prompt names failing features, uncovered items or not-driven lines, in recipes that
-already exist. Do not record them again. Do step 1 of "Record a group" for those features,
-then:
+The prompt names a slim repair brief `<skill>/.cache/brief/<id>.md` and the failing
+features, uncovered items or not-driven lines to repair. Read that single file first: it
+already holds these instructions, `When a drive fails`, the relevant sections of
+`PROJECT.md`, `.cache/traps.txt`, each recipe, its last failure log, its evidence excerpts,
+and the source of the failing step. Do not re-read files it already shows, and do not
+record the area again.
 
-1. Fix each failing feature the prompt names. Read its summary line, and its log when the
-   line is not enough. Classify the failure as "When a drive fails" says. Then fix the
-   recipe, or mark a product defect as the Rules below say.
+1. Fix each failing feature the prompt names. Classify the failure as "When a drive fails"
+   says. Then fix the recipe with small targeted edits, or mark a product defect as the
+   Rules below say.
 2. Give each not-driven line and each uncovered item the prompt names a step. A screen or
    route that has no recipe at all gets a recipe of its own: do steps 2 and 3 of "Record a
    group" for it.
-3. Go on from step 4 of "Record a group", and drive only the recipes you edited.
+3. Drive all edited recipes together in one `bin/verify <feature>...` call until each
+   passes, then run `<skill>/bin/finish <feature>...` once.
+4. As your last action, write your result to the result path your prompt names
+   (`<skill>/.cache/results/<id>.txt`) through a temporary file and `mv`, then return the
+   same lines.
 
 ## Rules
 

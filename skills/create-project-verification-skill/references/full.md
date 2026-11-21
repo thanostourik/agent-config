@@ -42,15 +42,15 @@ gives.
 
 ## Expectation lists
 
-An area's expectation list holds the behaviors its tests and docs state. Write it with
-`bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt`.
+An area's expectation list holds the behaviors its tests and docs state. Generate them for
+every area in one command with `bin/brief --harvest` (pass `--force` to regenerate
+existing lists). It maps each area's test files (by filename, imports and entry points,
+splitting shared test files per test) and matching doc headings via `bin/harvest` into
+`.cache/expect/<area>.txt`.
 
-- It lists every test name in the test files, and the docs headings that match the words,
-  with the lines under them. When no docs heading matches the area, the list holds only its
-  tests, and the recorder takes the rest from the source.
-- Give each area only its own test files. Then delete from the list the tests that belong
-  to another area (from a test file two areas share) and tests of internals (pure
-  functions, formatting, chart math).
+- Review the one-line summary it prints; adjust a single area by hand with
+  `bin/harvest '<its words>' <its test files> <its docs> > .cache/expect/<area>.txt` only
+  when an area's tests or docs live under unusual names it missed.
 - Every line left is a behavior that a recipe must cite in an `# expects:` line, usually
   one of the area's, else the recipe of another area that drives it. `verify uncovered
   <area>` lists each line no recipe cites, so recorders never search for behavior and never
@@ -121,9 +121,18 @@ You are a recorder for verify-<app>, with the repository root <absolute path>. R
 follow "Record a group" from the first file for your group, <area>.<n>.
 ```
 
-A repair uses the recorder's prompt with `"Repair features"` in place of
-`"Record a group"`, and adds the features with their summary lines, items or reasons. Send a repair to the recorder that recorded the feature when your tool can
-still reach it: it knows the recipe.
+A repair starts a **fresh** `verify-recorder` with a slim brief instead of resuming a
+finished recorder (whose old context holds 50k+ tokens and costs more on every turn). Run
+`bin/brief --repair <id> <feature>...` (at most 3 features per group, e.g. `repair.1`),
+delete `.cache/results/<id>.txt`, and give it this prompt:
+
+```
+You are a repair recorder for verify-<app>, with the repository root <absolute path>. Read
+<absolute path>/.agents/skills/verify-<app>/.cache/brief/<id>.md, then follow "Repair
+features" for <id>: <features with their summary lines, uncovered items or invalid
+reasons>. Write your result to
+<absolute path>/.agents/skills/verify-<app>/.cache/results/<id>.txt.
+```
 
 Before you start a recorder, or send work back to one, delete its result file
 `.cache/results/<area>.<n>.txt`. A file left from an earlier round looks like a recorder

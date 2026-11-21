@@ -319,9 +319,15 @@ Write `PROJECT.md`, about 10 KB, with these sections:
 
 1. Copy the shipped files as the tree above shows, and write the Claude stub and
    `.gitignore`.
-2. Run `VERIFY_APP=build bin/verify up` in the background. While it builds, do the parts of
-   step 4 that come before the first recipe.
-3. Run `bin/verify up` again, which keeps the production build. Time both calls.
+2. Write `bin/entrypoints.sh` and `bin/actions.sh` first (or delegate both to a parallel
+   `verify-recorder` / fast subagent while you write `launch.sh`, `cleanup.sh`, `doctor.sh`,
+   `observe.sh`, `server-errors.sh`, driver helpers and `PROJECT.md`). As soon as both
+   listing scripts work, do steps 4.1 to 4.3 (`bin/areas`, `bin/brief --harvest`,
+   `bin/brief --plan`, and launch all planners) right away: planners read only source, so
+   they finish in parallel while you write the rest of the environment and build the stack.
+3. Run `VERIFY_APP=build bin/verify up` in the background while finishing any remaining setup
+   work before the first recipe.
+4. Run `bin/verify up` again, which keeps the production build. Time both calls.
 
 Generation uses the production build. A dev server holds far more memory, and with many
 features at once it loses clicks that land before a page is ready. The first `up` also
@@ -392,12 +398,13 @@ Every recipe waits on the environment in every run.
 
    Do not name features. Each planner lists every behavior of its area from the source and
    splits that list into features itself.
-2. Write each area's expectation list, as the Expectation lists section of the copied
-   `FULL.md` says.
-3. Start the planners now, as the Recorders section of the copied `FULL.md` says: one per
-   area, every area at once. They read only source, so they work while the environment
-   builds and while you do the next step. Name the first recipe of the next step
-   `<area>-<goal>` before you start them, and tell its area's planner.
+2. Run `bin/brief --harvest` to generate each area's expectation list in one call (see the
+   Expectation lists section of the copied `FULL.md`), then `bin/brief --plan`.
+3. Start the planners now (if not already started in step 3), as the Recorders section of
+   the copied `FULL.md` says: one per area, every area at once. They read only source, so
+   they work while the environment builds and while you do the next step. Name the first
+   recipe of the next step `<area>-<goal>` before you start them, and tell its area's
+   planner.
 4. Write the first recipe yourself, for the simplest feature. Follow the Recipes section of
    the copied `SKILL.md`. The recorder of its group completes it. Run `bin/verify <feature>`
    until it passes. Every recorder copies this recipe as its example, so make it clean.
@@ -429,12 +436,16 @@ Every recipe waits on the environment in every run.
 
 ## 5. Prove it
 
-Run `bin/verify down`. Then do steps 2 to 5 of Full in the copied `FULL.md`. Its first
-`verify all` starts a fresh environment on the production build, so every recipe runs once
-more with every other feature beside it. Send a failing feature, an uncovered line or a
-not-driven reason that does not hold back to the recorder that recorded the feature,
-instead of starting a new one. In the final `verify all`, every feature runs on an
-environment where it already ran, which also proves each recipe repeats.
+Keep the recording environment running (it is already on `VERIFY_APP=build`, and every
+feature already ran on it during recording). Run steps 2 to 4 of Full in the copied
+`FULL.md` directly on that hot environment: the first `verify all` immediately tests full
+load and repeatability without a cold restart wait. Send failing features, uncovered lines
+or invalid not-driven reasons to fresh slim repair recorders (`bin/brief --repair`), at
+most 3 features each, and repeat `verify all --failed` until clean.
+
+Then run `bin/verify down` once and run step 5's final `verify all` (with no `--jobs`),
+which starts a fresh production environment from scratch and proves every feature passes on
+a clean boot under full load.
 
 The runner starts up to as many features at once as the machine has cores, each only when
 the machine-wide queue has room. Write a `jobs` file only when the project needs a lower

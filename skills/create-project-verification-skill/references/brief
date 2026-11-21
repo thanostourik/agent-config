@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""brief: plan-brief generator, plan validator, and recorder brief builder.
+"""brief: auto-harvest, plan-brief generator, plan validator, recorder brief builder, and repair brief builder.
 
 Usage:
+  brief --harvest [--force]         auto-write .cache/expect/<area>.txt from repo tests and docs
   brief --plan [<area> ...]         write .cache/brief/<area>.plan.md (deterministic code inventory + planner rules)
   brief <area>                      validate .cache/plan/<area>.map.txt (or legacy .cache/behaviors/<area>.txt)
   brief <area> <example>            validate, bin-pack into groups, and write common.md + <area>.<n>.md briefs
   brief --all <example>             same as `brief <area> <example>` for every area that has a plan map
+  brief --repair <id> <feature>...  write a slim fresh repair brief .cache/brief/<id>.md for failing features
 
 Shipped by create-project-verification-skill.
 """
@@ -986,12 +988,285 @@ def legacy_uncited(area_name, areas):
     return own
 
 
+TEST_FILE_RE = re.compile(r'(^|/)(tests?|__tests__|spec)/|[._-](test|spec)\.|Tests?\.[a-z]+$')
+SKIP_HARVEST_RE = re.compile(
+    r'(^|/)(node_modules|dist|build|target|vendor|\.next|\.git|\.agents|\.claude|\.plans|local-stack|deployment-logs|review-evidence)(/|$)'
+)
+SKIP_DOC_RE = re.compile(
+    r'(?:^|/)(?:agents|claude|changelog|license|contributing|code_of_conduct)\.md$|'
+    r'(?:^|[_/-])(?:plan|plans|proposal|assessment|review|incident|handoff|runbook|report|comparison|deployment|release|adr|bootstrap|brief|status)(?:[_.-]|$)',
+    re.I,
+)
+GENERIC_STEMS = {
+    'index', 'main', 'app', 'server', 'client', 'model', 'models', 'types', 'utils', 'helpers',
+    'common', 'base', 'config', 'init', '__init__', 'test', 'tests', 'spec', 'store', 'db', 'database',
+}
+
+
+def tracked_files():
+    result = []
+    for prefix, checkout in ROOTS.items():
+        proc = subprocess.run(['git', '-C', checkout, 'ls-files', '-co', '--exclude-standard'], capture_output=True, text=True)
+        for rel in proc.stdout.splitlines():
+            if not rel or SKIP_HARVEST_RE.search(rel):
+                continue
+            full = os.path.join(checkout, rel)
+            if os.path.isfile(full):
+                result.append((prefix + rel, full))
+    return result
+
+
+def clean_stem(path):
+    base = os.path.splitext(os.path.basename(path))[0].lower()
+    base = re.sub(r'^(test_|spec_)|(_test|_spec|\.test|\.spec|tests?)$', '', base)
+    return base
+
+
+def harvest_file(words_regex, full_path, display_path):
+    proc = subprocess.run([os.path.join(skill, 'bin', 'harvest'), words_regex, full_path], capture_output=True, text=True)
+    lines = []
+    for line in proc.stdout.splitlines():
+        if line.startswith('- ' + full_path + ': '):
+            lines.append('- ' + display_path + ': ' + line[len('- ' + full_path + ': '):])
+        elif line.strip():
+            lines.append(line)
+    return lines
+
+
+def auto_harvest(areas, file_owners, force=False):
+    expect_dir = os.path.join(skill, '.cache', 'expect')
+    os.makedirs(expect_dir, exist_ok=True)
+    files = tracked_files()
+    test_files = [(rel, full) for rel, full in files if TEST_FILE_RE.search(rel)]
+    doc_files = [
+        (rel, full) for rel, full in files
+        if os.path.splitext(rel)[1].lower() in ('.md', '.markdown', '.rst')
+        and not SKIP_DOC_RE.search(rel)
+    ]
+
+    area_meta = {}
+    for a in areas:
+        primary, shared_files = classify_files(a, file_owners)
+        p_stems = {clean_stem(f) for f in primary if clean_stem(f) and clean_stem(f) not in GENERIC_STEMS}
+        s_stems = {clean_stem(f) for f in shared_files if clean_stem(f) and clean_stem(f) not in GENERIC_STEMS}
+        a_words = {w.lower() for w in re.split(r'[^a-zA-Z0-9]+', a['name']) if len(w) >= 3}
+        a_words |= {w[:-1] for w in list(a_words) if len(w) >= 4 and w.endswith('s')}
+        ep_paths = [re.sub(r'^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|mutation|query|dialog|screen|view|cli|ipc|tray|hotkey)\s+', '', ep, flags=re.I).strip()
+                    for ep in a['entrypoints']]
+        ep_paths = [p for p in ep_paths if len(p) >= 3]
+        p_syms = set()
+        for f in primary:
+            for fn in extract_inventory_functions(f):
+                if len(fn['name']) >= 4 and fn['name'].lower() not in GENERIC_LINK_SYMS:
+                    p_syms.add(fn['name'])
+        area_meta[a['name']] = {
+            'primary': primary,
+            'p_stems': p_stems,
+            's_stems': s_stems,
+            'stems': p_stems | a_words,
+            'words': a_words | p_stems,
+            'ep_paths': ep_paths,
+            'syms': p_syms,
+        }
+
+    area_tests = defaultdict(list)
+    for rel, full in test_files:
+        t_stem = clean_stem(rel)
+        t_text = read(full)
+        scores = {}
+        for a in areas:
+            aname = a['name']
+            meta = area_meta[aname]
+            score = 0
+            if t_stem and (t_stem in meta['stems'] or any(
+                t_stem == s or t_stem.endswith('_' + s) or t_stem.startswith(s + '_') or t_stem.endswith('-' + s) or t_stem.startswith(s + '-')
+                for s in meta['stems'] if len(s) >= 4
+            )):
+                score += 10
+            elif t_stem and t_stem in meta['s_stems']:
+                score += 8
+            for stem in meta['p_stems']:
+                if len(stem) >= 4 and re.search(r'(?:from|import|require|/)[\w./-]*\b' + re.escape(stem) + r'\b', t_text, re.I):
+                    score += 5
+                    break
+            if any(ep in t_text for ep in meta['ep_paths']):
+                score += 5
+            if score > 0:
+                scores[aname] = score
+        if not scores:
+            continue
+        top = max(scores.values())
+        strong = [aname for aname, sc in scores.items() if sc >= max(6, top - 2)]
+        harvested = harvest_file('tests', full, rel)
+        if not harvested:
+            continue
+        if len(strong) == 1 and top >= 10:
+            area_tests[strong[0]].extend(harvested)
+        else:
+            tlines = t_text.splitlines(keepends=True)
+            for hline in harvested:
+                tname = hline.partition(': ')[2].strip()
+                loc = test_body(tlines, tname)
+                snippet = (tname + '\n' + ''.join(tlines[loc[0] - 1:loc[1]])) if loc else tname
+                best_area, best_hits = None, 0
+                for aname in scores:
+                    meta = area_meta[aname]
+                    hits = sum(4 for ep in meta['ep_paths'] if ep in snippet)
+                    hits += sum(2 for s in meta['syms'] if re.search(r'\b' + re.escape(s) + r'\b', snippet))
+                    hits += sum(2 for w in meta['words'] if re.search(r'\b' + re.escape(w) + r'\b', tname, re.I))
+                    if hits > best_hits:
+                        best_hits = hits
+                        best_area = aname
+                if best_area:
+                    area_tests[best_area].append(hline)
+                elif len(strong) == 1:
+                    area_tests[strong[0]].append(hline)
+
+    area_docs = defaultdict(list)
+    doc_heading_areas = defaultdict(set)
+    raw_doc_lines = {}
+    for a in areas:
+        aname = a['name']
+        meta = area_meta[aname]
+        kw = sorted({w for w in meta['words'] if len(w) >= 3 and w not in GENERIC_STEMS})
+        if not kw or not doc_files:
+            raw_doc_lines[aname] = []
+            continue
+        pattern = '|'.join(re.escape(w) for w in kw)
+        collected = []
+        cur_heading = None
+        for rel, full in doc_files:
+            for line in harvest_file(pattern, full, rel):
+                if ': ## ' in line:
+                    cur_heading = line
+                    doc_heading_areas[cur_heading].add(aname)
+                collected.append((cur_heading, line))
+        raw_doc_lines[aname] = collected
+
+    max_shared_areas = max(2, len(areas) // 2)
+    for a in areas:
+        aname = a['name']
+        for heading, line in raw_doc_lines[aname]:
+            if heading and len(doc_heading_areas[heading]) > max_shared_areas:
+                continue
+            area_docs[aname].append(line)
+
+    written = []
+    for a in areas:
+        aname = a['name']
+        dest = os.path.join(expect_dir, aname + '.txt')
+        if not force and os.path.isfile(dest) and os.path.getsize(dest) > 0:
+            written.append(f'{aname}: kept existing')
+            continue
+        lines = list(dict.fromkeys(area_tests[aname] + area_docs[aname]))
+        with open(dest, 'w') as handle:
+            handle.write(('\n'.join(lines) + '\n') if lines else '')
+        written.append(f'{aname}: {len(area_tests[aname])} tests, {len(area_docs[aname])} doc lines')
+    return written
+
+
+def write_repair_brief(group_id, feature_names, areas):
+    steps = read(os.path.join(skill, 'RECORDERS.md'))
+    rep_part = re.search(r'^## Repair features\n.*?(?=^## Rules)', steps, re.S | re.M)
+    rules_part = re.search(r'^## Rules\n.*', steps, re.S | re.M)
+    manual = read(os.path.join(skill, 'SKILL.md'))
+    fail_part = re.search(r'^## When a drive fails\n.*?(?=^## Isolation)', manual, re.S | re.M)
+
+    proj = read(os.path.join(skill, 'PROJECT.md'))
+    kept_sections = []
+    for sec in re.split(r'(?=^## )', proj, flags=re.M):
+        hdr = sec.splitlines()[0].lower() if sec.strip() else ''
+        if any(k in hdr for k in ('sign-in', 'timer', 'stub', 'helper', 'gotcha', 'isolation')):
+            kept_sections.append(sec.strip())
+
+    parts = [
+        f'# Repair brief: {group_id}\n',
+        (rep_part.group(0).strip() + '\n\n' + rules_part.group(0).strip()) if (rep_part and rules_part) else steps,
+        '\n' + (fail_part.group(0).strip() if fail_part else ''),
+        '\n# PROJECT.md (key sections)\n\n' + ('\n\n'.join(kept_sections) if kept_sections else proj.strip()),
+    ]
+    traps = os.path.join(skill, '.cache', 'traps.txt')
+    if os.path.isfile(traps) and os.path.getsize(traps) > 0:
+        parts.append('\n# Shared traps (.cache/traps.txt)\n\n' + read(traps).strip())
+
+    all_area_files = [f for a in areas for f in a['files']]
+    for feat in feature_names:
+        rpath = os.path.join(skill, 'features', feat + '.sh')
+        parts.append(f'\n# Feature `{feat}`\n')
+        if os.path.isfile(rpath):
+            rlines = read(rpath).splitlines(keepends=True)
+            parts.append('## Recipe `features/' + feat + '.sh`\n\n```bash\n'
+                         + ''.join(f'{i + 1}\t{l}' for i, l in enumerate(rlines)) + '```')
+        else:
+            rlines = []
+            parts.append('(recipe file does not exist yet)')
+
+        ddir = os.path.join(skill, '.cache', 'drive', feat)
+        step_file = os.path.join(ddir, 'step')
+        failed_step = read(step_file).strip() if os.path.isfile(step_file) else ''
+        log_file = os.path.join(ddir, 'log')
+        if os.path.isfile(log_file):
+            tail = [l[:300] for l in read(log_file).splitlines()[-60:]]
+            parts.append(f'## Last drive log (failed step: `{failed_step or "?"}`)\n\n```\n' + '\n'.join(tail) + '\n```')
+
+        edir = os.path.join(skill, '.cache', 'evidence', feat)
+        if os.path.isdir(edir):
+            ev_files = sorted(os.listdir(edir))
+            if ev_files:
+                parts.append('Evidence files: ' + ', '.join(ev_files[:20]))
+            for ename, limit in (('failure.txt', 60), ('server-errors.txt', 40)):
+                ep = os.path.join(edir, ename)
+                if os.path.isfile(ep) and os.path.getsize(ep) > 0:
+                    el = [l[:260] for l in read(ep).splitlines()[:limit]]
+                    parts.append(f'## Evidence `{ename}`\n\n```\n' + '\n'.join(el) + '\n```')
+
+        if failed_step and rlines:
+            cited = []
+            for rl in rlines:
+                if rl.startswith('# expects:') and failed_step in rl:
+                    for fp, names in re.findall(r'([\w./-]+\.\w+):\s*([\w.$]+(?:\s*,\s*[\w.$]+)*)', rl):
+                        for fn in re.split(r'\s*,\s*', names):
+                            if (fp, fn) not in cited:
+                                cited.append((fp, fn))
+            for fp, fn in cited[:4]:
+                resolved = resolve_area_file(fp, all_area_files)
+                if not resolved:
+                    continue
+                slines = read_lines(resolved)
+                loc = function(slines, fn.rpartition('.')[2])
+                if not loc:
+                    continue
+                first, last = loc[0], min(loc[1], loc[0] + 150)
+                parts.append(f'## Source for failing step, {resolved}: {fn} (lines {first}-{last})\n\n'
+                             + ''.join(f'{first + i}\t{l}' for i, l in enumerate(slines[first - 1:last])))
+
+    dest = os.path.join(out, f'{group_id}.md')
+    with open(dest, 'w') as handle:
+        handle.write('\n\n'.join(parts) + '\n')
+    return dest
+
+
 def main():
     args = sys.argv[1:]
     if not args:
-        sys.exit('usage: brief --plan [<area>...] | brief <area> [<example>] | brief --all <example>')
+        sys.exit('usage: brief --harvest [--force] | brief --plan [<area>...] | brief <area> [<example>] | brief --all <example> | brief --repair <id> <feature>...')
     areas = parse_areas()
     file_owners = area_file_counts(areas)
+
+    if args[0] == '--harvest':
+        force = '--force' in args[1:]
+        summary = auto_harvest(areas, file_owners, force=force)
+        print(f'harvested expectations for {len(summary)} areas:')
+        for line in summary:
+            print(f'  {line}')
+        return
+
+    if args[0] == '--repair':
+        if len(args) < 3:
+            sys.exit('usage: brief --repair <group-id> <feature>...')
+        dest = write_repair_brief(args[1], args[2:], areas)
+        print(f'repair brief written: {dest}')
+        return
 
     if args[0] == '--plan':
         targets = args[1:] or [a['name'] for a in areas]
