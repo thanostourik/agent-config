@@ -126,6 +126,25 @@ records each group, all at once.
   copies in `.plans/scratch/gen/r8` and `r9`. The change is not in the generator: the
   token cost is a decision.
 
+Run 10 gives each recorder one feature and a shared traps file, `.cache/traps.txt`, that
+recorders append to when something costs them a drive and read before each repair.
+
+| | Run 8, groups of 2 | Run 9, groups of 4 | Run 10, one feature each, shared traps |
+| --- | --- | --- | --- |
+| Time to the first results | 12.7 min | 17.2 min | 12.8 min |
+| Tokens of the area's subagents | 30.5M | 30.5M | 38.0M |
+| Features, expects, steps | 11, 241, 132 | 15, 250, 186 | 15, 265, 193 |
+| Tokens per step | 0.23M | 0.16M | 0.20M |
+| Product defects found | 2 | 0 | 1 |
+
+- One feature each is no faster than groups of 2: the slowest single feature took 9.6
+  minutes, and the planner 2.6.
+- The traps file was used: 22 lines, 9 of them helpers. One recorder overwrote another's
+  helper by mistake and said so there.
+- A one-feature recorder starts with 33k tokens from the tool itself, before it reads
+  anything, reads about 25k, and takes 29 turns on average. Every turn sends the whole
+  context again, so the tool's own 33k is about half of a recorder's tokens.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
