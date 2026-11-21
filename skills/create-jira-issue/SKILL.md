@@ -19,6 +19,10 @@ answer, ask again in your reply and wait. Do not answer it yourself.
 
 ## Project
 
+When asked only to draft an issue, write the title and description for review
+without asking for the Jira project or resolving project fields; resolve those
+only when creating.
+
 If the user has not specified a project for these issues, ask which Jira
 project to use before resolving project fields or creating anything. Never
 default to a project or infer one from the repository, issue keys, or available
@@ -28,8 +32,10 @@ Jira projects. Resolve the user-specified project to its key.
 
 Honor explicit user overrides. Otherwise use:
 
-- Title: `[Agent] <concise title describing the problem or requested outcome>`.
-  Add the prefix exactly once.
+- Title: `[Agent] <direct, specific title naming the change or bug>`. Add the
+  prefix exactly once. Add a short surface prefix (such as a service, app, or
+  area name) only when it helps someone skimming the board see what is
+  affected; omit it when the project or title already makes that clear.
 - Label: `agent-generated`. Keep any other requested labels too.
 - Assignee: Athanasios Tourikas, Jira username `ato`. Resolve this user in the
   selected instance and check that the project allows assigning to him. Do not
@@ -72,38 +78,61 @@ from another project or an earlier conversation.
 - Use the resolved IDs for `fixVersions` and sprint membership. Do not set
   Affects Version merely because a fix version was selected.
 
-## Standard description
+## Description
 
-Start with a short paragraph describing the problem or requested outcome and
-its impact. Use these sections in order:
+Match the length and structure to the size of the work. Write for the person
+who will work on the ticket: assume they know their own system, do not explain
+their product back to them, and say each fact once.
 
-| Bug | Task, Story, or decision |
-| --- | --- |
-| Steps to reproduce | Context |
-| Actual | Acceptance criteria |
-| Expected | Notes, when useful |
-| Notes, when useful | |
+### Tasks, Stories, and requests
 
-For bugs, include prerequisites, numbered reproduction steps, exact requests
-and responses when known, and a concrete expected result. For other work,
-describe the current situation, the problem to solve or feature wanted (or the
-decision to make), and observable completion criteria. Notes hold relevant
-environment limits, supporting evidence, or a suspected cause clearly
-identified as such. Include source, feature-file, or PR references only when
-available and relevant; a PR is not required. Do not invent reproduction
+Lead in the first 1–2 sentences with what is being asked for, then add only the
+context or boundaries needed to understand it (such as what must stay
+unchanged). Let the content pick the structure:
+
+- A small request needs only 1–3 short paragraphs, with no headings.
+- Use a short bullet list when there are several behaviors, rules, or edge
+  cases.
+- Use natural headings when they help structure the ticket — for example,
+  `Endpoint` / `Request` / `Response` for an API contract, `Acceptance
+  criteria` for a multi-part feature where "done" would otherwise be unclear,
+  or `Notes` for related links, constraints, or side details.
+
+Keep the scope strictly to what was asked; do not invent extra requirements.
+
+### Bugs
+
+Open with 1–2 sentences naming what breaks and its impact. Then use `Steps to
+reproduce` (with prerequisites and exact requests or actions when known),
+`Actual`, `Expected`, and `Notes` when useful (environment limits, supporting
+evidence, or an unverified suspected cause). Do not invent reproduction
 evidence or claim unrun checks passed.
 
-The description never contains implementation details: no "Requested work"
-section, no list of steps to carry out, no files or functions to change. An
-issue describes a problem or a feature, not how to build it.
+### Interface vs. implementation
+
+- Include in the description: observable behavior and external contracts —
+  routes, parameters, complete request and response shapes, status or error
+  codes, and UI flows.
+- Keep out of the description: internal implementation details — source file
+  paths, class or function names, internal queries or constants, and
+  step-by-step code changes.
 
 ## Suggested approach
 
-If you have a suggested approach for the implementation, add it as a comment on
-the issue right after creating it. This comment on your own new issue is
-covered by the authorization to create it. Start it with the heading
-`Suggested approach`, use the same input format as the description, and end it
-with the same footer. Skip the comment when there is no suggested approach.
+Add a `Suggested approach` comment right after creating the issue only when the
+user asks for one, or when discussion or investigation uncovered non-obvious
+implementation context, trade-offs, or traps in a codebase you own that the
+next person or agent would otherwise lose.
+
+Skip the comment for straightforward changes, for tickets targeting another
+team's codebase, or when you would only be restating the description. Keep the
+requested interface and parameters in the description, not the comment.
+
+This comment on your own new issue is covered by the authorization to create
+it. Start it with the heading `Suggested approach`, use the same input format
+as the description, and end it with the same footer.
+
+## Formatting
 
 Use the input format the Jira tool documents. With mcp-atlassian's Markdown
 description input, use `###` headings, numbered lists, fenced code blocks, and
