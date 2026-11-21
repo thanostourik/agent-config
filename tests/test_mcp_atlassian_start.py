@@ -72,6 +72,77 @@ if args[:2] == ["list", "items"]:
 sys.exit(1)
 """
 
+FAKE_UVX = """#!/usr/bin/env python3
+import http.server, json, os, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+env_out = Path(os.environ["FAKE_ENV_OUT"])
+keys = [
+    "JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN",
+    "ALLOW_GLOBAL_CRED_FALLBACK", "READ_ONLY_MODE", "BW_SESSION", "XDG_RUNTIME_DIR",
+]
+data = {k: os.environ.get(k) for k in keys}
+data["argv"] = args
+env_out.write_text(json.dumps(data))
+
+port = int(args[args.index("--port") + 1])
+expected_path = args[args.index("--path") + 1]
+jira_url = os.environ["JIRA_URL"]
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path != expected_path:
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        msg = json.loads(self.rfile.read(length).decode())
+        if "id" not in msg:
+            self.send_response(202)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        reply = {
+            "jsonrpc": "2.0",
+            "id": msg["id"],
+            "result": {"echo": msg["method"], "link": jira_url + "/browse/PROJ-1"},
+        }
+        payload = ("event: message\\r\\ndata: " + json.dumps(reply) + "\\r\\n\\r\\n").encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args):
+        pass
+
+
+http.server.HTTPServer(("127.0.0.1", port), Handler).serve_forever()
+"""
+
+FAKE_SYSTEMD_RUN = """#!/usr/bin/env python3
+import os, subprocess, sys
+from pathlib import Path
+
+state = Path(os.environ["FAKE_BW_STATE"])
+args = sys.argv[1:]
+with open(state / "systemd-run.log", "a") as log:
+    log.write(" ".join(args) + "\\n")
+
+cmd_start = 0
+for i, arg in enumerate(args):
+    if not arg.startswith("--"):
+        cmd_start = i
+        break
+cmd = args[cmd_start:]
+proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+with open(state / "pids", "a") as pids:
+    pids.write(f"{proc.pid}\\n")
+"""
+
 
 class HelperTest(unittest.TestCase):
     def setUp(self):
@@ -94,6 +165,7 @@ class HelperTest(unittest.TestCase):
 
         self.write_cmd("bw", FAKE_BW)
         self.write_cmd("systemctl", "#!/bin/sh\nexit 0\n")
+        self.write_cmd("systemd-run", FAKE_SYSTEMD_RUN)
         self.write_cmd("setpriv", """#!/bin/sh
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--" ]; then
@@ -104,34 +176,22 @@ while [ "$#" -gt 0 ]; do
 done
 exit 1
 """)
-        self.write_cmd("systemd-run", f"""#!/bin/sh
-echo "$@" >> '{self.state}/systemd-run.log'
-'{sys.executable}' '{CRED_AGENT}' '{self.sock}' >/dev/null 2>&1 &
-echo $! >> '{self.state}/pids'
-""")
         self.write_cmd("zenity", f"""#!/bin/sh
 echo zenity >> '{self.state}/zenity.log'
 [ -s '{self.passwords}' ] || exit 1
 head -n 1 '{self.passwords}'
 sed -i 1d '{self.passwords}'
 """)
-        self.write_cmd("uvx", f"""#!/usr/bin/env python3
-import json, os, sys
-from pathlib import Path
-keys = ["JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN", "READ_ONLY_MODE", "BW_SESSION", "XDG_RUNTIME_DIR"]
-data = {{k: os.environ.get(k) for k in keys}}
-data["argv"] = sys.argv[1:]
-Path('{self.env_out}').write_text(json.dumps(data))
-if Path('{self.root / "echo_url"}').exists():
-    print("issue: " + os.environ["JIRA_URL"] + "/browse/PROJ-1", flush=True)
-""")
+        self.write_cmd("uvx", FAKE_UVX)
         # Fake bwrap records its arguments and executes the wrapped uvx command directly.
         self.write_cmd("bwrap", f"""#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
 Path('{self.bwrap_out}').write_text(json.dumps(args))
-os.execv(args[-2], args[-2:])
+idx = max(i for i, a in enumerate(args) if a.endswith("/uvx"))
+os.environ["FAKE_ENV_OUT"] = '{self.env_out}'
+os.execv(args[idx], args[idx:])
 """)
 
     def write_cmd(self, name, body):
@@ -168,7 +228,7 @@ os.execv(args[-2], args[-2:])
             except ProcessLookupError:
                 pass
 
-    def run_helper(self, expected=0, extra_env=None, args=("https://jira.example.com",)):
+    def run_helper(self, expected=0, extra_env=None, args=("https://jira.example.com",), stdin_text=None):
         env = os.environ.copy()
         env["PATH"] = f"{self.bin}:/usr/bin:/bin"
         env["HOME"] = str(self.root)
@@ -176,7 +236,12 @@ os.execv(args[-2], args[-2:])
         env["FAKE_BW_STATE"] = str(self.state)
         if extra_env:
             env.update(extra_env)
-        result = subprocess.run([str(HELPER), *args],
+        if stdin_text is None and args and args[0] != "--unlock":
+            stdin_text = (
+                json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"}) + "\n"
+                + json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+            )
+        result = subprocess.run([str(HELPER), *args], input=stdin_text,
                                 capture_output=True, text=True, timeout=15, env=env)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
@@ -191,26 +256,35 @@ os.execv(args[-2], args[-2:])
         log = self.state / "zenity.log"
         return len(log.read_text().splitlines()) if log.exists() else 0
 
-    def test_cached_agent_needs_no_bw_call_and_runs_sandboxed_pinned_uvx(self):
+    def test_cached_agent_starts_persistent_sandboxed_daemon_and_bridges_stdio(self):
         self.start_cred_agent({
             "https://jira.example.com": {"username": "jira-user", "password": "jira-password"},
         })
-        self.run_helper(extra_env={"READ_ONLY_MODE": "true"})
+        result = self.run_helper(extra_env={"READ_ONLY_MODE": "true"})
         self.assertEqual(self.bw_calls(), [])
-        self.assertFalse((self.state / "systemd-run.log").exists())
         self.assertEqual(self.zenity_calls(), 0)
+        lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["result"]["echo"], "initialize")
         out = json.loads(self.env_out.read_text())
         self.assertEqual(out["JIRA_URL"], "https://jira.example.com")
         self.assertEqual(out["JIRA_USERNAME"], "jira-user")
         self.assertEqual(out["JIRA_API_TOKEN"], "jira-password")
+        self.assertEqual(out["ALLOW_GLOBAL_CRED_FALLBACK"], "true")
         self.assertIsNone(out["READ_ONLY_MODE"])
         self.assertIsNone(out["BW_SESSION"])
         self.assertIsNone(out["XDG_RUNTIME_DIR"])
-        self.assertEqual(len(out["argv"]), 1)
-        self.assertTrue(out["argv"][0].startswith("mcp-atlassian=="))
+        self.assertIn("--offline", out["argv"])
+        self.assertTrue(any(a.startswith("mcp-atlassian==") for a in out["argv"]))
+        self.assertIn("--stateless", out["argv"])
         bwrap_args = json.loads(self.bwrap_out.read_text())
         self.assertIn("--unshare-pid", bwrap_args)
         self.assertIn("--tmpfs", bwrap_args)
+
+        # Warm daemon bridge works even with minimal PATH (no bw, uvx, or bwrap).
+        warm = self.run_helper(extra_env={"PATH": "/usr/bin:/bin"})
+        warm_lines = [json.loads(line) for line in warm.stdout.splitlines() if line.strip()]
+        self.assertEqual(warm_lines[0]["result"]["echo"], "initialize")
 
     def test_falls_back_to_host_when_full_url_is_missing(self):
         self.start_cred_agent()
@@ -224,12 +298,13 @@ os.execv(args[-2], args[-2:])
     def test_starts_cred_agent_and_unlocks_bw_once(self):
         self.passwords.write_text("master-password\n")
         self.run_helper()
-        start = (self.state / "systemd-run.log").read_text().split()
-        self.assertIn("--unit=jira-cred-agent", start)
+        log = (self.state / "systemd-run.log").read_text()
+        self.assertIn("--unit=jira-cred-agent", log)
+        self.assertIn("--unit=jira-mcp-", log)
         self.assertEqual(self.zenity_calls(), 1)
         self.assertEqual(os.stat(self.sock).st_mode & 0o777, 0o600)
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_API_TOKEN"], "jira-password")
-        # Second run hits the RAM cache without calling bw or zenity.
+        # Second run hits the warm daemon without calling bw or zenity.
         self.run_helper()
         self.assertEqual(self.zenity_calls(), 1)
 
@@ -240,7 +315,7 @@ os.execv(args[-2], args[-2:])
         self.assertEqual(self.zenity_calls(), 2)
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_USERNAME"], "jira-user")
 
-    def test_unlock_option_caches_configured_urls_and_starts_nothing(self):
+    def test_unlock_option_caches_configured_urls_and_warms_daemon(self):
         urls_file = self.root / ".config/agent-config/jira-urls"
         urls_file.parent.mkdir(parents=True)
         urls_file.write_text("https://jira.example.com\n")
@@ -249,8 +324,8 @@ os.execv(args[-2], args[-2:])
         self.assertEqual(self.zenity_calls(), 1)
         ops = [c["args"][0] for c in self.bw_calls()]
         self.assertEqual(ops, ["status", "unlock", "sync", "list"])
-        self.assertFalse(self.env_out.exists())
-        # Running --unlock again does not prompt because the URL is already cached.
+        self.assertTrue(self.env_out.exists())
+        # Running --unlock again does not prompt because creds and daemon are warm.
         self.run_helper(args=("--unlock",))
         self.assertEqual(self.zenity_calls(), 1)
 
@@ -269,7 +344,6 @@ os.execv(args[-2], args[-2:])
                 "password": "gate-password",
             },
         })
-        (self.root / "echo_url").write_text("1")
         result = self.run_helper(args=("https://jira.example.com", "--gate"))
         out = json.loads(self.env_out.read_text())
         self.assertTrue(out["JIRA_URL"].startswith("http://127.0.0.1:"))
@@ -277,7 +351,8 @@ os.execv(args[-2], args[-2:])
         self.assertNotEqual(out["JIRA_API_TOKEN"], "jira-password")
         self.assertNotEqual(out["JIRA_API_TOKEN"], "gate-password")
         self.assertGreaterEqual(len(out["JIRA_API_TOKEN"]), 32)
-        self.assertIn("issue: https://jira.example.com/browse/PROJ-1", result.stdout)
+        reply = json.loads(result.stdout.strip())
+        self.assertEqual(reply["result"]["link"], "https://jira.example.com/browse/PROJ-1")
 
     def test_gate_proxy_lazy_login_and_throwaway_token_enforcement(self):
         seen = []

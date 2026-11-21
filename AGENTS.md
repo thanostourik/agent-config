@@ -43,10 +43,13 @@ Two things to keep as they are:
   `verify-time` reads the Claude Code session logs and prints where the time
   of fix and build runs went inside a project's `bin/verify`. It needs only
   Python.
-  `mcp-atlassian-start` takes a Jira URL, fetches that login's username and
-  password from Bitwarden into `jira-cred-agent`, and launches a pinned
-  `uvx mcp-atlassian==<version>` inside a `bwrap` (bubblewrap) sandbox with no
-  access to the user's home directory or runtime sockets. Pass `--gate` when
+  `mcp-atlassian-start` bridges a coding tool's stdio MCP connection to a
+  persistent, sandboxed `mcp-atlassian` HTTP daemon (`systemd` user unit
+  `jira-mcp-<hash>`) running pinned `uvx mcp-atlassian==<version>` inside `bwrap`
+  (bubblewrap) with no access to the user's home directory or runtime sockets.
+  The daemon listens on `127.0.0.1` at a random secret path stored in a `0600`
+  state file in `XDG_RUNTIME_DIR`, so thread starts connect in milliseconds
+  instead of booting Python and FastMCP on every thread. Pass `--gate` when
   Authentik sits in front of that Jira and deletes the Authorization header.
   The flag starts `jira-gate-proxy`, which sends the Authentik username and app
   password in that header, logs in to Jira lazily on the first request with the
@@ -60,14 +63,15 @@ Two things to keep as they are:
   `XDG_RUNTIME_DIR`) caches only the fetched Jira and gate logins in RAM.
   Bitwarden is unlocked once per desktop session via a short-lived `bw unlock`
   call, only those URLs are read, and Bitwarden is never left unlocked or
-  running. A cache lookup takes milliseconds (avoiding `bw`'s ~3-second startup
-  delay on Codex thread initialization). `systemctl --user stop jira-cred-agent`
-  clears the cached credentials from RAM and removes the socket. When a Jira
-  instance is configured, sync also writes `~/.config/agent-config/jira-urls`
-  and the login autostart entry `~/.config/autostart/jira-vault-unlock.desktop`,
-  which runs `mcp-atlassian-start --unlock` so the password dialog appears at
-  login, not in a thread's first turn. Desktops without XDG autostart (a bare
-  window manager) need that command in their own startup config.
+  running. `systemctl --user stop jira-cred-agent` clears the cached
+  credentials from RAM and removes the socket; stopping `jira-mcp-<hash>` stops
+  the persistent MCP daemon. When a Jira instance is configured, sync also
+  writes `~/.config/agent-config/jira-urls` and the login autostart entry
+  `~/.config/autostart/jira-vault-unlock.desktop`, which runs
+  `mcp-atlassian-start --unlock` to pre-cache the logins and warm up the
+  persistent daemon(s) at login, not in a thread's first turn. Desktops without
+  XDG autostart (a bare window manager) need that command in their own startup
+  config.
 - `config.defaults.json`: the shipped settings for skills, agents, hooks, and
   Jira MCP. The optional, gitignored `config.json` overrides single settings:
   sync merges objects key by key, and any other value replaces the shipped
