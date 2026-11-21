@@ -13,7 +13,7 @@ one bash recipe per feature, and the shipped runner `bin/verify`, which drives t
 in parallel without an agent. Agents then drive the features a change touches before they
 call work done. You write for the next agent, which reads the result in the middle of
 another task, with no other context. Planners and recorders are subagents. A planner
-splits one area of the app into features, and a recorder writes the recipes of up to 2 of
+splits one area of the app into features, and a recorder writes the recipes of up to 3 of
 them.
 
 ## Modes

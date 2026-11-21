@@ -45,7 +45,7 @@ no app, browser or drive of a feature: the environment may not exist yet.
    another or starts with another followed by `-`: `verify lint` refuses that. When the prompt names
    a recipe that is already being written for this area, keep its name for the feature
    that holds its behaviors.
-4. Put the features into groups of at most 2 that share screens or setup. Write each group
+4. Put the features into groups of at most 3 that share screens or setup. Write each group
    to `<skill>/.cache/plan/<area>.<n>.txt` (`n` from 1), one line per feature:
    `<feature>: <the line numbers of its behaviors in your behaviors file>; files: <the
    files of your area those behaviors live in>`. Every behavior line is in exactly one
@@ -60,24 +60,29 @@ no app, browser or drive of a feature: the environment may not exist yet.
 
 The prompt names two files, which you read in one turn: `<skill>/.cache/brief/common.md`
 and your brief `<skill>/.cache/brief/<area>.<n>.md`. The first holds this file, the
-Recipes and When a drive fails sections of `<skill>/SKILL.md`, `<skill>/PROJECT.md` and the
-example recipe. The second holds your group file `<skill>/.cache/plan/<area>.<n>.txt`,
-your behavior lines and the functions those lines cite. The features of your group are yours.
+Recipes and When a drive fails sections of `<skill>/SKILL.md`, `<skill>/PROJECT.md`, the
+example recipe and the source of the project's helpers. The second holds your group file
+`<skill>/.cache/plan/<area>.<n>.txt`, your behavior lines, the functions those lines cite
+and the bodies of the tests they cite. Every turn you take sends your whole context again,
+so each file you open and each command you run alone costs its share of the whole. The features of your group are yours.
 The other features of the area belong to other recorders, who work at the same time. You
 share what you learn with them through `<skill>/.cache/traps.txt`, as the Rules say.
 
-1. Read nothing of those two files a second time. Read `<skill>/.cache/traps.txt` when it
-   exists, and more source only where a behavior needs it, several ranges in one call.
+1. Read nothing those two files hold a second time: no helper, no cited function, no
+   cited test, not the example. Read `<skill>/.cache/traps.txt` when it exists, and more
+   source only where a behavior needs a function the brief does not show, every range you
+   need in one call.
 2. Look at the real app. Open each screen your features use once in a browser session of
    your own (`VERIFY_SESSION=<area>-<n>-probe`), signed in as the role that uses it. Save
    its snapshots under `<skill>/.cache/snapshots/<area>/`. Call the API once, with the
    project's API helper, for each record a step will check.
 3. Write all your recipes, `<skill>/features/<feature>.sh`, with one `# expects:` line per
    behavior line of the feature, before driving any. The plan is the least you cover. It
-   was written from the source alone, so it misses and merges behaviors: split each line
-   that holds several, and give every further behavior of your features that the files or
-   the app show you an `# expects:` line and a step of its own. Add nothing that belongs
-   to another feature or another area. A recipe of yours that
+   was written in one reading, so it misses and merges behaviors, and a plan differs from
+   run to run. The code does not: go through each function your brief shows, branch by
+   branch, and give every refusal, limit, state and side effect some input can reach an
+   `# expects:` line and a step, whether the plan lists it or not. Split each plan line
+   that holds several. Add nothing that belongs to another feature or another area. A recipe of yours that
    already exists, such as the example, is completed, not written again.
 4. Drive them together once: `<skill>/bin/verify <feature> <feature> ...`. Fix the failing
    ones together, with small edits rather than rewriting a recipe. After that, drive only
@@ -86,8 +91,8 @@ share what you learn with them through `<skill>/.cache/traps.txt`, as the Rules 
    not enough. When a pass is marked slow, read the slowest calls in `pw-calls.log` next to
    the feature's log, or its step times, once. Remove what is plainly avoidable, and spend
    no further runs on speed.
-5. Run `<skill>/bin/finish <feature> <feature> ...` with your features. In one call it
-   lints them, drives them once together with three features other recorders have reported
+5. Run `<skill>/bin/finish <feature> <feature> ...` with your features. Run no lint and
+   no `verify uncovered` of your own before it: in one call it lints them, drives them once together with three features other recorders have reported
    passed, and prints what `verify uncovered <area>` still lists. Then:
    - Fix a feature of yours that fails there. Check only data your recipe created. This
      drive is not acceptance: in Full mode and while the skill is generated, `verify all`
@@ -127,8 +132,9 @@ then:
 ## Rules
 
 - Share traps at once. When something costs you a failed drive or a failed command, and
-  would cost another recorder the same, append one line to `<skill>/.cache/traps.txt` right
-  then, with `echo '<what happens>: <what to do>' >> <skill>/.cache/traps.txt`: a helper's
+  would cost another recorder the same, append one line to `<skill>/.cache/traps.txt`, in
+  front of your next command and in the same call, with
+  `echo '<what happens>: <what to do>' >> <skill>/.cache/traps.txt`: a helper's
   quirk, how the app refuses something, a wait that is needed. Add a line for each helper
   you write too: `helper bin/<name>: <one real call and what it returns>`. Read the file
   again before you repair a failing drive and before you write a helper: another recorder

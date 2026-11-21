@@ -6,9 +6,10 @@ point and action `verify uncovered <area>` still lists, except actions in files 
 to the area whose entry points reach them. With only an area it stops there, for the planner.
 With an example feature it also writes the files below, so each recorder reads them in one turn.
 
-.cache/brief/common.md holds RECORDERS.md, the Recipes and When a drive fails sections of SKILL.md, PROJECT.md and
-the example recipe. .cache/brief/<area>.<n>.md holds one plan file, its behavior lines, and the source of each
-function those lines cite as `<file>: <function>`. A function is found by its name and its indentation, like reach
+.cache/brief/common.md holds the recorder's part of RECORDERS.md, the Recipes and When a drive fails sections of
+SKILL.md, PROJECT.md, the example recipe and the source of the project's own small helpers. .cache/brief/<area>.<n>.md
+holds one plan file, its behavior lines, the source of each function those lines cite as `<file>: <function>`, and
+the body of each test they cite. A function is found by its name and its indentation, like reach
 finds a scope. Shipped by create-project-verification-skill.
 """
 import glob
@@ -19,6 +20,10 @@ import sys
 
 MOST_LINES = 150
 MOST_FUNCTIONS = 14
+MOST_TESTS = 10
+HELPER_LINES = 60
+SHIPPED = {'verify', 'lib.sh', 'harvest', 'areas', 'reach', 'detach', 'brief', 'finish', 'pw.sh', 'pw-close', 'launch.sh',
+           'cleanup.sh', 'doctor.sh', 'observe.sh', 'server-errors.sh', 'after-feature.sh', 'entrypoints.sh', 'actions.sh'}
 skill = os.environ.get('VERIFY_SKILL') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 root = os.environ.get('VERIFY_ROOT') or os.path.abspath(os.path.join(skill, '..', '..', '..'))
 if len(sys.argv) not in (2, 3):
@@ -56,6 +61,44 @@ def function(lines, name):
         if last > index:
             return index + 1, last + 1
     return None
+
+
+def test_body(lines, name):
+    """The first and last line number of the test whose title or function name is `name`, or None."""
+    words = re.findall(r'\w+', name)
+    if not words:
+        return None
+    title = re.compile(r'[\W_]+'.join(map(re.escape, words)), re.I)
+    for index, line in enumerate(lines):
+        if not title.search(line) or not re.search(r'\b(def|test|it|func|fn|fun|void|describe)\b', line):
+            continue
+        last = index
+        for later in range(index + 1, len(lines)):
+            if lines[later].strip() and indent(lines[later]) <= indent(line):
+                if lines[later].strip()[0] in '})]':
+                    last = later
+                break
+            if lines[later].strip():
+                last = later
+        return index + 1, last + 1
+    return None
+
+
+def helpers():
+    """The source of the project's own helpers in bin/: whole when small, else its first lines."""
+    parts = []
+    for name in sorted(os.listdir(os.path.join(skill, 'bin'))):
+        path = os.path.join(skill, 'bin', name)
+        if name in SHIPPED or not os.path.isfile(path) or os.path.getsize(path) > 40000:
+            continue
+        try:
+            lines = open(path).read().splitlines(keepends=True)
+        except UnicodeDecodeError:
+            continue
+        shown = lines if len(lines) <= HELPER_LINES else lines[:15]
+        note = '' if len(lines) <= HELPER_LINES else f' (the first 15 of {len(lines)} lines)'
+        parts.append(f'## bin/{name}{note}\n\n```\n' + ''.join(shown) + ('' if shown and shown[-1].endswith('\n') else '\n') + '```\n')
+    return parts
 
 
 def uncited():
@@ -99,6 +142,8 @@ common = [
     '# SKILL.md, sections Recipes and When a drive fails\n\n' + (sections.group(0) if sections else manual),
     '# PROJECT.md\n\n' + read(os.path.join(skill, 'PROJECT.md')),
     f'# The example recipe, features/{example}.sh\n\n```bash\n' + read(os.path.join(skill, 'features', example + '.sh')) + '```\n',
+    "# The project's helpers in bin/ as they are now: open one again only when the traps file says it changed\n\n"
+    + '\n'.join(helpers()),
 ]
 with open(os.path.join(out, 'common.md'), 'w') as handle:
     handle.write('\n'.join(common))
@@ -135,6 +180,21 @@ for plan in plans:
         first, last = found[0], min(found[1], found[0] + MOST_LINES - 1)
         cut = '' if last == found[1] else f' (the first {MOST_LINES} of {found[1] - found[0] + 1} lines)'
         parts.append(f'# Source, {paths[0]}: {name}, lines {first} to {last}{cut}\n\n'
+                     + ''.join(f'{first + i}\t{line}' for i, line in enumerate(lines[first - 1:last])))
+    tests = []
+    for _, line in mine:
+        for file, name in re.findall(r'([\w./-]*(?:tests?/|test_|\.test\.|\.spec\.)[\w./-]*\.\w+):\s*([^();]+)', line):
+            if (file, name.strip()) not in tests:
+                tests.append((file, name.strip()))
+    for file, name in tests[:MOST_TESTS]:
+        if not os.path.isfile(os.path.join(root, file)):
+            continue
+        lines = read(os.path.join(root, file)).splitlines(keepends=True)
+        found = test_body(lines, name)
+        if not found:
+            continue
+        first, last = found[0], min(found[1], found[0] + 59)
+        parts.append(f'# Test, {file}: {name}, lines {first} to {last}\n\n'
                      + ''.join(f'{first + i}\t{line}' for i, line in enumerate(lines[first - 1:last])))
     with open(os.path.join(out, os.path.basename(plan)[:-4] + '.md'), 'w') as handle:
         handle.write('\n'.join(parts))

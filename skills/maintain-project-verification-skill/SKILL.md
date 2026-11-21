@@ -101,7 +101,7 @@ checked even when the script does not list them. Do them after the `launch.sh` i
 - **`AGENTS.md`**: write its `## Verification` section (and the one in `CLAUDE.md`) from
   `<generator>/references/agents-verification.md`.
 - **Features the script could not convert**: run `bin/areas > .cache/areas.txt`. Then send
-  such features to repair recorders, at most 2 features each, as the Recorders section of
+  such features to repair recorders, at most 3 features each, as the Recorders section of
   the new `FULL.md` says, after step 3's `bin/verify up`. A recorder keeps the existing
   recipes.
 
@@ -146,7 +146,7 @@ To repair them:
 
 1. Run `bin/areas > .cache/areas.txt` when it is missing.
 2. Start repair recorders for the failing features and the reasons that do not hold, at
-   most 2 features each and all at once, as the Recorders section of `FULL.md` says, with
+   most 3 features each and all at once, as the Recorders section of `FULL.md` says, with
    their summary lines and those reasons. A recorder repairs the
    recipe, or marks a product defect `# known failure:`, and gives each line whose reason
    does not hold a step.

@@ -348,6 +348,49 @@ measured proof.
   background watch for result files. `FULL.md` says again to stop such a watch.
 - Not measured: a whole generation, proof, and more than 20 recorders at once.
 
+## Runs 20 to 23: fewer turns, and depth from the code
+
+A recorder took about 35 turns, and every turn sends its context again. Of those turns, 6
+to 12 opened the project's helpers and other recorders' recipes, 3 to 6 read source its
+brief did not hold, 2 to 3 read the tests its behaviors cite, and up to 3 ran lint or the
+uncovered check alone. The main session, on the larger model, was a quarter of an area's
+bill. Changes:
+
+- `bin/brief` adds the source of the project's own helpers to `common.md`, and the body
+  of each cited test to a group's brief;
+- no lint and no uncovered check before `bin/finish`, and a trap is written in the same
+  call as the next command;
+- groups of at most 3 features, since each recorder pays for its first reading and its
+  closing steps;
+- a wait for a result file names an absolute path and a limit: a wait on a wrong path had
+  kept two sessions open 4 and 6 minutes after their work.
+
+Runs 20 and 21 with these: `sync` 12.4 minutes, 1.06 times run 2's cost, 67 expects; `jobs`
+22.3 minutes, 0.95 times, 135 expects; `operator` 16.7 minutes, 0.81 times, but 143
+expects against run 2's 189. Its plan had 138 lines, and its recorders added almost
+nothing. The expects that cite tests were 34 in both flows: the gap was in expects from
+the source, 109 against 155. Run 2's recorder had found those by reading the code.
+
+So a recorder now goes through each function its brief shows, branch by branch, and gives
+every refusal, limit, state and side effect an expects line, whether the plan lists it or
+not. Runs 22 and 23, all three areas on this version:
+
+| | `operator`, run 2 | run 22 | `jobs`, run 2 | run 23 | `sync`, run 2 | run 23 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time until all was recorded | 32.5 min | 13.8 min | 26.4 min | 13.3 min | 19.0 min | 16.1 min |
+| Cost at list prices, relative to run 2 | 1 | 0.99 | 1 | 0.61 | 1 | 1.32 |
+| Recorder turns | 108 | 145 | 89 | 73 | 65 | 99 |
+| Features, expects, steps | 10, 189, 104 | 15, 218, 168 | 8, 70, 78 | 6, 90, 64 | 6, 46, 38 | 8, 73, 71 |
+| Cost per expect, relative to run 2 | 1 | 0.85 | 1 | 0.48 | 1 | 0.83 |
+
+- The three areas together: 7% less cost and 25% more expects than run 2, and each area
+  1.2 to 2.4 times faster.
+- Every feature passed when its area was driven together. `operator` reported a product
+  defect, and no session waited after its work.
+- One run each. Between runs 20 and 23, `sync` took 12.4 and 16.1 minutes and `jobs` 22.3
+  and 13.3.
+- Not measured: a whole generation, proof, and more than 20 recorders at once.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 

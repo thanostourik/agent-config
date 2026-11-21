@@ -17,7 +17,7 @@ gives.
    recipes keep reasons that were written under older rules.
 3. Start repair recorders, all at once ([Recorders](#recorders)), for the features that
    fail, the uncovered items, and the not-driven reasons that do not hold. No recorder gets
-   more than 2 features, so the slowest repair ends close to the others. A feature belongs
+   more than 3 features, so the slowest repair ends close to the others. A feature belongs
    to the area its name starts with, else to the area that lists its `# touches:` files.
    An uncovered item goes with the feature of its area that shares its file, and an area
    that has no recipe at all gets a planner first. Give each recorder the summary lines of
@@ -61,9 +61,9 @@ An area is a line of `.cache/areas.txt`: a screen or a few that share setup, abo
 lines of source. Two kinds of subagent record it, and `RECORDERS.md` holds the steps of
 both:
 
-- A planner reads one area and splits its behaviors into features, in groups of at most 2:
+- A planner reads one area and splits its behaviors into features, in groups of at most 3:
   the files `.cache/plan/<area>.<n>.txt`. It needs no environment.
-- A recorder records one group, or repairs up to 2 features. A recorder's time and its
+- A recorder records one group, or repairs up to 3 features. A recorder's time and its
   tokens per feature both grow with its features, and every later step waits for the
   slowest recorder, so none gets more.
 
@@ -89,8 +89,10 @@ offers one. When your tool will not start more subagents:
 - With no subagents and no CLI, plan and record the areas yourself.
 
 Never block on a foreground command while planners or recorders run, or their returns
-reach you late. Stop every background command you started to watch for results once the
-last recorder has returned: one still running keeps a headless session from ending. Give each one its short prompt, with the paths filled in.
+reach you late. To wait for a result file in the background, name it by its absolute path
+and set a limit: `timeout 900 bash -c 'until [[ -f <absolute path> ]]; do sleep 5; done'`.
+A watch on a path that never appears runs until its limit, and one still running keeps a
+headless session from ending: stop every watch once the last recorder has returned. Give each one its short prompt, with the paths filled in.
 
 A planner:
 
