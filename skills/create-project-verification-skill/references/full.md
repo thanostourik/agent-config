@@ -25,6 +25,9 @@ gives.
    - an uncovered item gets a step, or an `# expects:` line marked not driven with its
      reason;
    - a line whose reason does not hold gets a step.
+   Do not split or rewrite recipes that passed in Proof just because they were marked
+   `slow` (handle speed during Recording; in Proof, only raise `# deadline:` if a passing
+   recipe used two thirds of its deadline).
 4. When every repair recorder has written its result file, run `bin/brief --collect` once
    to read all results, then run `verify all --failed`. Repeat `bin/brief --repair-all` and
    fresh repair recorders for any feature that still fails until none is left.
