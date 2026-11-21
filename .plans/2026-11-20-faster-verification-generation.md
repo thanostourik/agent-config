@@ -145,6 +145,31 @@ recorders append to when something costs them a drive and read before each repai
   anything, reads about 25k, and takes 29 turns on average. Every turn sends the whole
   context again, so the tool's own 33k is about half of a recorder's tokens.
 
+Run 11 is run 8 (groups of 2, depth rules) with three additions:
+
+- a slim agent type, `verify-recorder`: its own short prompt, four tools, no `CLAUDE.md`;
+- `bin/brief`, which writes what a recorder reads first into two files, so it reads them
+  in one turn: the instructions, `PROJECT.md` and the example, and its plan, behavior lines
+  and the source ranges the planner named;
+- the shared traps file of run 10.
+
+| | Run 2, old flow | Run 8 | Run 11 |
+| --- | --- | --- | --- |
+| Time to the first results | 32.5 min | 12.7 min | 13.3 min |
+| Tokens of the area's subagents | 15.6M | 30.5M | 14.2M |
+| Cost at list prices, relative to run 2 | 1 | 1.9 | 1.15 |
+| Turns of all recorders | 108 | 285 | 173 |
+| Features, expects, steps | 10, 189, 104 | 11, 241, 132 | 11, 243, 135 |
+| Tokens per step | 0.15M | 0.23M | 0.11M |
+
+- A recorder now starts with 5k tokens, not 33k, and has 30k after its first reading.
+- Recorders still read source 13 times each: the planner's ranges do not replace that.
+- The planner made 4 groups, and the main session sent 2 more features back to them, so
+  the last recorder ended at 17.1 minutes.
+- Claude Code runs at most 20 subagents at once (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`).
+  A whole project with groups of 2 needs more, so the main session must start the next
+  recorder when one returns.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
