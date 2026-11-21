@@ -1,6 +1,6 @@
 # Skills and scripts
 
-Every skill installs to all five tools unless noted. The agent starts most of them by
+Every skill installs to all six tools unless noted. The agent starts most of them by
 itself when the task fits. Skills marked *Manual* run only when you name them:
 
 - Claude Code, Cursor, Grok: type `/skill-name`, for example `/squash-merge-pr`.
@@ -46,7 +46,7 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 
 ## Verification
 
-These install to Claude Code, Codex, Grok, and Cursor, not to OpenCode.
+These install to Claude Code, Codex, Grok, Cursor, and Antigravity, not to OpenCode.
 [verification.md](verification.md) explains how to use them.
 
 | Skill | What it does |

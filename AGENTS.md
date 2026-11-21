@@ -1,7 +1,8 @@
 # Agent configuration repository
 
 This repository holds my personal instructions, skills, and agent definitions
-for five AI coding tools: Claude Code, Codex, Grok, Cursor, and OpenCode.
+for six AI coding tools: Claude Code, Codex, Grok, Cursor, OpenCode, and
+Antigravity.
 I edit the files here. Then I run `./sync`, which copies them into each tool's
 configuration folder in my home directory.
 
@@ -22,7 +23,7 @@ Two things to keep as they are:
 
 ## Layout
 
-- `instructions/common.md`: preferences that apply to all five tools.
+- `instructions/common.md`: preferences that apply to all six tools.
 - `instructions/<tool>.md`: extra preferences for one tool. Sync joins the
   common file and the tool file into one installed file. The common part comes
   first.
@@ -31,8 +32,8 @@ Two things to keep as they are:
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
   shape: an object of event name to list of hook items, the same object that
-  sits under the tool's `hooks` key. Only Claude Code, Codex, and Cursor
-  support hooks.
+  sits under the tool's `hooks` key. Only Claude Code, Codex, Cursor,
+  and Antigravity support hooks.
 - `hooks/shared/<name>.json`: one hook for every tool with hooks, written once
   in a neutral shape that sync translates. See "Hooks" below.
 - `bin/<name>`: a script that hooks or skills call. Sync installs it into
@@ -113,7 +114,7 @@ so the menu stays complete. Never put a Jira URL in that file.
 ## Skill destinations
 
 Keep each skill in `skills/<name>/`. Without `metadata.harness`, it installs
-into all five tools' skill folders. To select destinations, use this exact
+into all six tools' skill folders. To select destinations, use this exact
 format in the opening `SKILL.md` frontmatter:
 
 ```yaml
@@ -121,7 +122,8 @@ metadata:
   harness: "grok, opencode"
 ```
 
-Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `agents`.
+Allowed names: `claude-code`, `codex`, `grok`, `opencode`, `cursor`, `antigravity`,
+`agents`.
 The list replaces the default. `agents` means `~/.agents/skills/`, which some
 tools also read; it is included only when listed explicitly. Use two spaces,
 double quotes, and one comma-separated line. Invalid or repeated names and
@@ -165,20 +167,20 @@ entry of another shape, or a malformed `{{allow` marker stops sync.
 | `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | none | `~/.grok/config.toml` (`mcp_servers`) |
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none | `~/.config/opencode/opencode.json` (`mcp`) |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` | `~/.cursor/mcp.json` (`mcpServers`) |
+| `antigravity` | `~/.gemini/config/AGENTS.md` | `~/.gemini/config/skills/` | `~/.gemini/config/agents/` | `~/.gemini/config/hooks.json` | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
 | `agents` (only through `harness`) | none | `~/.agents/skills/` | none | none | none |
 
 `bin/` is not in the table. Every file in it goes to `~/.local/bin/`.
 
 The `TOOLS` dictionary at the top of `sync` holds the instruction, skill, agent,
 and hook paths. `SKILL_DESTINATIONS` adds `agents` to the skill paths. MCP
-destinations sit next to them. To change a path, change it
-there.
+destinations sit next to them. To change a path, change it there.
 
-Sync merges Jira MCP into those MCP files without converting formats. Cursor and
-Claude Code get a `command` / `args` / `env` stdio server. Codex and Grok get a
-TOML `[mcp_servers.<name>]` section with `startup_timeout_sec = 180`. OpenCode
-gets `type: local` and a `command` array. Every server's environment holds
-`DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_RUNTIME_DIR`, taken from the
+Sync merges Jira MCP into those MCP files without converting formats. Cursor,
+Claude Code, and Antigravity get a `command` / `args` / `env` stdio server.
+Codex and Grok get a TOML `[mcp_servers.<name>]` section with
+`startup_timeout_sec = 180`. OpenCode gets `type: local` and a `command` array.
+Every server's environment holds `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, and `XDG_RUNTIME_DIR`, taken from the
 shell that ran sync or from defaults, so `mcp-atlassian-start` can open its
 Bitwarden password window. Other servers and keys in those files stay. It does
 not touch MCP files when no Jira instance is configured and it has never
@@ -206,10 +208,10 @@ A shared hook looks like this:
 }
 ```
 
-Without `harness`, a shared hook installs to Claude Code, Codex, and Cursor.
-When present, it selects only the listed tools from those three; unknown or
-repeated names stop sync before any write. Per-tool hooks and agent definitions
-use their tool directory and have no `harness` field. `event` must be a key
+Without `harness`, a shared hook installs to Claude Code, Codex, Cursor, and
+Antigravity. When present, it selects only the listed tools from those four;
+unknown or repeated names stop sync before any write. Per-tool hooks and agent
+definitions use their tool directory and have no `harness` field. `event` must be a key
 of the `HOOK_EVENTS` table in `sync`, which maps it to each tool's event name
 and item shape. Today that table
 holds only `after-edit`. Add a row when a hook needs another event. `timeout`
@@ -221,7 +223,8 @@ to keep one hook away from one tool, list the other tools in its `harness`.
 
 Sync merges the enabled hooks of each tool, sorted by name, into one object of
 event name to hook items. Codex gets it as `{"hooks": ...}` in its hook file,
-Cursor as `{"version": 1, "hooks": ...}`. Claude Code keeps hooks inside
+Cursor as `{"version": 1, "hooks": ...}`. Antigravity's `hooks.json` holds
+named hooks, so it gets `{"agent-config": ...}`. Claude Code keeps hooks inside
 `settings.json` next to other settings, so sync owns only the `hooks` key
 there: it reads the installed `settings.json`, replaces that one key, and
 writes the file back. If the file already has a `hooks` key that sync did not
@@ -256,7 +259,7 @@ nothing else. It owns two kinds of items:
 - whole files: instructions, every file of a skill, agents, the Codex and
   Cursor hook files, `bin/` scripts, the Jira login autostart entry
 - entries inside a file that belongs to a tool: the `hooks` key in
-  `~/.claude/settings.json`, and each Jira server in the five MCP files
+  `~/.claude/settings.json`, and each Jira server in the six MCP files
 
 `~/.config/agent-config/state.json` lists every item sync installed, with a
 hash of what it wrote. An item on disk is clean when it equals what sync wants
