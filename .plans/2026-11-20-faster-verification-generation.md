@@ -185,7 +185,7 @@ its context, and it makes one call a turn whatever its prompt says:
 | Time to the first results | 32.5 min | 13.3 min | 10.9 min |
 | Tokens of the area's subagents | 15.6M | 14.2M | 9.5M |
 | Cost at list prices, relative to run 2 | 1 | 1.15 | 0.87 |
-| Turns of all recorders | 108 | 173 | 118 |
+| Turns of all recorders | 108 | 158 | 118 |
 | Source reads per recorder | | 13.5 | 7.8 |
 | Features, expects, steps | 10, 189, 104 | 11, 243, 135 | 10, 201, 119 |
 
