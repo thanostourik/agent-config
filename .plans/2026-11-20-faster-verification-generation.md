@@ -280,6 +280,46 @@ test line and a source line for one behavior) and 9 internals. Run 15 adds:
 - The planner's rules swing the plan widely: 73, 149 and 44 behaviors for `sync`. With
   the same rules it still varies by a fifth (152 and 181 for `operator`).
 
+## Runs 16 and 17: how much a plan varies, and a review step
+
+Planning alone, three times per area with the same rules (run 15's without "only what a
+user can observe", and with a shared file's rule changed to "take what your area's work
+shows or causes there"), then a reviewer that reads the source again and appends what the
+plan missed:
+
+| Area | Behavior lines in three plans | After the review |
+| --- | --- | --- |
+| `sync` | 65, 59, 93 | 95, 92, 114 |
+| `jobs` | 112, 80, 93 | 145, 97, 117 |
+| `operator` | 192, 152, 220 | 265, 177, 254 |
+
+- The same rules give plans that differ by about 30%. Nearly every function of the
+  area's own files is cited in every plan: the plans differ in how finely they split a
+  function into behaviors.
+- The review raises the smallest plan and does not make the plans equal.
+- Two checks tried on these files and dropped: requiring each error message of a cited
+  function in the plan (planners name codes, not messages, and a shared dispatcher holds
+  other areas' messages), and requiring each function of the area's own files (the plans
+  already cite them).
+
+Recording with planner, review and recorders of at most 2 features:
+
+| | `jobs`, run 2 | run 16 | `operator`, run 2 | run 17 | `sync`, run 2 | run 16 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Time until all was recorded | 26.4 min | 16.0 min | 32.5 min | 15.7 min | 19.0 min | 20.2 min |
+| Cost at list prices, relative to run 2 | 1 | 1.14 | 1 | 1.34 | 1 | 4.2 |
+| Behavior lines in the plan | | 110 | | 262 | | 186 |
+| Features, expects, steps | 8, 70, 78 | 12, 137, 104 | 10, 189, 104 | 16, 284, 166 | 6, 46, 38 | 18, 193, 166 |
+
+- `jobs` and `operator`: faster and deeper for 14% and 34% more cost.
+- `sync`: the plan came out at 186 lines, twice the plan-only runs. Four times the expects
+  for four times the cost, no faster, and 2 of its 18 features failed when driven together.
+- `operator` marked no defect. Its plan describes the RSS 1.0 defect, which runs 8, 10 and
+  11 marked, as intended behavior.
+- Recipes still hold two lines for one behavior, one citing the test and one the function.
+- So the depth of a run is not under control: for `sync` the plan was 44 to 186 lines
+  across runs, and the cost follows the plan. The review step makes that worse.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
