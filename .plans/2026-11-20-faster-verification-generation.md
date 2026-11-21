@@ -170,6 +170,30 @@ Run 11 is run 8 (groups of 2, depth rules) with three additions:
   A whole project with groups of 2 needs more, so the main session must start the next
   recorder when one returns.
 
+Run 12 is run 11 with four more changes, because a recorder's tokens are its turns times
+its context, and it makes one call a turn whatever its prompt says:
+
+- `bin/brief` cuts out the functions the behavior lines cite, in place of ranges the
+  planner guessed;
+- `bin/finish` does a recorder's closing checks in one call: lint, a drive next to three
+  other features, and the uncovered list;
+- a failing feature's line comes with the end of its log and its evidence file names;
+- a behavior found late that needs a recipe of its own goes to a new recorder.
+
+| | Run 2, old flow | Run 11 | Run 12 |
+| --- | --- | --- | --- |
+| Time to the first results | 32.5 min | 13.3 min | 10.9 min |
+| Tokens of the area's subagents | 15.6M | 14.2M | 9.5M |
+| Cost at list prices, relative to run 2 | 1 | 1.15 | 0.87 |
+| Turns of all recorders | 108 | 173 | 118 |
+| Source reads per recorder | | 13.5 | 7.8 |
+| Features, expects, steps | 10, 189, 104 | 11, 243, 135 | 10, 201, 119 |
+
+- The planner listed 152 behaviors in run 12 and 181 in run 11, so the depth of one run
+  varies by about a fifth.
+- Run 12 marked no known failure: its recorder saw the RSS 1.0 defect that runs 8, 10 and
+  11 marked, was unsure, and left it out.
+
 Changes that hold go to the generator, `maintain-project-verification-skill` and the docs in
 this branch's PR.
 
