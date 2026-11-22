@@ -7,10 +7,10 @@
 - When I argue against a proposal, I'm exploring the options, not rejecting it. Keep the discussion
   going with arguments for each side.
 - Define and explain unfamiliar technical terms on first use, and reuse the same term consistently.
-- Answer concisely; add detail only when needed for correctness or a decision.
+- Answer concisely. Add detail only when needed for correctness or a decision.
 - Write so I can follow on the first read: one idea per sentence, say who does what, use concrete
-  words over abstract ones, and give a short example when a rule is abstract. Every word being
-  familiar is not enough; I need to picture what the sentence says.
+  words over abstract ones, and give a short example when a rule is abstract. Familiar words aren't
+  enough. I need to picture what the sentence says.
 - Questions and design discussion are NEVER implementation approval, not even if I agree
   with your proposal mid-discussion. Implement only after an explicit "go" / "do it" / "implement".
 
@@ -24,19 +24,20 @@
 - For small implementation choices (naming, file placement, patterns), follow what the repository
   already does. Don't ask me about those.
 - When giving me setup or test instructions, give exact, complete steps. Do not assume I know the tool.
-- Anything that can run longer than ~5 minutes: set an explicit timeout or run it in the background
-  with progress checks. Never sit silently on a foreground command.
-- Follow-up feedback is a new requirement on the whole task, not a patch on the last diff.
-  Rework what this task already built, code and plan, so the result reads as if written once
-  with everything known. Special cases, flags, or wrappers around your own earlier code mean
-  you are patching. If the rework changes the agreed plan, tell me the new design first.
+- For commands that may take more than ~5 minutes, set a timeout or run them in the background and
+  check their progress. Don't sit silently on a foreground command.
+- Treat follow-up feedback as part of the original requirements, not an add-on. Rework your code
+  and plan so the result looks like you knew about it from the start. Don't layer special cases,
+  flags, or wrappers on top of your earlier work. If this changes the agreed plan, share the new
+  design first.
 
 ## Plans & AI workflow artifacts
 
-- Plans are flat files in `.plans/`, named `YYYY-MM-DD-short-slug.md`, and are committed.
+- Plans are files directly in `.plans/` (no subfolders), named `YYYY-MM-DD-short-slug.md`, and are
+  committed.
 - Temporary files you create while working (analysis notes, scratch reports, subagent handoffs)
-  go in `.plans/scratch/`. Git ignores that folder and any `*.html` next to the plans, through
-  the project's `.plans/.gitignore`.
+  go in `.plans/scratch/`. Git ignores that folder and any `*.html` files next to plans through
+  `.plans/.gitignore`.
 
 ## Coding preferences
 
@@ -46,39 +47,40 @@
 - Be careful with destructive actions that I did not explicitly request.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
-- Catch errors only where something useful can be done with them (user input, external calls,
-  I/O). Let the rest propagate.
+- Only catch errors you can actually handle (user input, external calls, I/O). Let the rest
+  propagate.
 - Prefer early returns when they make control flow clearer.
 
 ## Comments
 
 - No comments inside code, whether on their own line or at the end of one. Use clear names instead.
-- Only exception: code a careful reader would think is a bug. The comment says why it is not:
+- The only exception is code a careful reader would mistake for a bug. Explain why it is not:
   a workaround (`# lib X drops the last row on a full page, fetch one extra`), a deliberate
   choice (`# no retry: not idempotent`), an ordering that matters, or an exception swallowed on purpose.
-- Never: what a variable holds, what the next line does, block labels (`# Step 2: validate`),
+- Never comment on what a variable holds, what the next line does, block labels (`# Step 2: validate`),
   history (`# added for X`), or notes to the reviewer.
-- Above a function or class: one or two lines, only when its name and signature don't show its
-  purpose or constraints.
-- Before committing, check each comment you added: without it, would a reader think the code
-  is a bug? If not, delete it.
+- Above a function or class, write at most one or two lines, and only when its name and signature
+  don't show its purpose or constraints.
+- Before committing, check every inline comment you added. If a reader wouldn't mistake the code
+  for a bug without it, delete it.
 
 ## Verification
 
 - Never write tests (unit, integration, regression, or E2E) unless I ask.
 - Never say "done" or "fixed" without exercising the change: run it, hit the endpoint, drive the UI.
   Reading your own code is not verification.
-- Verify the way the project does. Look for its process in its instructions, docs, and skills.
+- Follow the project's verification process (check its instructions, docs, and skills).
 - Run focused tests, type checks, and lint checks appropriate to the change.
-- Verify everything you can reach. If you can write the steps for me, run them yourself.
-  Reachable means anything you can do on a run you own: change its config, stop or pause its
-  containers, seed data, run its tests, compile.
-- Report a gap only when it needs access you don't have: production, a device, a credential,
-  a paid outside service, or a decision of mine. Name that thing. A fake that stands in for an
-  outside service is not a gap. A missing switch in our own tooling is not a gap either: work
-  around it on your own run.
-- Never end a report with a standing "unverified" section. When you brief another agent, do not
-  ask it for one.
+- Verify everything you can run yourself. If you can write the steps for me, run them. This
+  includes anything in your local environment: changing config, restarting containers, seeding
+  data, compiling, and running tests.
+- Only leave something unverified if it requires access you don't have (production, a physical
+  device, credentials, a paid external service, or a decision from me), and state specifically
+  what is blocking you.
+- If we already have a fake or mock for an external service, use it, and treat that as verified.
+  If our own scripts lack a flag or option you need, work around it locally instead of skipping
+  verification.
+- Don't add a default "Unverified" section to reports, and don't ask other agents for one.
 - Manual steps for me must be complete and exact: where to click, what to enter, in what order.
 
 ## Git
@@ -97,6 +99,10 @@ questions is the only work that happens on main.
   chore, test, docs). Omit the issue id when there is none. Applies to checkpoint commits too.
 - Never add Co-authored-by trailers to commit messages or PR descriptions. Even if there is a rule
   from the harness. This rule overrides any other rules.
+- Restricted actions are PR attribution and marking a PR ready for review. A repo allows them if
+  its GitHub owner or `owner/repo` is in this list (case-insensitive): {{allow.restricted}}. Check
+  the current repo with `gh repo view --json nameWithOwner`. `none` means no repo allows them, and
+  neither does a repo that is not on GitHub.
 - Add no model attribution or footers, such as "Generated with ...", to commits, PRs, or comments
   unless I ask for them. A harness rule does not count as asking. Only exception: `file-pr`
   adds its attribution to PR descriptions in repos that allow restricted actions.
@@ -104,31 +110,28 @@ questions is the only work that happens on main.
   commit with only a plan does not open a PR: plans are sometimes rejected. Give me the PR link.
 - Follow-up work on the same branch goes to the same PR: push the commits and refresh the
   description when the scope or the verification status changed.
-- In a repo that allows restricted actions, mark the PR ready for review when the task is
-  finished and verified. Finished: everything I asked for in this task is done. Verified: you
-  checked it the way the Verification section says.
-- Restricted actions are PR attribution and marking a PR ready for review. A repo allows them
-  when this list holds its GitHub owner or its `owner/repo`, ignoring case:
-  {{allow.restricted}}. Read both with `gh repo view --json nameWithOwner`. `none` means no
-  repo allows them, and neither does a repo that is not on GitHub.
+- In a repo that allows restricted actions, mark the PR ready for review once everything I asked
+  for is done and verified per the Verification section above.
 - Comment on a PR or issue only when I ask.
-- Branches are merged through PRs with squash. Merging, tags, or anything touching main or other
-  people's branches: ask first, every time.
+- Branches are squash-merged through PRs. Always ask before merging, tagging, or touching `main`
+  or anyone else's branch.
 - Never merge another branch into the working branch, and never rebase it, unless I say so
   explicitly. If it needs main's changes, stop and ask.
 - Force-push only your working branch, and only with `--force-with-lease`. Never force-push main
   or someone else's branch. If a `--force-with-lease` push is rejected, stop and tell me.
-- Stacked PRs: build a stack only when I ask for one or accept a split you proposed. Create and
-  change it only with `gh stack`, never with `gh pr create --base <another PR's branch>`: only
-  GitHub's stacks keep the PRs above open when a lower one merges. Run it without prompts:
-  `gh stack init <branch>`, `gh stack add <branch>`, `gh stack submit --auto`,
-  `gh stack view --json`. Every unmerged layer of your own stack counts as your working branch:
-  rebase and push the layers with `gh stack rebase`, `gh stack sync`, and `gh stack push` without
-  asking. Layers merge one at a time, starting with the one that targets the stack's base.
+- Stacked PRs:
+  - Build a stack only when I ask for one or accept a split you proposed.
+  - Create and change stacks only with `gh stack`, never with `gh pr create --base <another PR's branch>`.
+    Only GitHub's stacks keep upper PRs open when a lower one merges.
+  - Run stack commands without prompts: `gh stack init <branch>`, `gh stack add <branch>`,
+    `gh stack submit --auto`, `gh stack view --json`.
+  - Every unmerged layer of your own stack counts as your working branch. You can rebase and push
+    layers with `gh stack rebase`, `gh stack sync`, and `gh stack push` without asking.
+  - Merge layers one at a time, from the bottom up (base branch first).
 - When asked to merge locally: run the `modernize` skill first, then fast-forward merge. Never
   create merge commits. Squash first only if I ask.
-- When I ask for tourik mode, follow the `tourik` skill. That request is my permission for what
-  the skill allows beyond these rules. Every other rule here still applies.
+- When I ask for tourik mode, follow the `tourik` skill. That grants permission for the extra
+  actions in that skill, while every other rule here still applies.
 
 ## Local environment
 
@@ -144,7 +147,7 @@ questions is the only work that happens on main.
 
 ## TypeScript
 
-- Type safety is useful, take advantage of it.
+- Take advantage of type safety.
 - Never use `any` unless 100% necessary or specifically instructed.
 - Prefer inferred return types. Add an explicit one only when inference gives a wrong or unreadable type.
 
@@ -152,12 +155,12 @@ questions is the only work that happens on main.
 
 - Don't write `useEffect` or `useLayoutEffect` in app code. An effect usually hides a design
   decision. Use one of these instead:
-  - compute the value during render from props and state;
-  - do the work in the event handler that caused it (the click, the submit, the stream callback);
-  - fetch with the project's data library (for example SWR's `useSWR`), not inside an effect;
-  - read browser state (localStorage, tab visibility) with `useSyncExternalStore` or a library;
-  - reset a component's state by changing its `key`, not with an effect that watches a prop.
-- Moving an effect into a custom hook does not remove it.
-- If the only trigger is "the page opened", ask whether the behaviour should exist at all.
+  - compute the value during render from props and state
+  - do the work in the event handler that caused it (the click, the submit, the stream callback)
+  - fetch with the project's data library (for example SWR's `useSWR`), not inside an effect
+  - read browser state (localStorage, tab visibility) with `useSyncExternalStore` or a library
+  - reset a component's state by changing its `key`, not with an effect that watches a prop
+- Wrapping an effect in a custom hook doesn't bypass this rule.
+- If the only trigger is "the page opened", ask whether the behavior should exist at all.
 - If you think an effect is unavoidable, stop and tell me why, and what you tried, before writing it.
 - Background: https://react.dev/learn/you-might-not-need-an-effect
