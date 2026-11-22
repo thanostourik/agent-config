@@ -19,8 +19,9 @@ Needs a Linux desktop session with systemd and these commands installed: `bw`
 3. `./sync --apply --replace-existing`
 4. Tell the user to log out and in again, or run
    `~/.local/bin/mcp-atlassian-start --unlock`, so the Jira logins are cached in
-   `jira-cred-agent` before the first thread (Bitwarden locks again immediately
-   afterward). Then restart the coding tools.
+   `jira-cred-agent` and the persistent sandboxed `mcp-atlassian` daemon is
+   warm before the first thread (Bitwarden locks again immediately afterward).
+   Then restart the coding tools.
 5. When an instance sets `"gate": true`, the user adds a Bitwarden login whose
    URI is that Jira URL plus `/auth-gate`. Its username is the Authentik
    username and its password an Authentik app password, not the Jira account.

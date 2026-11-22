@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Start a sandboxed, version-pinned mcp-atlassian for one Jira URL.
+"""Connect a coding tool over stdio to a persistent, sandboxed mcp-atlassian.
 
 Credentials come from Bitwarden once per desktop session and are cached in RAM
-by jira-cred-agent (systemd user unit) on a private Unix socket. Bitwarden is
-locked again immediately after fetching only the configured Jira and gate
+by jira-cred-agent (systemd user unit) on a private 0600 Unix socket. Bitwarden
+is locked again immediately after fetching only the configured Jira and gate
 logins, so the rest of the vault is never exposed to agents.
+
+Each configured Jira instance runs as one persistent systemd user unit
+(jira-mcp-<hash>) hosting a version-pinned mcp-atlassian inside a bwrap sandbox
+over Streamable HTTP on 127.0.0.1 with a random per-session secret path stored
+in a 0600 state file. Normal thread starts bridge stdio to that warm daemon in
+milliseconds instead of booting Python and FastMCP on every thread.
 
 With --gate, jira-gate-proxy handles the Authentik gate and Jira session
 cookies. mcp-atlassian receives only a random per-session token and never sees
@@ -12,6 +18,8 @@ the real Jira or Authentik passwords.
 """
 
 import fcntl
+import hashlib
+import http.client
 import json
 import os
 import secrets
@@ -91,6 +99,7 @@ def cache_get(sock_path, url):
 
 
 def start_agent(sock_path):
+    need("systemd-run", "systemctl")
     subprocess.run(
         ["systemctl", "--user", "stop", "jira-cred-agent.service"],
         stdout=subprocess.DEVNULL,
@@ -174,6 +183,7 @@ def bw_status():
 
 
 def bw_unlock():
+    need("bw", "zenity", "setpriv")
     if bw_status() == "unauthenticated":
         die("Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry.")
     text = (
@@ -316,7 +326,8 @@ def read_configured_urls(home):
     return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def build_sandbox_cmd(home):
+def build_sandbox_cmd(home, extra_args, offline=True):
+    need("uvx", "bwrap")
     uvx_which = shutil.which("uvx")
     uv_which = shutil.which("uv")
     uvx_real = os.path.realpath(uvx_which)
@@ -356,7 +367,11 @@ def build_sandbox_cmd(home):
         if candidate and candidate.startswith(home_prefix) and candidate not in bound:
             cmd.extend(["--ro-bind", candidate, candidate])
             bound.add(candidate)
-    cmd.extend([uvx_which, MCP_ATLASSIAN_SPEC])
+    cmd.append(uvx_which)
+    if offline:
+        cmd.append("--offline")
+    cmd.append(MCP_ATLASSIAN_SPEC)
+    cmd.extend(extra_args)
     return cmd
 
 
@@ -367,6 +382,7 @@ def build_mcp_env(jira_url, jira_user, jira_token):
         "JIRA_URL": jira_url,
         "JIRA_USERNAME": jira_user,
         "JIRA_API_TOKEN": jira_token,
+        "ALLOW_GLOBAL_CRED_FALLBACK": "true",
     }
     for key in (
         "LANG",
@@ -420,40 +436,258 @@ def start_gate_proxy(url, jira_user, jira_password, gate_user, gate_password, pr
         os.close(read_fd)
 
 
-def run_with_gate(home, url, jira_user, jira_password, gate_user, gate_password):
-    proxy_token = secrets.token_urlsafe(32)
-    proxy, proxy_url = start_gate_proxy(
-        url, jira_user, jira_password, gate_user, gate_password, proxy_token
-    )
-    mcp_cmd = build_sandbox_cmd(home)
-    mcp_env = build_mcp_env(proxy_url, jira_user, proxy_token)
-    mcp = subprocess.Popen(mcp_cmd, env=mcp_env, stdout=subprocess.PIPE)
+def instance_key(url, gate):
+    tag = f"{norm(url)}|{'gate' if gate else 'direct'}"
+    return hashlib.sha256(tag.encode("utf-8")).hexdigest()[:12]
 
-    def forward_signal(signum, _frame):
+
+def free_port():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+    finally:
+        sock.close()
+
+
+def tcp_ready(port):
+    try:
+        conn = socket.create_connection(("127.0.0.1", port), timeout=0.5)
+        conn.close()
+        return True
+    except OSError:
+        return False
+
+
+def read_daemon_state(state_path):
+    if not state_path.is_file():
+        return None
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if (not isinstance(data, dict)
+            or data.get("spec") != MCP_ATLASSIAN_SPEC
+            or not isinstance(data.get("port"), int)
+            or not isinstance(data.get("path"), str)):
+        return None
+    if not tcp_ready(data["port"]):
+        return None
+    return data
+
+
+def write_daemon_state(state_path, data):
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = state_path.with_suffix(".tmp")
+    old_umask = os.umask(0o177)
+    try:
+        tmp.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        tmp.replace(state_path)
+    finally:
+        os.umask(old_umask)
+
+
+def launch_mcp_http(home, mcp_env, port, mcp_path):
+    extra = [
+        "--transport", "streamable-http",
+        "--stateless",
+        "--host", "127.0.0.1",
+        "--port", str(port),
+        "--path", mcp_path,
+    ]
+    for offline in (True, False):
+        cmd = build_sandbox_cmd(home, extra, offline=offline)
+        proc = subprocess.Popen(cmd, env=mcp_env, stdin=subprocess.DEVNULL)
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            if tcp_ready(port):
+                return proc
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait(timeout=3)
+        if not offline:
+            die("mcp-atlassian HTTP daemon did not become ready.")
+    die("mcp-atlassian HTTP daemon did not become ready.")
+
+
+def serve_daemon(home, runtime, url, gate, state_path):
+    sock_path = runtime / "jira-cred-agent.sock"
+    lock_path = runtime / "jira-cred-agent.lock"
+    gate_url = f"{url.rstrip('/')}/auth-gate"
+    targets = [(url, False)]
+    if gate:
+        targets.append((gate_url, True))
+
+    cached = ensure_cached(sock_path, lock_path, targets)
+    jira_user, jira_password = cached[url]
+
+    proxy = None
+    proxy_url = ""
+    if gate:
+        gate_user, gate_password = cached[gate_url]
+        proxy_token = secrets.token_urlsafe(32)
+        proxy, proxy_url = start_gate_proxy(
+            url, jira_user, jira_password, gate_user, gate_password, proxy_token
+        )
+        mcp_env = build_mcp_env(proxy_url, jira_user, proxy_token)
+    else:
+        mcp_env = build_mcp_env(url, jira_user, jira_password)
+
+    port = free_port()
+    mcp_path = "/mcp/" + secrets.token_urlsafe(32)
+    mcp = launch_mcp_http(home, mcp_env, port, mcp_path)
+
+    write_daemon_state(state_path, {
+        "port": port,
+        "path": mcp_path,
+        "proxy_url": proxy_url,
+        "url": url.rstrip("/"),
+        "spec": MCP_ATLASSIAN_SPEC,
+    })
+
+    def stop(signum, _frame):
         for child in (mcp, proxy):
-            if child.poll() is None:
+            if child is not None and child.poll() is None:
                 child.send_signal(signum)
 
-    signal.signal(signal.SIGTERM, forward_signal)
-    signal.signal(signal.SIGINT, forward_signal)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
 
-    proxy_bytes = proxy_url.encode("utf-8")
-    upstream_bytes = url.rstrip("/").encode("utf-8")
     try:
-        # mcp-atlassian builds issue links from JIRA_URL, which is the proxy. Point them at Jira.
-        for line in mcp.stdout:
-            sys.stdout.buffer.write(line.replace(proxy_bytes, upstream_bytes))
-            sys.stdout.buffer.flush()
-    finally:
-        mcp.stdout.close()
         code = mcp.wait()
-        if proxy.poll() is None:
+    finally:
+        state_path.unlink(missing_ok=True)
+        if proxy is not None and proxy.poll() is None:
             proxy.terminate()
             try:
                 proxy.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 proxy.kill()
     raise SystemExit(code)
+
+
+def ensure_daemon(runtime, url, gate):
+    key = instance_key(url, gate)
+    state_path = runtime / f"jira-mcp-{key}.json"
+    state = read_daemon_state(state_path)
+    if state is not None:
+        return state
+
+    need("systemd-run", "systemctl", "uvx", "bwrap")
+    sock_path = runtime / "jira-cred-agent.sock"
+    cred_lock = runtime / "jira-cred-agent.lock"
+    gate_url = f"{url.rstrip('/')}/auth-gate"
+    targets = [(url, False)]
+    if gate:
+        targets.append((gate_url, True))
+    ensure_cached(sock_path, cred_lock, targets)
+
+    lock_path = runtime / f"jira-mcp-{key}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        state = read_daemon_state(state_path)
+        if state is not None:
+            return state
+        unit = f"jira-mcp-{key}"
+        subprocess.run(
+            ["systemctl", "--user", "stop", f"{unit}.service"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        state_path.unlink(missing_ok=True)
+        serve_args = [str(Path(__file__).resolve()), "--serve", url]
+        if gate:
+            serve_args.append("--gate")
+        serve_args.extend(["--state-file", str(state_path)])
+        subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--quiet",
+                "--collect",
+                f"--unit={unit}",
+                f"--setenv=PATH={os.environ['PATH']}",
+                *serve_args,
+            ],
+            check=True,
+        )
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            state = read_daemon_state(state_path)
+            if state is not None:
+                return state
+            time.sleep(0.05)
+    die(f"Jira MCP daemon did not start. See: journalctl --user -u jira-mcp-{key}")
+
+
+def extract_sse_payloads(body):
+    payloads = []
+    data_lines = []
+    for raw_line in body.splitlines():
+        line = raw_line.rstrip(b"\r")
+        if line.startswith(b"data:"):
+            part = line[5:]
+            if part.startswith(b" "):
+                part = part[1:]
+            data_lines.append(part)
+        elif not line and data_lines:
+            payloads.append(b"\n".join(data_lines))
+            data_lines = []
+    if data_lines:
+        payloads.append(b"\n".join(data_lines))
+    return payloads
+
+
+def bridge_stdio(runtime, url, gate):
+    state = ensure_daemon(runtime, url, gate)
+    conn = http.client.HTTPConnection("127.0.0.1", state["port"], timeout=120)
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+
+    def post_once(payload):
+        nonlocal state, conn
+        for attempt in range(2):
+            try:
+                conn.request("POST", state["path"], body=payload, headers=headers)
+                resp = conn.getresponse()
+                return resp.status, resp.getheader("Content-Type") or "", resp.read()
+            except (http.client.HTTPException, OSError):
+                conn.close()
+                if attempt == 1:
+                    raise
+                state = ensure_daemon(runtime, url, gate)
+                conn = http.client.HTTPConnection("127.0.0.1", state["port"], timeout=120)
+
+    try:
+        for raw_line in sys.stdin.buffer:
+            payload = raw_line.strip()
+            if not payload:
+                continue
+            status, content_type, body = post_once(payload)
+            if status == 202 or not body.strip():
+                continue
+            proxy_bytes = state.get("proxy_url", "").encode("utf-8")
+            upstream_bytes = state.get("url", url.rstrip("/")).encode("utf-8")
+            if "text/event-stream" in content_type.lower():
+                messages = extract_sse_payloads(body)
+            else:
+                messages = [body.strip()]
+            for msg in messages:
+                if not msg:
+                    continue
+                if proxy_bytes:
+                    msg = msg.replace(proxy_bytes, upstream_bytes)
+                sys.stdout.buffer.write(msg + b"\n")
+                sys.stdout.buffer.flush()
+    finally:
+        conn.close()
 
 
 def main():
@@ -465,13 +699,40 @@ def main():
     sock_path = runtime / "jira-cred-agent.sock"
     lock_path = runtime / "jira-cred-agent.lock"
 
+    if args[0] == "--serve":
+        rest = args[1:]
+        if not rest:
+            die("usage: mcp-atlassian-start --serve <jira-url> [--gate] --state-file <path>")
+        url = rest[0]
+        gate = False
+        state_file = None
+        i = 1
+        while i < len(rest):
+            if rest[i] == "--gate":
+                gate = True
+                i += 1
+            elif rest[i] == "--state-file" and i + 1 < len(rest):
+                state_file = Path(rest[i + 1])
+                i += 2
+            else:
+                die("usage: mcp-atlassian-start --serve <jira-url> [--gate] --state-file <path>")
+        if state_file is None:
+            die("usage: mcp-atlassian-start --serve <jira-url> [--gate] --state-file <path>")
+        serve_daemon(home, runtime, url, gate, state_file)
+        return
+
     if args[0] == "--unlock":
-        need("bw", "zenity", "setpriv", "systemd-run", "systemctl")
         urls = args[1:] or read_configured_urls(home)
         if not urls:
             return
         targets = [(u, u.rstrip("/").endswith("/auth-gate")) for u in urls]
         ensure_cached(sock_path, lock_path, targets, sync_first=True)
+        url_set = {u.rstrip("/") for u in urls}
+        for u in urls:
+            stripped = u.rstrip("/")
+            if stripped.endswith("/auth-gate"):
+                continue
+            ensure_daemon(runtime, stripped, f"{stripped}/auth-gate" in url_set)
         return
 
     url = args[0]
@@ -481,22 +742,7 @@ def main():
     elif len(args) != 1:
         die("usage: mcp-atlassian-start <jira-url> [--gate] | --unlock [<url> ...]")
 
-    need("bw", "zenity", "setpriv", "uvx", "bwrap", "systemd-run", "systemctl")
-    gate_url = f"{url.rstrip('/')}/auth-gate"
-    targets = [(url, False)]
-    if gate:
-        targets.append((gate_url, True))
-
-    cached = ensure_cached(sock_path, lock_path, targets)
-    jira_user, jira_password = cached[url]
-
-    if gate:
-        gate_user, gate_password = cached[gate_url]
-        run_with_gate(home, url, jira_user, jira_password, gate_user, gate_password)
-
-    mcp_cmd = build_sandbox_cmd(home)
-    mcp_env = build_mcp_env(url, jira_user, jira_password)
-    os.execvpe(mcp_cmd[0], mcp_cmd, mcp_env)
+    bridge_stdio(runtime, url, gate)
 
 
 if __name__ == "__main__":
