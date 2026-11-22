@@ -81,8 +81,13 @@ rest of the area at the same time, sharing what they learn in `<skill>/.cache/tr
    has snapshots for your screens, read them instead of opening a browser probe. Otherwise
    open each screen your features use once in a browser session of your own
    (`VERIFY_SESSION=<area>-<n>-probe`), save its snapshots under
-   `<skill>/.cache/snapshots/<area>/`, and close the probe session. Call the API once with
-   the project's API helper for any response shape not clear from the brief.
+   `<skill>/.cache/snapshots/<area>/`, and close the probe session. On Android, the run has
+   one shared emulator (and when phone recipes use `# needs: phone`, `verify up` has not
+   started it), so do not probe the emulator by hand while other phone drives run: write
+   your recipes from the source and existing snapshots first, then read any needed hierarchy
+   or screenshot from the drive's evidence (or run `bin/maestro.sh hierarchy` only when no
+   other phone drive is running and the phone side is up). Call the API once with the
+   project's API helper for any response shape not clear from the brief.
 3. Write **all** recipes of your group, `<skill>/features/<feature>.sh`, in **one turn**
    (parallel Write calls) before driving any of them.
    - Every assigned expectation `E#` gets at least one `# expects:` line citing it verbatim
@@ -105,8 +110,8 @@ rest of the area at the same time, sharing what they learn in `<skill>/.cache/tr
    time. After that, drive only the recipes you edited, together in one call, until each
    passes. A failing feature's line comes with the end of its log and evidence excerpts:
    open a log or evidence file only when that is not enough. When a pass is marked slow,
-   check `pw-calls.log` or step times once, remove what is plainly avoidable, and spend no
-   further runs on speed.
+   check `pw-calls.log` or `maestro-calls.log` or step times once, remove what is plainly
+   avoidable, and spend no further runs on speed.
 5. Run `<skill>/bin/finish <feature> <feature> ...` with all your features. Run no lint and
    no `verify uncovered` of your own before it: in one call it lints them, flags invalid
    not-driven reasons, drives them once together with up to three other passed features,

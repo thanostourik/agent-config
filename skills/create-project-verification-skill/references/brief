@@ -5,8 +5,8 @@ Usage:
   brief --harvest [--force]         auto-write .cache/expect/<area>.txt from repo tests and docs
   brief --plan [<area> ...]         write .cache/brief/<area>.plan.md (deterministic code inventory + planner rules)
   brief <area>                      validate .cache/plan/<area>.map.txt (or legacy .cache/behaviors/<area>.txt)
-  brief <area> <example>            validate, bin-pack into groups, and write common.md + <area>.<n>.md briefs
-  brief --all <example>             same as `brief <area> <example>` for every area that has a plan map
+  brief <area> <example>...         validate, bin-pack into groups, and write common.md + <area>.<n>.md briefs
+  brief --all <example>...          same as `brief <area> <example>...` for every area that has a plan map
   brief --repair <id> <feature>...  write a slim fresh repair brief .cache/brief/<id>.md for failing features
   brief --repair-all [<feature>...] batch failed features (from .cache/all/failed or args) into repair.<n>.md briefs
   brief --collect [<area>...]       summarize all finished results, traps/defects, and uncovered items of done areas
@@ -36,7 +36,7 @@ GROUP_MAX_FEATURES = 3
 GROUP_WEIGHT_CAP = 115
 SHIPPED = {
     'verify', 'lib.sh', 'harvest', 'areas', 'reach', 'detach', 'brief', 'finish',
-    'pw.sh', 'pw-close', 'launch.sh', 'cleanup.sh', 'doctor.sh', 'observe.sh',
+    'pw.sh', 'pw-close', 'maestro.sh', 'launch.sh', 'cleanup.sh', 'doctor.sh', 'observe.sh',
     'server-errors.sh', 'after-feature.sh', 'entrypoints.sh', 'actions.sh',
 }
 BRANCH_RE = re.compile(
@@ -310,6 +310,7 @@ INV_PATTERNS = (
     re.compile(r'^\s*(?:(?:public|private|protected|static|async|final|override|abstract)\s+)+[\w<>\[\],.?*&]+\s+([A-Za-z_]\w*)\s*\('),
     re.compile(r'^\s*func\s+(?:\([^)]*\)\s+)?([A-Za-z_]\w*)\s*\('),
     re.compile(r'^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_]\w*)\s*[<(]'),
+    re.compile(r'^\s*(?:(?:public|private|protected|internal|override|suspend|inline|open|final|abstract)\s+)*fun\s+(?:<[^>]+>\s*)?(?:[\w.<>?]+\.)?([A-Za-z_]\w*)\s*[<(]'),
 )
 
 
@@ -747,7 +748,7 @@ def helpers():
     parts = []
     for name in sorted(os.listdir(os.path.join(skill, 'bin'))):
         path = os.path.join(skill, 'bin', name)
-        if name in SHIPPED or not os.path.isfile(path) or os.path.getsize(path) > 40000:
+        if name in SHIPPED or (name.startswith('start-') and name.endswith('.sh')) or not os.path.isfile(path) or os.path.getsize(path) > 40000:
             continue
         try:
             lines = open(path).read().splitlines(keepends=True)
@@ -759,7 +760,10 @@ def helpers():
     return parts
 
 
-def write_common(example):
+def write_common(examples):
+    if isinstance(examples, str):
+        examples = [examples]
+    examples = list(dict.fromkeys(examples))
     manual = read(os.path.join(skill, 'SKILL.md'))
     sections = re.search(r'^## Recipes\n.*?(?=^## Isolation)', manual, re.S | re.M)
     steps = read(os.path.join(skill, 'RECORDERS.md'))
@@ -770,11 +774,15 @@ def write_common(example):
     proj = read(os.path.join(skill, 'PROJECT.md'))
     proj = re.sub(r'^## Focused checks\n.*?(?=^## |\Z)', '', proj, flags=re.S | re.M)
 
+    example_blocks = [
+        f'# Example recipe: features/{ex}.sh\n\n```bash\n' + read(os.path.join(skill, 'features', ex + '.sh')).rstrip() + '\n```\n'
+        for ex in examples
+    ]
     common = [
         '# RECORDERS.md (Record a group & Rules)\n\n' + recorder_text + '\n',
         '# SKILL.md (Recipes & When a drive fails)\n\n' + (sections.group(0).strip() if sections else manual) + '\n',
         '# PROJECT.md\n\n' + proj.strip() + '\n',
-        f'# Example recipe: features/{example}.sh\n\n```bash\n' + read(os.path.join(skill, 'features', example + '.sh')).rstrip() + '\n```\n',
+        *example_blocks,
         "# Project helpers in bin/ (open again only if .cache/traps.txt says one changed)\n\n" + '\n'.join(helpers()),
     ]
     with open(os.path.join(out, 'common.md'), 'w') as handle:
@@ -1222,7 +1230,7 @@ def write_repair_brief(group_id, feature_names, areas):
     kept_sections = []
     for sec in re.split(r'(?=^## )', proj, flags=re.M):
         hdr = sec.splitlines()[0].lower() if sec.strip() else ''
-        if any(k in hdr for k in ('sign-in', 'timer', 'stub', 'helper', 'gotcha', 'isolation')):
+        if any(k in hdr for k in ('driver', 'sign-in', 'timer', 'stub', 'helper', 'gotcha', 'isolation')):
             kept_sections.append(sec.strip())
 
     parts = [
@@ -1422,7 +1430,7 @@ def collect_results(filter_areas, areas):
 def main():
     args = sys.argv[1:]
     if not args:
-        sys.exit('usage: brief --harvest [--force] | brief --plan [<area>...] | brief <area> [<example>] | brief --all <example> | brief --repair <id> <feature>... | brief --repair-all [<feature>...] | brief --collect [<area>...]')
+        sys.exit('usage: brief --harvest [--force] | brief --plan [<area>...] | brief <area> [<example>...] | brief --all <example>... | brief --repair <id> <feature>... | brief --repair-all [<feature>...] | brief --collect [<area>...]')
     areas = parse_areas()
     file_owners = area_file_counts(areas)
 
@@ -1456,10 +1464,9 @@ def main():
         return
 
     if args[0] == '--all':
-        if len(args) != 2:
-            sys.exit('usage: brief --all <example>')
-        example = args[1]
-        write_common(example)
+        if len(args) < 2:
+            sys.exit('usage: brief --all <example>...')
+        write_common(args[1:])
         all_groups = []
         for a in areas:
             map_path = os.path.join(skill, '.cache', 'plan', a['name'] + '.map.txt')
@@ -1477,10 +1484,8 @@ def main():
             print(f'  {line}')
         return
 
-    if len(args) not in (1, 2):
-        sys.exit('usage: brief <area> [<example>]')
     area_name = args[0]
-    example = args[1] if len(args) == 2 else ''
+    examples = args[1:]
     info = next((a for a in areas if a['name'] == area_name), None)
     if not info:
         sys.exit(f'brief: no area {area_name!r} in .cache/areas.txt')
@@ -1493,9 +1498,9 @@ def main():
                 print(f'  {p}')
         else:
             print(f'The feature map of {area_name} is complete ({len(features)} features).')
-        if not example:
+        if not examples:
             sys.exit(1 if problems else 0)
-        write_common(example)
+        write_common(examples)
         groups = build_group_briefs_from_map(area_name, info, features)
         print(f'{len(groups)} briefs and common.md in {out} (heaviest first):')
         for _, line in groups:

@@ -2,7 +2,7 @@
 name: create-project-verification-skill
 metadata:
   harness: "claude-code, codex, grok, cursor, gemini"
-description: "Use for /create-project-verification-skill, /create-project-verification-skill quick, or when asked to set up verification for a repo."
+description: "Use for /create-project-verification-skill, its quick and add modes, or when asked to set up verification for a repo or to add a surface, such as a phone app, to a repo's verify skill."
 disable-model-invocation: true
 ---
 
@@ -21,10 +21,21 @@ them.
 - `/create-project-verification-skill` (default): record every feature.
 - `/create-project-verification-skill quick`: write the environment and one recipe, with no
   planners or recorders. Do steps 1 to 3, steps 4.1 and 4.4, the lifecycle checks of step 5, and
-  step 6. The one recipe proves that the environment, sign-in, the browser helper and
+  step 6. The one recipe proves that the environment, sign-in, the driver helper and
   cleanup work, and agents copy it. The other recipes grow with the code: `verify affected`
   fails while a change adds a screen, route or action no recipe covers, `verify uncovered`
   lists the rest, and `/verify-<app> full` records them when the user asks.
+- `/create-project-verification-skill add <surface>`: add a surface that the project's
+  `verify-<app>` skill does not drive yet, such as a phone app beside the web app. It stays
+  one skill. When the skill is behind this generator, run
+  `/maintain-project-verification-skill` first. Then do what `quick` does, for that surface
+  only and inside the existing skill: its driver helpers, its part of the environment
+  (`launch.sh`, or `start-<part>.sh` when only its features need it), its screens and
+  actions in `entrypoints.sh` and `actions.sh`, its facts in `PROJECT.md`, and one recipe.
+  Prove that `bin/verify up` takes as long as before, that a feature of another surface
+  still passes, and that `bin/verify down` leaves nothing. End the report with the number
+  of entry points and actions `bin/verify uncovered` now lists, and say that
+  `/verify-<app> full` records them.
 
 A request with the same meaning picks the same mode. Do not ask which mode to use. Keep
 your own context small: write the environment and the first recipe yourself, and leave the
@@ -34,9 +45,9 @@ When you need me to make a choice before you can continue, use your question too
 have one, or ask in your reply if you don't. If the question gets no answer, ask again in
 your reply and wait. Do not answer it yourself.
 
-If `.agents/skills/verify-*` already exists, stop before writing anything. Ask whether to
-replace it (delete and generate again) or upgrade it with
-`/maintain-project-verification-skill`.
+If `.agents/skills/verify-*` already exists and the mode is not `add`, stop before writing
+anything. Ask whether to replace it (delete and generate again), upgrade it with
+`/maintain-project-verification-skill`, or add a surface to it.
 
 `<generator>` below is this skill's folder.
 
@@ -57,8 +68,9 @@ replace it (delete and generate again) or upgrade it with
   bin/finish          copied from <generator>/references/finish, unchanged
   bin/detach          copied from <generator>/references/detach, unchanged
   bin/pw.sh bin/pw-close   copied from <generator>/references, unchanged, for a web UI; pw-version beside SKILL.md
+  bin/maestro.sh      copied from <generator>/references, unchanged, for an Android app; maestro-version beside SKILL.md
   bin/launch.sh bin/cleanup.sh bin/doctor.sh bin/observe.sh bin/server-errors.sh
-  bin/env.sh bin/after-feature.sh   optional
+  bin/env.sh bin/after-feature.sh bin/start-<part>.sh   optional
   bin/entrypoints.sh bin/actions.sh
   bin/<driver helpers>
   features/<feature>.sh
@@ -101,7 +113,11 @@ Playwright, when needed, goes into the companion's own `package.json`.
 
 Answer from the codebase. Ask only what you cannot observe.
 
-- **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs.
+- **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs. Every surface
+  gets recipes. This skill ships drivers for a web UI (Playwright), an API (curl) and an
+  Android app (Maestro). When a surface needs another driver, ask me whether to write one
+  or leave the surface undriven, and write the answer into `PROJECT.md`'s Drivers section.
+  Example: a repo with a web app and an Expo app in `apps/mobile` gets recipes for both.
 - **Run:** how the app starts locally, its dependencies, ports, seed data and sign-in.
 - **Harness:** existing end-to-end specs, sign-in or seed helpers, curl-able endpoints.
 - **Entry points:** the files that define routes, screens, commands or endpoints, found
@@ -172,6 +188,15 @@ At the other levels, write the scripts below into `bin/` and make each one execu
 - `after-feature.sh` (optional) runs after every recipe's `cleanup`, for example to close
   the feature's browser session. A finished feature then holds nothing until
   `bin/verify down`.
+- `start-<part>.sh` (optional) starts a part of the environment that only some features use
+  and that is slow or heavy to start, such as the phone emulator of a project that also has
+  a web app. `launch.sh` does not start that part, so `bin/verify up` and a change to the
+  web app never pay for the emulator.
+  - Each feature that uses the part carries `# needs: <part>`. The runner calls the script
+    before each of them, one call at a time, outside the feature's deadline.
+  - The script starts what is missing and returns at once when the part is healthy. It is
+    the part's health check too: `doctor.sh` does not check the part.
+  - `cleanup.sh` stops the part like everything else the run created.
 - `doctor.sh` is one fast, read-only check that the environment belongs to this run and is
   healthy: processes up, right checkout, ports owned, sign-in works. It never treats a
   process outside the run's record as the run's.
@@ -205,11 +230,15 @@ At the other levels, write the scripts below into `bin/` and make each one execu
     [`references/discovery.md`](references/discovery.md), list them the way it says.
   - List only what a user or client calls: not update or deploy hooks, migrations, compose
     services or schemas.
+  - It lists every surface that has a driver. When two surfaces can have the same path,
+    the entries of the one added later name it: `phone /search` beside `/search`. A surface
+    it leaves out gets no recorder, and a new screen there passes `bin/verify affected`
+    with no recipe.
   - `bin/verify uncovered` compares its output with the recipes' `# covers:` lines.
 - `actions.sh` prints every user action, one per line, as `<name><TAB><file>`: each
   function a screen runs when the user acts (event handlers such as `handleDelete`, form
   submits). For a project without a UI, it prints each handler method behind an entry
-  point. It searches the source, like `entrypoints.sh`.
+  point. It searches the source, like `entrypoints.sh`, in every surface that script lists.
   - Name an inline handler (`onClick={() => remove(id)}`) after its element's label or test
     id, such as `Delete button`. Never use a line number: it changes whenever the file
     shifts.
@@ -242,6 +271,17 @@ At the other levels, write the scripts below into `bin/` and make each one execu
 
 A driver helper that keeps state keeps it per `$VERIFY_SESSION`.
 
+Each account signs in once per run, through the real sign-in screen. A feature starts from
+fresh app state but keeps that login, and only the features about signing in go through the
+sign-in screen themselves. Signing in on every feature took half of the cinova app's drive
+time. An emulator or a fresh browser is a new device on every run, and a sign-in provider
+can ask a new device for more than the password: Clerk emails a code to the account. Before
+you build the environment, make sure the test account signs in with only what the run
+holds. When it cannot, ask me for an account that can. When the sign-in provider has an API
+for users and the checkout already holds its key, the environment creates the test account
+itself and derives the password from that key. A new checkout then needs no credential of
+its own for that account.
+
 For a web UI without its own harness:
 
 - Copy `pw.sh` and `pw-close` to `bin/` unchanged. The header of `pw.sh` says how to call
@@ -266,11 +306,53 @@ Then write:
 For an API, an `api` helper wraps `curl` with the base URL, auth and `--max-time`, and
 saves the last response for `observe.sh`.
 
+For an Android app:
+
+- Copy `maestro.sh` to `bin/` unchanged, and write a Maestro version, such as `2.12.1`,
+  into the skill's `maestro-version` file. The header of `maestro.sh` says how to call it
+  and what it needs: Java 17 or newer, `socat` and unprivileged user namespaces.
+  `doctor.sh` checks the three.
+- `launch.sh` starts an ADB server of the run's own (`adb -P <free port> server nodaemon`)
+  and a headless emulator from an AVD under `.cache/`. Never use the default ADB server: it
+  also takes a phone someone connects. `env.sh` exports `ANDROID_ADB_SERVER_PORT`,
+  `ANDROID_SERIAL` (`emulator-<port>`) and `MAESTRO_APP_ID`, which `adb` and `maestro.sh`
+  read. The emulator's port is even, from 5554 to 5682, and its `adb` uses the next one.
+  The emulator leaves a defunct `adb` child whose environment cannot be read, so the
+  ownership check of `cleanup.sh` skips defunct processes.
+- `launch.sh` builds the app and installs it once per run. It keeps the built APK under
+  `.cache/`, named by a hash of the files the native build reads, so a later run only
+  installs it: the wovies build took 4.5 minutes. An app with a development client, such as
+  Expo, gets its debug build and its bundler (Metro) on a port of the run, which the
+  emulator reaches through `adb reverse`. The client opens the bundle through its own URL
+  scheme, `exp+<slug>://expo-development-client/?url=<bundler URL>`, not through the app's
+  scheme. `expo prebuild` writes `android/` and edits `package.json`: build in a copy of the
+  app, or put `package.json` back after the build.
+- In a project with another driven surface, the phone side is a part of its own. What the
+  points above give `launch.sh` and `doctor.sh` goes into `bin/start-phone.sh`, with the
+  sign-in, and each phone feature carries `# needs: phone`. The run has one emulator, so each also
+  carries the same `# shares: phone: <the state>` line and they take turns. The phone side
+  of wovies takes 2 minutes to start.
+- A recipe step puts its taps and checks into one flow, `maestro.sh flow <name> <<'EOF'`.
+  Each `maestro.sh` call takes 5 to 7 s to start, and a check inside a flow about 0.2 s.
+- A session helper starts each feature. It stops the app, deletes the app's own data but
+  not its login, and starts the app. React Native apps keep AsyncStorage in `databases`,
+  MMKV in `files/mmkv`, and caches in `cache` and `app_webview`. `react-native-keychain` and
+  `expo-secure-store` keep the login elsewhere in `files` and in `shared_prefs`: check with
+  `adb shell run-as <app> find .` after one sign-in. Never use `pm clear` for this: it also
+  deletes the app's Keystore keys, so the kept login can no longer be read. `pm clear` also
+  forgot the permission prompts a feature refused, and Android shows another button on the
+  second refusal, so the helper forgets them itself:
+  `pm clear-permission-flags <app> <permission> user-set user-fixed`. When the app shows its
+  sign-in screen anyway, the helper signs in through it. A development client shows the
+  intro of its menu on its first start (Continue, then Close), and the helper gets past it.
+  Its `signed-out` variant runs `pm clear`, for the features about signing in.
+
 ### `PROJECT.md`
 
 Write `PROJECT.md`, about 10 KB, with these sections:
 
-- **Drivers:** the tools that drive the app, such as `Playwright CLI and curl`, and why.
+- **Drivers:** the tools that drive the app, such as `Playwright CLI and curl` or `Maestro`,
+  and why.
 - **Isolation:** `Isolation level: <level>`, one line on why, what the run owns and its
   markers, and the success paths the isolation cannot reach (such as a real payment that a
   stub replaces).
@@ -314,6 +396,16 @@ Write `PROJECT.md`, about 10 KB, with these sections:
   - `pw.sh snapshot --filename` needs an absolute path.
   - `pw.sh` closes a session opened by hand that sat idle for 120 s: run `pw.sh open` again
     before the next call.
+
+  For Maestro:
+  - A field the keyboard covers is not found: `hideKeyboard` after `inputText`.
+  - `tapOn` waits for the screen to settle, 2 to 3 s on an emulator. `assertVisible` and
+    `extendedWaitUntil` return as soon as the element is there.
+  - A `when:` condition is checked once, not waited for. To get past screens that may or may
+    not appear, such as a browser's first-run screens, loop with
+    `repeat: { while: { notVisible: ... } }`.
+  - `takeScreenshot: <name>` writes `$VERIFY_DIR/<name>.png`. A path outside that folder
+    fails.
 
 ### Bring it up
 

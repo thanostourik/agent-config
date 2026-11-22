@@ -76,9 +76,11 @@ both:
 First run `bin/brief --plan` (or `bin/brief --plan <area>` for one area) to generate the
 plan briefs in one call. Then start one planner per area, every area at once. When every
 planner has written its result file `.cache/results/<area>.plan.txt`, run
-`bin/brief --all <example feature>` (or `bin/brief <area> <example feature>` for one area)
-in one call: it validates each map, writes `.cache/brief/common.md` and one brief per group
-file, and prints the groups heaviest first. When the environment is up, start one recorder
+`bin/brief --all <example feature>` (or `bin/brief <area> <example feature>` for one area;
+pass one example per driven surface when the project has more than one, such as a web
+example and a phone example) in one call: it validates each map, writes
+`.cache/brief/common.md` and one brief per group file, and prints the groups heaviest first.
+When the environment is up, start one recorder
 per group file, every group at once, in that heaviest-first order. Their feature runs wait
 in the machine's queue, so they need no limit of their own. In T3 Code use `delegate_task`
 with `mode: "async"`. Otherwise use your tool's own background subagent: the agent type
