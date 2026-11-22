@@ -33,11 +33,21 @@ if ((${#bad_reasons[@]})); then
   printf '  %s\n' "${bad_reasons[@]}"
 fi
 
+needed_parts=()
+for feature in "$@"; do
+  file=$skill/features/$feature.sh
+  [[ -f "$file" ]] || continue
+  part=$(sed -n 's/^# needs:[[:space:]]*//p' "$file")
+  [[ -n "$part" ]] && needed_parts+=("$part")
+done
+
 others=()
 while read -r feature; do
   file=$skill/features/$feature.sh
   [[ " $* " == *" $feature "* || ! -f "$file" ]] && continue
   grep -q '^# alone' "$file" && continue
+  part=$(sed -n 's/^# needs:[[:space:]]*//p' "$file")
+  [[ -n "$part" && " ${needed_parts[*]:-} " != *" $part "* ]] && continue
   secs=$(cat "$cache/drive/$feature/seconds" 2> /dev/null || echo 0)
   [[ "$secs" =~ ^[0-9]+$ ]] && ((secs > 30)) && continue
   others+=("$feature")
