@@ -7,10 +7,8 @@
 - When I argue against a proposal, I'm exploring the options, not rejecting it. Keep the discussion
   going with arguments for each side.
 - Define and explain unfamiliar technical terms on first use, and reuse the same term consistently.
+- Write in plain, concrete English so I can follow on the first read.
 - Answer concisely. Add detail only when needed for correctness or a decision.
-- Write so I can follow on the first read: one idea per sentence, say who does what, use concrete
-  words over abstract ones, and give a short example when a rule is abstract. Familiar words aren't
-  enough. I need to picture what the sentence says.
 - Questions and design discussion are NEVER implementation approval, not even if I agree
   with your proposal mid-discussion. Implement only after an explicit "go" / "do it" / "implement".
 
@@ -53,16 +51,15 @@
 
 ## Comments
 
-- No comments inside code, whether on their own line or at the end of one. Use clear names instead.
+- No comments in code, whether inline, at the end of a line, or above a function or class. Use
+  clear names instead.
 - The only exception is code a careful reader would mistake for a bug. Explain why it is not:
   a workaround (`# lib X drops the last row on a full page, fetch one extra`), a deliberate
   choice (`# no retry: not idempotent`), an ordering that matters, or an exception swallowed on purpose.
 - Never comment on what a variable holds, what the next line does, block labels (`# Step 2: validate`),
   history (`# added for X`), or notes to the reviewer.
-- Above a function or class, write at most one or two lines, and only when its name and signature
-  don't show its purpose or constraints.
-- Before committing, check every inline comment you added. If a reader wouldn't mistake the code
-  for a bug without it, delete it.
+- Before committing, check every comment you added. If a reader wouldn't mistake the code for a
+  bug without it, delete it.
 
 ## Verification
 
