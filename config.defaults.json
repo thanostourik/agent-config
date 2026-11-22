@@ -51,6 +51,9 @@
     "tourik": { "enabled": true },
     "with-verification": { "enabled": true }
   },
+  "agents": {
+    "verify-recorder": { "enabled": true }
+  },
   "hooks": {},
   "mcp": {
     "jira": {

@@ -101,8 +101,8 @@ checked even when the script does not list them. Do them after the `launch.sh` i
 - **`AGENTS.md`**: write its `## Verification` section (and the one in `CLAUDE.md`) from
   `<generator>/references/agents-verification.md`.
 - **Features the script could not convert**: run `bin/areas > .cache/areas.txt`. Then send
-  each area that holds such a feature to a recorder, as the Recorders section of the new
-  `FULL.md` says, after step 3's `bin/verify up`. The recorder keeps the area's existing
+  such features to repair recorders, at most 3 features each, as the Recorders section of
+  the new `FULL.md` says, after step 3's `bin/verify up`. A recorder keeps the existing
   recipes.
 
 ## 3. Prove it
@@ -145,13 +145,15 @@ Repair two things before the PR:
 To repair them:
 
 1. Run `bin/areas > .cache/areas.txt` when it is missing.
-2. Start one recorder for each area that holds failing features or a reason that does not
-   hold, all at once, with their summary lines and those reasons. A recorder repairs the
-   recipe, or marks a product defect `# known failure:`, and gives each line whose reason
-   does not hold a step.
-3. Drive the features the recorders changed, together in one `bin/verify <feature>...`.
-   Send each feature that fails there back to a recorder. Repeat until each passes or fails
-   at a known failure.
+2. Run `bin/brief --repair-all <features>` (or `bin/brief --repair <id> <features>` for
+   batches of at most 3 features) to write slim repair briefs and clear stale result files.
+   Start fresh repair recorders all at once, as the Recorders section of `FULL.md` says,
+   with their summary lines and those reasons. A recorder repairs the recipe, or marks a
+   product defect `# known failure:`, and gives each line whose reason does not hold a step.
+3. Run `bin/brief --collect` once they finish, then drive the features the recorders
+   changed together in one `bin/verify <feature>...`. For any feature that still fails,
+   run `bin/brief --repair-all <features>` and start a fresh repair recorder until each
+   passes or fails at a known failure.
 
 Features the upgrade cannot break are not driven, and their old failures are not this
 skill's work. Then run `bin/verify uncovered` and `bin/verify down`.

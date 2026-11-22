@@ -11,7 +11,7 @@ cli=$cache/pw/node_modules/playwright-core/lib/tools/cli-client/cli.js
 close_all() {
   [[ -f $1 ]] || return 0
   while read -r session; do
-    (cd "$cache/pw-out" 2> /dev/null && node "$cli" -s="$session" close > /dev/null 2>&1)
+    (cd "$cache/pw-out" 2> /dev/null && timeout -k 5 30 node "$cli" -s="$session" close > /dev/null 2>&1)
     rm -f "$cache/pw-idle/$session" "$HOME"/.cache/ms-playwright/daemon/*/"$session".err
   done < "$1"
   rm -f "$1"
