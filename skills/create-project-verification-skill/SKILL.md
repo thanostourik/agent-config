@@ -114,9 +114,11 @@ Playwright, when needed, goes into the companion's own `package.json`.
 Answer from the codebase. Ask only what you cannot observe.
 
 - **Surfaces:** web UI, API, CLI or TUI, desktop, mobile, firmware, jobs. Every surface
-  gets recipes. This skill ships drivers for a web UI (Playwright), an API (curl) and an
-  Android app (Maestro). When a surface needs another driver, ask me whether to write one
-  or leave the surface undriven, and write the answer into `PROJECT.md`'s Drivers section.
+  gets recipes. Always use the shipped driver for every surface it covers: Playwright for a
+  web UI, curl for an API, and Maestro (`bin/maestro.sh`) for an Android app. Never invent a
+  custom UI Automator or `adb` tap/dump driver for an Android app. Only when a surface has
+  no shipped driver (such as iOS or firmware), ask me whether to write one or leave the
+  surface undriven, and write the answer into `PROJECT.md`'s Drivers section.
   Example: a repo with a web app and an Expo app in `apps/mobile` gets recipes for both.
 - **Run:** how the app starts locally, its dependencies, ports, seed data and sign-in.
 - **Harness:** existing end-to-end specs, sign-in or seed helpers, curl-able endpoints.
@@ -306,7 +308,8 @@ Then write:
 For an API, an `api` helper wraps `curl` with the base URL, auth and `--max-time`, and
 saves the last response for `observe.sh`.
 
-For an Android app:
+For an Android app, always drive it with Maestro through the shipped `bin/maestro.sh` —
+never write a custom UI Automator or `adb input` driver:
 
 - Copy `maestro.sh` to `bin/` unchanged, and write a Maestro version, such as `2.12.1`,
   into the skill's `maestro-version` file. The header of `maestro.sh` says how to call it

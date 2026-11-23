@@ -161,5 +161,8 @@ mapfile -t alone < <(grep -l '^# alone' "$skill"/features/*.sh 2> /dev/null | xa
 grep -q -s 'detach' "$skill/bin/launch.sh" || todo+=("Start every process that must outlive the command that starts it, in bin/launch.sh and in each helper that restarts one, through bin/detach, with its input and output redirected (the generator's step 3).")
 [[ -x "$skill/bin/actions.sh" ]] || todo+=("Write $skill/bin/actions.sh, one '<action><TAB><file>' per line (the generator's step 3).")
 grep -q -s 'maintain-verify' AGENTS.md CLAUDE.md && todo+=("Replace the ## Verification section of AGENTS.md (and CLAUDE.md) with the generator's references/agents-verification.md.")
+if [[ ! -f "$skill/maestro-version" ]] && grep -q -i -s -E 'uiautomator|ANDROID_SERIAL|emulator-|adb shell' "$skill/PROJECT.md" "$skill"/bin/* "$skill"/bin/*/* 2> /dev/null; then
+  todo+=("This skill drives an Android app without Maestro (no $skill/maestro-version). Ask the user whether to migrate it to the generator's shipped bin/maestro.sh driver.")
+fi
 ((${#unconverted[@]})) && todo+=("No bash blocks to convert in: ${unconverted[*]}. Send them to recorders, then delete $skill/features/README.md.")
 if ((${#todo[@]})); then printf -- '- %s\n' "${todo[@]}"; else echo "- nothing"; fi
