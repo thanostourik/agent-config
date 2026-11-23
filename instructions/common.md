@@ -42,7 +42,6 @@
 - Always strive for concise, simple solutions. Channel "yagni" energy unless told otherwise.
 - If a problem can be solved in a simpler way, propose it.
 - Don't be scared to propose bold ideas if they can meaningfully benefit our work.
-- Be careful with destructive actions that I did not explicitly request.
 - Match the surrounding code's style, naming, and patterns.
 - Avoid unnecessary wrappers, abstractions, and speculative configuration.
 - Only catch errors you can actually handle (user input, external calls, I/O). Let the rest
@@ -132,8 +131,13 @@ questions is the only work that happens on main.
 
 ## Local environment
 
-- Stop everything you started (servers, containers, background loops) before you report, unless
-  I asked you to keep it running. Never stop or replace something you did not start.
+- Clean up everything you started (servers, containers, anonymous volumes, background loops)
+  before you report, unless I asked you to keep it running. Target only what you created by exact
+  name or ID (for example `docker rm -fv <name>` or `docker compose -p <project> down -v`).
+- Never stop, replace, or delete anything you did not start. Never run system-wide cleanup or
+  destructive commands (`docker system prune`, `docker volume prune`, `docker container prune`,
+  `docker image prune`, `docker network prune`, `docker builder prune`, bulk `docker rm`/`rmi`
+  over `docker ps`/`volume ls`, `killall`, or broad `pkill`).
 - Servers, configuration, and credentials are read-only unless I say otherwise. This covers
   deployed environments, remote databases, config files outside the repository, and password
   stores.

@@ -1,0 +1,426 @@
+#!/usr/bin/env python3
+import json
+import os
+import posixpath
+import re
+import shlex
+import sys
+from pathlib import Path
+
+CONTAINER_CLIS = {"docker", "podman"}
+PRUNE_TARGETS = {"system", "volume", "container", "image", "network", "builder", "buildx"}
+DOCKER_FLAGS_WITH_VALUE = {
+    "-H", "--host", "--context", "--config", "-l", "--log-level",
+    "--tlscacert", "--tlscert", "--tlskey", "--connection", "--url", "--identity",
+}
+DOCKER_LIST_COMMANDS = {
+    ("ps",),
+    ("images",),
+    ("container", "ls"),
+    ("container", "list"),
+    ("container", "ps"),
+    ("volume", "ls"),
+    ("volume", "list"),
+    ("image", "ls"),
+    ("image", "list"),
+    ("network", "ls"),
+    ("network", "list"),
+}
+DOCKER_REMOVE_COMMANDS = {
+    ("rm",),
+    ("rmi",),
+    ("container", "rm"),
+    ("container", "remove"),
+    ("volume", "rm"),
+    ("volume", "remove"),
+    ("image", "rm"),
+    ("image", "remove"),
+    ("network", "rm"),
+    ("network", "remove"),
+}
+WRAPPERS_NO_ARGS = {"command", "nohup", "exec", "time", "builtin"}
+SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+PROTECTED_ROOT_DIRS = {
+    "/", "/home", "/etc", "/usr", "/var", "/boot", "/lib", "/lib64",
+    "/bin", "/sbin", "/opt", "/root", "/srv", "/sys", "/proc", "/dev",
+}
+SAFE_DEV_TARGETS = {"/dev/null", "/dev/zero", "/dev/stdout", "/dev/stderr", "/dev/full"}
+ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_-]*)\1")
+COMMAND_SEPARATOR = re.compile(r"^(?:;|&&|\|\||&|\n|\(|\)|\{|\})$")
+
+
+def strip_heredocs(command):
+    lines = command.splitlines()
+    out = []
+    pending = []
+    for line in lines:
+        if pending:
+            if line.lstrip("\t") == pending[0]:
+                pending.pop(0)
+            continue
+        out.append(line)
+        for match in HEREDOC_START.finditer(line):
+            pending.append(match.group(2))
+    return "\n".join(out)
+
+
+def tokenize_shell(command):
+    cleaned = strip_heredocs(command)
+    try:
+        lexer = shlex.shlex(cleaned, posix=True, punctuation_chars="();<>|&`")
+        lexer.whitespace_split = True
+        lexer.commenters = "#"
+        return list(lexer)
+    except ValueError:
+        tokens = []
+        for line in cleaned.splitlines():
+            try:
+                lexer = shlex.shlex(line, posix=True, punctuation_chars="();<>|&`")
+                lexer.whitespace_split = True
+                lexer.commenters = "#"
+                tokens.extend(lexer)
+            except ValueError:
+                tokens.extend(line.split())
+        return tokens
+
+
+def split_pipelines(tokens):
+    pipelines = []
+    current_pipeline = []
+    current_cmd = []
+    extra_subcommands = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "$" and i + 1 < len(tokens) and tokens[i + 1] == "(":
+            depth = 1
+            j = i + 2
+            while j < len(tokens) and depth > 0:
+                if tokens[j] == "(":
+                    depth += 1
+                elif tokens[j] == ")":
+                    depth -= 1
+                j += 1
+            inner = tokens[i + 2:j - 1 if depth == 0 else j]
+            current_cmd.append("$(" + " ".join(inner) + ")")
+            extra_subcommands.extend(split_pipelines(inner))
+            i = j
+            continue
+        if tok == "`":
+            j = i + 1
+            while j < len(tokens) and tokens[j] != "`":
+                j += 1
+            inner = tokens[i + 1:j]
+            current_cmd.append("`" + " ".join(inner) + "`")
+            extra_subcommands.extend(split_pipelines(inner))
+            i = j + 1 if j < len(tokens) else j
+            continue
+        if tok == "|":
+            if current_cmd:
+                current_pipeline.append(current_cmd)
+                current_cmd = []
+        elif COMMAND_SEPARATOR.match(tok):
+            if current_cmd:
+                current_pipeline.append(current_cmd)
+                current_cmd = []
+            if current_pipeline:
+                pipelines.append(current_pipeline)
+                current_pipeline = []
+        else:
+            current_cmd.append(tok)
+        i += 1
+    if current_cmd:
+        current_pipeline.append(current_cmd)
+    if current_pipeline:
+        pipelines.append(current_pipeline)
+    pipelines.extend(extra_subcommands)
+    return pipelines
+
+
+def strip_redirections(tokens):
+    out = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if re.match(r"^\d+$", tok) and i + 1 < len(tokens) and re.match(r"^[<>]+&?$", tokens[i + 1]):
+            i += 3
+            continue
+        if re.match(r"^\d*[<>]+&?$", tok):
+            i += 2
+            continue
+        if re.match(r"^\d*[<>]+.+$", tok):
+            i += 1
+            continue
+        out.append(tok)
+        i += 1
+    return out
+
+
+def unwrap_command(tokens):
+    tokens = strip_redirections(tokens)
+    while tokens:
+        if ENV_ASSIGNMENT.match(tokens[0]):
+            tokens = tokens[1:]
+            continue
+        head = os.path.basename(tokens[0])
+        if head in WRAPPERS_NO_ARGS:
+            tokens = tokens[1:]
+            continue
+        if head == "sudo":
+            i = 1
+            while i < len(tokens) and tokens[i].startswith("-"):
+                flag = tokens[i]
+                i += 2 if flag in {"-u", "-g", "-C", "-p", "-h", "-r", "-t", "-T", "-U"} else 1
+            tokens = tokens[i:]
+            continue
+        if head == "env":
+            i = 1
+            while i < len(tokens):
+                if tokens[i] in {"-u", "-C", "-S"}:
+                    i += 2
+                elif tokens[i].startswith("-") or ENV_ASSIGNMENT.match(tokens[i]):
+                    i += 1
+                else:
+                    break
+            tokens = tokens[i:]
+            continue
+        if head in {"timeout", "nice", "ionice"}:
+            i = 1
+            while i < len(tokens) and tokens[i].startswith("-"):
+                flag = tokens[i]
+                i += 2 if flag in {"-k", "-s", "-n", "-c", "-p"} else 1
+            if head == "timeout" and i < len(tokens):
+                i += 1
+            tokens = tokens[i:]
+            continue
+        break
+    return tokens
+
+
+def unwrap_xargs(tokens):
+    i = 1
+    while i < len(tokens) and tokens[i].startswith("-"):
+        flag = tokens[i]
+        if flag == "--":
+            i += 1
+            break
+        takes_val = flag in {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a", "-R"}
+        i += 2 if takes_val else 1
+    return unwrap_command(tokens[i:])
+
+
+def docker_subcommands(tokens):
+    if not tokens or os.path.basename(tokens[0]) not in CONTAINER_CLIS:
+        return None, []
+    cli = os.path.basename(tokens[0])
+    i = 1
+    while i < len(tokens) and tokens[i].startswith("-"):
+        flag = tokens[i]
+        i += 2 if flag in DOCKER_FLAGS_WITH_VALUE else 1
+    return cli, tokens[i:]
+
+
+def is_docker_list(tokens):
+    cli, rest = docker_subcommands(tokens)
+    if not cli or not rest:
+        return False
+    return (rest[0],) in DOCKER_LIST_COMMANDS or (len(rest) >= 2 and (rest[0], rest[1]) in DOCKER_LIST_COMMANDS)
+
+
+def is_docker_remove(tokens):
+    cli, rest = docker_subcommands(tokens)
+    if not cli or not rest:
+        return False
+    return (rest[0],) in DOCKER_REMOVE_COMMANDS or (len(rest) >= 2 and (rest[0], rest[1]) in DOCKER_REMOVE_COMMANDS)
+
+
+def check_docker(tokens):
+    cli, rest = docker_subcommands(tokens)
+    if not cli or not rest:
+        return None
+    if len(rest) >= 2 and rest[0] in PRUNE_TARGETS and rest[1] == "prune":
+        return (
+            f"Blocked: '{cli} {rest[0]} prune' deletes resources across the whole machine. "
+            f"Remove only what you created by exact name or ID (for example '{cli} rm -fv <container>' "
+            f"or '{cli} volume rm <volume>')."
+        )
+    if is_docker_remove(tokens):
+        if any(re.search(r"(\$\(|\`).*\b(docker|podman)\b", tok) for tok in rest):
+            return (
+                f"Blocked: bulk {cli} removal affects resources you did not create. "
+                f"Remove only specific containers, images, or volumes by exact name or ID."
+            )
+    return None
+
+
+def is_protected_rm_target(arg, home_str, cwd):
+    cleaned = arg.strip()
+    if not cleaned:
+        return False
+    expanded = cleaned
+    if expanded == "~" or expanded.startswith("~/"):
+        expanded = home_str + expanded[1:]
+    expanded = re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", home_str, expanded)
+    has_trailing_glob = expanded.endswith("/*") or expanded.endswith("/.")
+    base = expanded[:-2] if has_trailing_glob else expanded
+    if not base and expanded.startswith("/"):
+        base = "/"
+    if base in {".", "./"} or cleaned in {"*", "./*", ".*"}:
+        if cwd:
+            resolved_cwd = posixpath.normpath(cwd)
+            if resolved_cwd in PROTECTED_ROOT_DIRS or resolved_cwd == home_str:
+                return True
+        return False
+    if not base.startswith("/"):
+        if not cwd:
+            return False
+        base = posixpath.join(cwd, base)
+    norm = posixpath.normpath(base)
+    if norm in PROTECTED_ROOT_DIRS or norm == home_str:
+        return True
+    if cleaned in {"/home/*", "/home/*/", "/*", "/*/", "~/*", "$HOME/*", "${HOME}/*"}:
+        return True
+    return False
+
+
+def check_rm(tokens, cwd):
+    if not tokens or os.path.basename(tokens[0]) != "rm":
+        return None
+    recursive = False
+    targets = []
+    after_double_dash = False
+    for tok in tokens[1:]:
+        if not after_double_dash and tok == "--":
+            after_double_dash = True
+            continue
+        if not after_double_dash and tok.startswith("--"):
+            if tok == "--recursive":
+                recursive = True
+            continue
+        if not after_double_dash and tok.startswith("-") and len(tok) > 1:
+            if "r" in tok[1:] or "R" in tok[1:]:
+                recursive = True
+            continue
+        targets.append(tok)
+    if not recursive:
+        return None
+    home_str = posixpath.normpath(str(Path.home()))
+    for target in targets:
+        if is_protected_rm_target(target, home_str, cwd):
+            return (
+                f"Blocked: recursive 'rm' targets a root, system, or home directory ('{target}'). "
+                "Target only a specific project or temporary path."
+            )
+    return None
+
+
+def check_raw_disk(tokens):
+    if not tokens:
+        return None
+    head = os.path.basename(tokens[0])
+    if head == "mkfs" or head.startswith("mkfs.") or head == "wipefs":
+        return f"Blocked: '{head}' writes directly to a raw disk or filesystem."
+    if head == "dd":
+        for tok in tokens[1:]:
+            if tok.startswith("of=/dev/") and tok[3:] not in SAFE_DEV_TARGETS:
+                return f"Blocked: 'dd {tok}' writes directly to a raw block device."
+    return None
+
+
+def extract_nested_shell_command(tokens):
+    if not tokens or os.path.basename(tokens[0]) not in SHELLS:
+        return None
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "--":
+            return None
+        if tok.startswith("-") and not tok.startswith("--") and "c" in tok[1:]:
+            return tokens[i + 1] if i + 1 < len(tokens) else None
+        if not tok.startswith("-"):
+            return None
+        i += 1
+    return None
+
+
+def check_command(command, cwd="", depth=0):
+    if not command or depth > 4:
+        return None
+    tokens = tokenize_shell(command)
+    for pipeline in split_pipelines(tokens):
+        unwrapped_stages = [unwrap_command(stage) for stage in pipeline]
+        for idx, stage in enumerate(unwrapped_stages):
+            if not stage:
+                continue
+            nested = extract_nested_shell_command(stage)
+            if nested:
+                reason = check_command(nested, cwd=cwd, depth=depth + 1)
+                if reason:
+                    return reason
+            for checker in (
+                check_docker,
+                lambda s: check_rm(s, cwd),
+                check_raw_disk,
+            ):
+                reason = checker(stage)
+                if reason:
+                    return reason
+            if idx > 0 and os.path.basename(stage[0]) == "xargs":
+                inner = unwrap_xargs(stage)
+                if inner:
+                    reason = check_docker(inner) or check_rm(inner, cwd) or check_raw_disk(inner)
+                    if reason:
+                        return reason
+                    if is_docker_remove(inner) and any(is_docker_list(prev) for prev in unwrapped_stages[:idx]):
+                        return (
+                            "Blocked: piping Docker list output into 'xargs' removal affects resources "
+                            "you did not create. Remove only specific containers, images, or volumes by exact name or ID."
+                        )
+    return None
+
+
+def detect_protocol(payload):
+    if "toolCall" in payload or "hookEventName" in payload:
+        args = (payload.get("toolCall") or {}).get("args") or {}
+        return "antigravity", args.get("CommandLine") or "", payload.get("cwd") or ""
+    if payload.get("hook_event_name") == "beforeShellExecution" or (
+        "command" in payload and "tool_input" not in payload
+    ):
+        return "cursor", payload.get("command") or "", payload.get("cwd") or ""
+    tool_input = payload.get("tool_input") or {}
+    return "claude_or_codex", tool_input.get("command") or "", payload.get("cwd") or ""
+
+
+def main():
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return 0
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    protocol, command, cwd = detect_protocol(payload)
+    reason = check_command(command, cwd=cwd)
+    if protocol == "antigravity":
+        if reason:
+            print(json.dumps({"decision": "deny", "reason": reason}))
+        else:
+            print(json.dumps({"decision": "allow"}))
+        return 0
+    if protocol == "cursor":
+        if reason:
+            print(json.dumps({"permission": "deny", "user_message": reason, "agent_message": reason}))
+        else:
+            print(json.dumps({"permission": "allow"}))
+        return 0
+    if reason:
+        print(reason, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

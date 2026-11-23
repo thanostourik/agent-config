@@ -1,0 +1,5 @@
+{
+  "event": "before-command",
+  "command": "$HOME/.local/bin/guard-command",
+  "timeout": 10
+}
