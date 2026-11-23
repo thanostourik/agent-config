@@ -62,20 +62,32 @@ export SOCKETS=$sockets MAESTRO=$install/maestro/bin/maestro
 export JAVA_TOOL_OPTIONS="-Duser.home=$cache/maestro-home" MAESTRO_CLI_NO_ANALYTICS=1 MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
 start=$(date +%s.%N)
 status=0
-# Inside the namespace the process is root, so Java would use /root as its home; JAVA_TOOL_OPTIONS points it at .cache.
-unshare --user --map-root-user --net bash -c '
-  ip link set lo up
-  inner=()
-  for socket in "$SOCKETS"/*; do
-    socat TCP-LISTEN:"${socket##*/}",bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:"$socket" 2> /dev/null &
-    inner+=($!)
-  done
-  trap "kill ${inner[*]} 2> /dev/null" EXIT
-  for socket in "$SOCKETS"/*; do
-    until (exec 3<> "/dev/tcp/127.0.0.1/${socket##*/}") 2> /dev/null; do sleep 0.05; done
-  done
-  "$MAESTRO" --device "$ANDROID_SERIAL" "$@" 2>&1 | grep -v "^Picked up JAVA_TOOL_OPTIONS"
-  exit "${PIPESTATUS[0]}"' maestro "${args[@]}" || status=$?
+out_log=$(mktemp "$VERIFY_DIR/maestro-out.XXXXXX")
+for _attempt in 1 2; do
+  status=0
+  # Inside the namespace the process is root, so Java would use /root as its home; JAVA_TOOL_OPTIONS points it at .cache.
+  unshare --user --map-root-user --net bash -c '
+    ip link set lo up
+    inner=()
+    for socket in "$SOCKETS"/*; do
+      socat TCP-LISTEN:"${socket##*/}",bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:"$socket" 2> /dev/null &
+      inner+=($!)
+    done
+    trap "kill ${inner[*]} 2> /dev/null" EXIT
+    for socket in "$SOCKETS"/*; do
+      until (exec 3<> "/dev/tcp/127.0.0.1/${socket##*/}") 2> /dev/null; do sleep 0.05; done
+    done
+    "$MAESTRO" --device "$ANDROID_SERIAL" "$@" 2>&1 | grep -v "^Picked up JAVA_TOOL_OPTIONS"
+    exit "${PIPESTATUS[0]}"' maestro "${args[@]}" > "$out_log" 2>&1 || status=$?
+  ((status == 0)) && break
+  if ((_attempt == 1)) && grep -qE 'MaestroDriverStartupException|AndroidDriverTimeoutException|deviceInfo.*(UNAVAILABLE|INTERNAL)' "$out_log" "$VERIFY_DIR/maestro-debug/maestro.log" 2> /dev/null; then
+    sleep 1
+    continue
+  fi
+  break
+done
+cat "$out_log"
+rm -f "$out_log"
 if [[ -d $VERIFY_DIR/maestro-debug ]]; then
   find "$VERIFY_DIR/maestro-debug" -path '*/takeScreenshot/*.png' -exec mv -t "$VERIFY_DIR" {} +
 fi
