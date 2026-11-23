@@ -100,6 +100,12 @@ checked even when the script does not list them. Do them after the `launch.sh` i
   says.
 - **`AGENTS.md`**: write its `## Verification` section (and the one in `CLAUDE.md`) from
   `<generator>/references/agents-verification.md`.
+- **Android app without Maestro**: when the script reports that the skill drives an Android
+  app without `maestro-version`, ask the user whether to migrate it to the generator's
+  shipped `bin/maestro.sh` driver (following "For an Android app" in `<generator>/SKILL.md`),
+  or keep its current driver. If they say yes, copy `maestro.sh`, write `maestro-version`,
+  export `ANDROID_ADB_SERVER_PORT`, `ANDROID_SERIAL` and `MAESTRO_APP_ID` in `env.sh`,
+  migrate the UI helpers and recipes to Maestro flows, and update `PROJECT.md`.
 - **Features the script could not convert**: run `bin/areas > .cache/areas.txt`. Then send
   such features to repair recorders, at most 3 features each, as the Recorders section of
   the new `FULL.md` says, after step 3's `bin/verify up`. A recorder keeps the existing
