@@ -36,7 +36,7 @@ Follow SETUP.md in this repository and complete every setup the tools in this re
 |---|---|---|
 | `instructions/` | My preferences. `common.md` is for every tool, `<tool>.md` adds more for one tool. | Each tool's global instructions file, such as `~/.claude/CLAUDE.md` |
 | `skills/` | Skills: instructions for one kind of task, such as opening a PR. | Each tool's skills folder |
-| `bin/` | Scripts that the skills call. | `~/.local/bin/` |
+| `bin/` | Scripts that skills and hooks call. | `~/.local/bin/` |
 
 Sync can also install agent definitions, hooks, and a Jira MCP server. See
 [AGENTS.md](AGENTS.md) for those and for the exact install paths.

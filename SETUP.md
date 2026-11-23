@@ -66,3 +66,7 @@ Needs `gh` installed and logged in (`gh auth login`).
 
 1. Once: `gh extension install github/gh-stack`
 2. Check it: `gh stack --version`
+
+## Codex hooks
+
+Codex skips local hooks in `~/.codex/hooks.json` until you trust them. After `./sync --apply` installs or updates a hook, run `/hooks` in Codex (or open Codex Desktop settings) and approve the hook.

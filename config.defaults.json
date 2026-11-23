@@ -54,7 +54,9 @@
   "agents": {
     "verify-recorder": { "enabled": true }
   },
-  "hooks": {},
+  "hooks": {
+    "guard-command": { "enabled": true }
+  },
   "mcp": {
     "jira": {
       "enabled": true,
