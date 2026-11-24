@@ -41,8 +41,7 @@ you again, so ending the turn early stops the work.
    - The PR has no conflicts with its base. If it has, rebase with the
      `modernize` skill and redo the proof the rebase could change.
 
-   Then mark the PR ready for review, if the active instructions allow
-   restricted actions in this repository. Otherwise leave it a draft.
+   Once those hold, follow the active instructions for marking the PR ready.
 6. **Report:**
    - the PR link, and whether it is still a draft
    - the proof
