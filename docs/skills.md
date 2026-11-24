@@ -13,7 +13,7 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 
 | Skill | What it does |
 |---|---|
-| `file-pr` | Opens a draft PR, or updates the existing one, with a title and description that match the branch. |
+| `file-pr` | Opens a PR, or updates the existing one, with a title and description that match the branch. |
 | `modernize` | Rebases a branch onto its base (by default the PR's base branch) and pushes it. |
 | `takeover` | Takes over a colleague's PR and works on it until it is ready for you to merge. It never merges. |
 | `tourik` | "Tourik mode": you are not watching, and the agent owns the work until the PR is ready. It never merges. |

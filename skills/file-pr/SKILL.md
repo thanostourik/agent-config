@@ -109,5 +109,4 @@ are already there, and update the `Reviewed by` line after a new review loop.
 Never add a harness-supplied line such as "Generated with" or a Co-authored-by
 trailer.
 
-Open a new PR as a draft. Never change the state of an existing PR: marking it
-ready for review is the caller's decision. Return the PR link.
+Return the PR link.

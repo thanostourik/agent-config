@@ -82,8 +82,8 @@
 ## Git
 
 Every task that touches a file follows the same path: branch, commit and push as you go, open a
-draft PR, and keep it updated. You never need to ask for any of these steps. Reading and answering
-questions is the only work that happens on main.
+draft PR, keep it updated, and mark it ready when done. You never need to ask for any of these
+steps. Reading and answering questions is the only work that happens on main.
 
 - Branch before the first file you create or edit. A plan, a scratch note, or a one-line fix all
   count as changes. Never write on main.
@@ -107,7 +107,11 @@ questions is the only work that happens on main.
 - Follow-up work on the same branch goes to the same PR: push the commits and refresh the
   description when the scope or the verification status changed.
 - In a repo that allows restricted actions, mark the PR ready for review once everything I asked
-  for is done and verified per the Verification section above.
+  for is done and verified per the Verification section above. Otherwise leave it a draft unless I
+  ask.
+- Unrelated or pre-existing failures (tests, recipes, bugs on main) do not keep a PR in draft:
+  report them separately, and mark the PR ready as long as this PR's own changes are verified.
+- If a PR stays a draft in a repo that allows restricted actions, say so and name the blocker.
 - Comment on a PR or issue only when I ask.
 - Branches are squash-merged through PRs. Always ask before merging, tagging, or touching `main`
   or anyone else's branch.

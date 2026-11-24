@@ -78,7 +78,7 @@ tool:
 - **Report only:** leave the recipes as they are. Drive the affected features as they
   stand, and list the behavior no recipe checks yet as not verified.
 - **Update now:** with a clean companion, create a branch there, update the recipes as the
-  skill says, and drive. Then commit, push, open a draft PR in the companion, and switch the
+  skill says, and drive. Then commit, push, open a PR in the companion, and switch the
   companion back to the branch it was on. A companion with uncommitted changes stops this
   choice: tell the user.
 
