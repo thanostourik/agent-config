@@ -522,10 +522,11 @@ reserve_mb() { echo $(($(meminfo MemTotal) * $(reserve_percent) / 100)); }
 # A feature waits while one of a drive with fewer features waits too, so a fix loop does not queue behind a long drive.
 admit() {
   local holder=$1 size=$2 entry other started pid recent=0 running=0
+  echo "$size" > "$room_pool/wait-$holder"
   for entry in "$room_pool"/wait-*; do
     [[ -f "$entry" ]] || continue
     kill -0 "${entry##*/wait-}" 2> /dev/null || { rm -f "$entry"; continue; }
-    read -r other 2> /dev/null < "$entry"
+    read -r other 2> /dev/null < "$entry" || continue
     [[ "$size" =~ ^[0-9]+$ && "$other" =~ ^[0-9]+$ ]] && ((other < size)) && return 1
   done
   for entry in "$room_pool"/slot-*; do
@@ -541,6 +542,7 @@ admit() {
   if ((running + recent)); then
     (($(meminfo MemAvailable) - (recent + 1) * browser_mb >= $(reserve_mb))) || return 1
   fi
+  rm -f "$room_pool/wait-$holder"
   echo "$EPOCHSECONDS $holder" > "$room_pool/slot-$holder"
 }
 
@@ -606,9 +608,7 @@ take_room() {
   local holder=$1 size=${2:-}
   can_queue || return 0
   mkdir -p "$room_pool"
-  echo "$size" > "$room_pool/wait-$holder"
   until (flock 9 && admit "$holder" "$size") 9> "$room_pool/.lock"; do sleep 1; done
-  rm -f "$room_pool/wait-$holder"
 }
 
 others_running() {
