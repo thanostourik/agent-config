@@ -1,6 +1,6 @@
 ---
 name: peer-review
-description: Use when the user asks for a "peer review", a review by or with Codex, Claude, Grok, Cursor Grok, or Gemini (for example "codex review" or "review with gemini"), or when review-loop runs one.
+description: Use when the user asks for a "peer review", a "deep" peer review, or a review by or with Codex, Claude, Grok, Cursor Grok, or Gemini (for example "codex review" or "review with gemini").
 ---
 
 # Peer review
@@ -10,8 +10,21 @@ not post findings, edit the reviewed files, or let reviewers delegate again.
 
 ## Reviewers
 
-Use the reviewer(s) the user named; otherwise default to `{{defaults.reviewer}}`.
-Read only the reference file(s) for the reviewer(s) you will run:
+Default reviewer lists (`none` means an empty list):
+
+- **Fast reviewers (`reviewers`):** `{{defaults.reviewers}}`
+- **Deep reviewers (`deep_reviewers`):** `{{defaults.deep_reviewers}}`
+
+Choose which reviewers to run based on the request:
+
+- **`peer review` (default):** run `reviewers` in parallel.
+- **`peer review deep`:** run `reviewers` and `deep_reviewers` in parallel
+  (deduplicated).
+- **Named reviewer(s)** (for example `peer review codex` or `review with codex
+  and claude`): run only the named reviewer(s), ignoring the defaults.
+
+If no reviewers are selected, tell the user and stop. Read only the reference
+file(s) for the reviewer(s) you will run:
 
 - `codex`: [references/codex.md](references/codex.md)
 - `claude`: [references/claude.md](references/claude.md)
@@ -20,8 +33,7 @@ Read only the reference file(s) for the reviewer(s) you will run:
 - `gemini` (through Antigravity): [references/gemini.md](references/gemini.md)
 
 Use the user's selected model and effort when given; otherwise use that
-reviewer's defaults. If the user asks for multiple reviewers, start them in
-parallel and combine their verified findings into one report.
+reviewer's defaults.
 
 Never silently switch reviewers, models, or effort, or weaken permissions or
 sandboxes to make an invocation work.
@@ -38,8 +50,8 @@ not include unrelated user changes unless they are part of the requested target.
 ## Custom prompts
 
 When a reviewer runs a custom prompt (for a plan, selected files, a non-default
-base, or a specific question such as `review-loop`'s evidence check), write a
-self-contained `prompt.md` with:
+base, or a specific question such as an evidence check), write a self-contained
+`prompt.md` with:
 
 - the absolute repository path and an instruction to run commands from there
 - the exact target and the git command or paths that show it
@@ -52,18 +64,26 @@ self-contained `prompt.md` with:
 
 ## Run and monitor
 
-Follow the chosen reviewer's reference file to run it.
+Follow each chosen reviewer's reference file and start all reviewers in
+parallel.
 
 For CLI commands, start the command using the calling tool's background or
 resumable execution mode, and retain its task or session ID so you can check
 its status and exit code. Do not set a review runtime limit or a tool timeout
 that kills the process.
 
-Wait until every reviewer finishes. If the calling tool notifies you when a
-background command or delegate completes, end your turn and wait for that
-notice; never start a polling loop or a monitor to watch it. Without such a
-notice, check status with short waits that return control while leaving it
-running.
+If the calling tool notifies you when a background command or delegate
+completes, end your turn and wait for that notice; never start a polling loop
+or a monitor to watch it. Without such a notice, check status with short waits
+that return control while leaving it running.
+
+Normally, wait until every reviewer finishes before reporting. When
+`deep_reviewers` run alongside fast reviewers (such as `peer review deep`),
+report the fast reviewers' verified findings as soon as all fast reviewers
+finish, note which deep reviewer(s) are still running in the background, and
+wait for them to finish. When each deep reviewer finishes, verify its findings
+against the current code and post only what is new (skipping anything already
+reported or already fixed).
 
 If a review appears stuck, inspect its process state and logs. A running
 process alone does not prove progress, and silence or elapsed time alone does
@@ -72,7 +92,9 @@ establish and keep waiting when the evidence is inconclusive.
 
 When a reviewer exits, check its exit code (or delegate result) and any
 completeness check in its reference file. Report failures promptly and identify
-any partial output; never present an incomplete review as clean.
+any partial output; never present an incomplete review as clean. When one
+reviewer fails while others succeed, report the verified findings from the
+ones that succeeded and state clearly which reviewer failed and why.
 
 ## Assess and report
 
@@ -85,4 +107,6 @@ target, reviewer(s), model(s), and effort(s), and state verification gaps. A
 clean review is not evidence that tests passed.
 
 Check the final Git state (`git status --short` and `git rev-parse HEAD`).
-Report any unexpected change; do not revert user work.
+Report any unexpected change; do not revert user work. (If a deep reviewer
+finishes after the user acted on the fast reviewers' report, expect the user's
+own changes.)

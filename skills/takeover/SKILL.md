@@ -12,7 +12,7 @@ ready for the user to merge. Never merge it.
 
 Decide alone and keep working. Ask only when:
 
-- you are blocked: the change cannot be verified, or `review-loop` has no
+- you are blocked: the change cannot be verified, or `peer-review-loop` has no
   reviewer left
 - the PR's approach is wrong, or most of its code needs rewriting
 - another PR makes this one obsolete
@@ -55,14 +55,14 @@ it.
       migration's version or file name, or that repeats a live check.
 
    Change only code this PR adds. Commit each part separately and push.
-6. **Review** with `review-loop` over the whole PR. Fix real findings as
+6. **Review** with `peer-review-loop` over the whole PR. Fix real findings as
    separate commits and push them.
 7. **Regression check.** When you changed code, run the PR's tests and the
    same live checks on the author's last head and on yours, and compare the
    results. For yours, use the loop's proof when the head has not changed
    since. Fix any regression.
 8. **Follow-up review.** When step 7 changed code, or the loop in step 6
-   ended with a fix that had no review round, run a follow-up `review-loop`.
+   ended with a fix that had no review round, run a follow-up `peer-review-loop`.
 9. **Title and description.** Rewrite the title the way `file-pr` says. In
    the description, change only these parts and leave the rest as the
    author wrote it:

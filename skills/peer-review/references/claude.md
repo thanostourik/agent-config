@@ -40,8 +40,7 @@ claude -p --model "$REVIEW_MODEL" --effort "$REVIEW_EFFORT" \
   </dev/null >"$REVIEW_DIR/result.json" 2>"$REVIEW_DIR/run.log"
 ```
 
-For a custom prompt (such as a non-default base or `review-loop`'s evidence
-check), write `$REVIEW_DIR/prompt.md` and replace the last argument,
+For a custom prompt (such as a non-default base or an evidence check), write `$REVIEW_DIR/prompt.md` and replace the last argument,
 `"/code-review $REVIEW_EFFORT $REVIEW_TARGET"`, with
 `"$(cat "$REVIEW_DIR/prompt.md")"`. Keep every other flag.
 

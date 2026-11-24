@@ -21,7 +21,7 @@ For a branch against a base: when the base is `origin/main` or `origin/master`,
 `prompt.md` is `/review --branch <branch>` (it ignores uncommitted files in the
 tree). For any other base, `prompt.md` holds only the target and
 `git diff <base>...<branch>`. That prompt, like every custom prompt (commits,
-plans, selected files, or `review-loop`'s evidence check), runs through the CLI
+plans, selected files, or an evidence check), runs through the CLI
 command below, never as a T3 delegate.
 
 ## Run as a T3 delegate

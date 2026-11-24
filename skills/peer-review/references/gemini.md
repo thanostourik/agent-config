@@ -11,10 +11,10 @@ prompt format from [SKILL.md](../SKILL.md):
 - Uncommitted changes: `git diff HEAD` plus untracked files.
 - A branch against a base: `git diff <base>...<branch>`.
 - A commit: `git show <sha>`.
-- A plan, selected files, or a specific question (such as `review-loop`'s
-  evidence check): the paths and question.
+- A plan, selected files, or a specific question (such as an evidence check):
+  the paths and question.
 
-For a blind branch review from `review-loop`, pass only the absolute repository
+For a blind branch review, pass only the absolute repository
 path, the target, the `git diff <base>...<branch>` command, and the read-only
 review instructions—no author intent or prior findings.
 
