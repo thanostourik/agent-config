@@ -23,8 +23,8 @@ To add a skill or choose which tools get it, see [AGENTS.md](../AGENTS.md).
 
 | Skill | What it does |
 |---|---|
-| `peer-review` | Independent read-only review of a change by Codex, Claude, Grok, Cursor Grok, or Gemini (Antigravity)—one reviewer or several in parallel. You can set each reviewer's default model and effort. |
-| `review-loop` | Reviews your branch in rounds using `peer-review`. The agent fixes the real findings and proves the result works. Then a fresh reviewer checks that proof. |
+| `peer-review` | Independent read-only review: runs your default fast reviewers in parallel, a named provider, or `deep` mode (adds deep reviewers in the background while fast results report first). |
+| `peer-review-loop` | Reviews your branch in rounds using `peer-review`'s fast and deep reviewers, fixes real findings, proves the result works, and checks that proof with a fresh reviewer. |
 | `depatch` | Checks whether code reads like patches piled on patches or is more complicated than it needs to be. A fresh agent designs it from scratch without seeing the code, then compares. It changes no code. |
 
 ## Planning and writing

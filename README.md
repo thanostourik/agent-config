@@ -49,7 +49,7 @@ only when you type `/skill-name` (`$skill-name` in Codex).
 | Group | Skills |
 |---|---|
 | Pull requests | `file-pr`, `modernize`, `takeover`, `tourik`, `squash-merge-pr` |
-| Reviews | `peer-review`, `review-loop`, `depatch` |
+| Reviews | `peer-review`, `peer-review-loop`, `depatch` |
 | Planning and writing | `grill-me`, `html-communication`, `draftie`, `bro` |
 | Coordination and tickets | `t3-fan-out`, `create-jira-issue` |
 | Verification | `create-project-local-stack`, `create-project-verification-skill`, `maintain-project-verification-skill`, `with-verification` |

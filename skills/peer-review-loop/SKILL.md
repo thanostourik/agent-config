@@ -1,9 +1,9 @@
 ---
-name: review-loop
-description: Use when the user asks for a review loop, or wants a branch you own (your own work or a PR taken over with takeover) reviewed, fixed, and verified before handoff.
+name: peer-review-loop
+description: Use when the user asks for a "peer review loop" or "review loop", or wants a branch you own (your own work or a PR taken over with takeover) reviewed, fixed, and verified before handoff.
 ---
 
-# Review loop
+# Peer review loop
 
 Use this for changes you wrote on the current branch or a PR you took over with
 `takeover`. Independent reviewers inspect the branch in rounds. You verify their
@@ -12,14 +12,15 @@ reviewer then checks that evidence against the original requirements.
 
 ## Setup
 
-- **Reviewers:** three lists from [peer-review](../peer-review/SKILL.md)
-  (`codex`, `claude`, `grok`, `cursor-grok`, or `gemini`):
-  - **Round reviewers** run on every round: `{{defaults.reviewers}}`.
-  - **One-pass reviewers** run once, starting in round one:
-    `{{defaults.one_pass_reviewers}}`. Use this list for slower reviewers that
-    are worth one full pass; they run in the background while you fix findings
-    and run later rounds.
-  - **Fallback reviewers** stand in if a round reviewer cannot run:
+- **Reviewers:** uses the reviewers and default lists from
+  [peer-review](../peer-review/SKILL.md) (`codex`, `claude`, `grok`,
+  `cursor-grok`, or `gemini`):
+  - **Round reviewers** run on every round: `peer-review`'s default `reviewers`
+    list.
+  - **One-pass reviewers** run once, starting in round one: `peer-review`'s
+    default `deep_reviewers` list. They run in the background while you fix
+    findings and run later rounds.
+  - **Fallback reviewers** stand in only if 0 round reviewers remain:
     `{{defaults.fallback_reviewers}}`.
 
   `none` means an empty list. If there are no round reviewers, tell the user and
@@ -32,13 +33,17 @@ reviewer then checks that evidence against the original requirements.
 
   A reviewer cannot run if it is unavailable in your environment or fails twice
   in a row (for example, due to a usage limit). When that happens:
-  - **One-pass reviewer:** continue without it.
-  - **Round reviewer:** replace it for the rest of the loop with the first
-    fallback reviewer whose model family is not already used in this loop (for
-    example, do not add a second GPT reviewer alongside an existing one). If no
-    such fallback exists, ask the user (using your question tool) which reviewer
-    to use or whether to continue without one. A round is not clean if a round
-    reviewer failed to complete it.
+  - **One-pass reviewer:** continue without it and note it in the report.
+  - **Round reviewer, while at least one other round reviewer remains:** drop
+    it for the rest of the loop, continue with the remaining round reviewer(s),
+    and note it in the report. Do not pull in a fallback while another round
+    reviewer is still active.
+  - **Last round reviewer (0 round reviewers remain):** replace it for the rest
+    of the loop with the first fallback reviewer whose model family is not
+    already used in this loop (for example, do not add a second GPT reviewer
+    alongside an existing one). If no such fallback exists, ask the user (using
+    your question tool) which reviewer to use or whether to continue without
+    one. A round is not clean if 0 round reviewers completed it.
 
   Do not substitute reviewers any other way.
 
@@ -77,17 +82,18 @@ that instead.
 
 1. Commit your work so every reviewer sees the same code. Never push from this
    skill; leave pushing to the caller.
-2. Start every round reviewer before ending your turn to wait. In round one,
-   start the one-pass reviewers too. Each reviewer inspects the full target
+2. Start every active round reviewer before ending your turn to wait. In round
+   one, start the one-pass reviewers too. Each reviewer inspects the full target
    using its reference file in [peer-review](../peer-review/SKILL.md) on every
    round—do not narrow later rounds to only the fixes since the previous round.
 3. Keep reviewers blind. Do not pass them the requirements, the ledger, earlier
    or declined findings, or any notes you wrote. Author context biases
    reviewers.
-4. Wait for all round reviewers to finish (do not wait for one-pass reviewers).
-   If a reviewer fails, retry it once. If it fails a second time, treat it as
-   unavailable and follow the fallback rules in Setup; any replacement must
-   review the current round.
+4. Wait for all active round reviewers to finish (do not wait for one-pass
+   reviewers). If a reviewer fails, retry it once. If it fails a second time,
+   treat it as unavailable and follow the failure and fallback rules in Setup;
+   if a fallback steps in because 0 round reviewers remain, it must review the
+   current round.
 5. Check each finding against the code. Reviews should make the change correct,
    not bigger:
    - **Declined or out of scope earlier:** add the reviewer to that row and skip
@@ -103,9 +109,9 @@ that instead.
    or request), then commit. Save full project verification for the Verification
    step on the final commit.
 
-A round is clean when every round reviewer finished and, after skipping declined
-and out-of-scope findings, nothing above `low` remains. Fix `low` findings too,
-but they do not require another review round.
+A round is clean when every active round reviewer finished (at least one) and,
+after skipping declined and out-of-scope findings, nothing above `low` remains.
+Fix `low` findings too, but they do not require another review round.
 
 One-pass reviewers inspect the round-one commit while you continue fixing and
 committing. When a one-pass reviewer finishes, evaluate its findings against the
@@ -123,9 +129,9 @@ Hitting the limit is not approval—report any unresolved findings.
 1. Verify the final commit using the project's standard verification process.
    Save the raw evidence in `.plans/scratch/<branch>/proof/`: screenshots,
    transcripts, and command output with exit codes.
-2. Run one evidence check with a fresh reviewer (the first round reviewer, or
-   its replacement) using [peer-review](../peer-review/SKILL.md)'s custom-prompt
-   mode. Include only:
+2. Run one evidence check with a fresh reviewer (the first active round
+   reviewer, or its fallback) using [peer-review](../peer-review/SKILL.md)'s
+   custom-prompt mode. Include only:
    - The original requirements, quoted verbatim: the Jira ticket or the user's
      request. If neither exists, use the acceptance criteria in
      `.plans/scratch/<branch>/criteria.md`.
@@ -147,8 +153,8 @@ Include in the report:
 - The target, and whether this was a follow-up loop.
 - Each round's head commit, result, and why the loop stopped.
 - The round and one-pass reviewers that ran, with each reviewer's model and tool
-  (for example, `GPT-6.1 Sol through Codex`), plus any reviewer that could not
-  run and its replacement.
+  (for example, `GPT-6.2 Sol through Codex`), plus any reviewer that could not
+  run and any fallback that stepped in.
 - Fixed findings.
 - Declined findings, each with its reason.
 - Out-of-scope findings, as follow-ups for the user.

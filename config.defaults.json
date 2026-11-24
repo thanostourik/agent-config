@@ -17,7 +17,8 @@
     "peer-review": {
       "enabled": true,
       "defaults": {
-        "reviewer": "codex",
+        "reviewers": ["codex", "gemini"],
+        "deep_reviewers": ["grok"],
         "codex_model": "gpt-6.2-sol",
         "codex_effort": "high",
         "claude_model": "claude-sonnet-5-5",
@@ -30,11 +31,9 @@
         "gemini_effort": "high"
       }
     },
-    "review-loop": {
+    "peer-review-loop": {
       "enabled": true,
       "defaults": {
-        "reviewers": ["codex"],
-        "one_pass_reviewers": ["grok"],
         "fallback_reviewers": ["claude"],
         "rounds": "3",
         "max_rounds": "5"

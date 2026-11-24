@@ -30,14 +30,14 @@ you again, so ending the turn early stops the work.
    to `.plans/scratch/<branch>/criteria.md`.
 2. **Implement** the smallest change that meets the intent.
 3. **Verify** as "How to verify" below says.
-4. **Review.** Run the `review-loop` skill on the PR. Then update the PR with
+4. **Review.** Run the `peer-review-loop` skill on the PR. Then update the PR with
    `file-pr`, so its description gets the `Reviewed by` line. If the loop made
    fixes in two or more rounds, run the `depatch` skill on the branch. Do not
    act on its result or stop to ask about it: it goes into the report.
 5. **Ready gate.** All of this must hold on the latest commit:
    - Every intended behavior has proof.
    - Every review finding is fixed, declined with a written reason, or
-     recorded as `out of scope` by `review-loop`.
+     recorded as `out of scope` by `peer-review-loop`.
    - The PR has no conflicts with its base. If it has, rebase with the
      `modernize` skill and redo the proof the rebase could change.
 
