@@ -11,8 +11,10 @@ features that check the code it edited. Run `verify all` only when asked. A refa
 verified too, even though it is meant to change no behavior.
 
 Never attach to or change services and data the verification did not create. Report each
-driven feature as pass, fail or blocked, with evidence links to absolute paths, and report
-cleanup failures separately.
+driven feature as pass, fail or blocked, include proof for the feature of the change
+(embedded `.png` screenshot for a UI, or a short verbatim response, output, or log excerpt
+otherwise, with absolute paths checked after `verify down`), and report cleanup failures
+separately.
 
 Run the focused checks relevant to the change as well:
 
