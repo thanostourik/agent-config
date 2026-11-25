@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Connect a coding tool over stdio to a persistent, sandboxed mcp-atlassian.
 
-Credentials come from Bitwarden once per desktop session and are cached in RAM
+Credentials come from Bitwarden once per boot and are cached in RAM
 by jira-cred-agent (systemd user unit) on a private 0600 Unix socket. Bitwarden
 is locked again immediately after fetching only the configured Jira and gate
-logins, so the rest of the vault is never exposed to agents.
+logins, so the rest of the vault is never exposed to agents. Unlock with
+`session-unlock` or `mcp-atlassian-start --unlock` from an SSH TTY, or
+`BW_PASSWORD=... mcp-atlassian-start --unlock` from T3's secret prompt.
+A desktop Bitwarden window is only the fallback when those are unavailable.
 
 Each configured Jira instance runs as one persistent systemd user unit
 (jira-mcp-<hash>) hosting a version-pinned mcp-atlassian inside a bwrap sandbox
@@ -182,35 +185,64 @@ def bw_status():
         return ""
 
 
-def bw_unlock():
-    need("bw", "zenity", "setpriv")
+UNLOCK_HINT = (
+    "Bitwarden is locked and there is no prompt on this connection.\n"
+    "From an SSH or local terminal: session-unlock\n"
+    "From T3 Code: secret prompt, then BW_PASSWORD=<that> mcp-atlassian-start --unlock\n"
+    "On this desktop: session-unlock, or a Bitwarden password window at login."
+)
+
+
+def zenity_password(title, text):
+    need("zenity", "setpriv")
+    prompt = subprocess.run(
+        [
+            "setpriv",
+            "--pdeathsig",
+            "TERM",
+            "--",
+            "zenity",
+            "--entry",
+            "--hide-text",
+            f"--title={title}",
+            f"--text={text}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if prompt.returncode != 0:
+        return ""
+    return prompt.stdout.rstrip("\n")
+
+
+def prompt_password(title, text, allow_gui):
+    if sys.stdin.isatty():
+        import getpass
+        try:
+            return getpass.getpass(f"{text}\n{title}: ")
+        except EOFError:
+            return ""
+    if allow_gui and os.environ.get("DISPLAY") and shutil.which("zenity"):
+        return zenity_password(title, text)
+    return ""
+
+
+def bw_unlock(allow_gui=False):
+    need("bw")
     if bw_status() == "unauthenticated":
         die("Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry.")
     text = (
         "Same password that unlocks the Bitwarden app.\n"
         "NOT Client ID. NOT Client Secret. NOT Jira."
     )
+    env_password = os.environ.get("BW_PASSWORD")
+    password = env_password
     while True:
-        # zenity --password ignores --text, and setpriv ensures the dialog closes if this script dies.
-        prompt = subprocess.run(
-            [
-                "setpriv",
-                "--pdeathsig",
-                "TERM",
-                "--",
-                "zenity",
-                "--entry",
-                "--hide-text",
-                "--title=Bitwarden master password",
-                f"--text={text}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        password = prompt.stdout.rstrip("\n")
-        if prompt.returncode != 0 or not password:
-            die("Bitwarden unlock was cancelled.")
+        if not password:
+            password = prompt_password("Bitwarden master password", text, allow_gui)
+        if not password:
+            die(UNLOCK_HINT)
         env = os.environ.copy()
         env["BW_PASSWORD"] = password
         unlock = subprocess.run(
@@ -226,6 +258,9 @@ def bw_unlock():
             return session
         if bw_status() == "unauthenticated":
             die("Bitwarden CLI is not logged in. Run bw login in a normal terminal, then retry.")
+        if env_password:
+            die("BW_PASSWORD was rejected.")
+        password = None
         text = "Wrong master password. Try again."
 
 
@@ -282,7 +317,7 @@ def bw_lookup_one(session, url, exact):
     return user, password
 
 
-def ensure_cached(sock_path, lock_path, targets, sync_first=False):
+def ensure_cached(sock_path, lock_path, targets, sync_first=False, allow_gui=False):
     missing = [(url, exact) for url, exact in targets if cache_get(sock_path, url) is None]
     if not missing:
         return {url: cache_get(sock_path, url) for url, _ in targets}
@@ -294,7 +329,7 @@ def ensure_cached(sock_path, lock_path, targets, sync_first=False):
             start_agent(sock_path)
         missing = [(url, exact) for url, exact in targets if cache_get(sock_path, url) is None]
         if missing:
-            session = bw_unlock()
+            session = bw_unlock(allow_gui=allow_gui)
             synced = False
             sync_err = ""
             if sync_first:
@@ -726,7 +761,7 @@ def main():
         if not urls:
             return
         targets = [(u, u.rstrip("/").endswith("/auth-gate")) for u in urls]
-        ensure_cached(sock_path, lock_path, targets, sync_first=True)
+        ensure_cached(sock_path, lock_path, targets, sync_first=True, allow_gui=True)
         url_set = {u.rstrip("/") for u in urls}
         for u in urls:
             stripped = u.rstrip("/")

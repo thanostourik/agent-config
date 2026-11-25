@@ -5,10 +5,11 @@ after that. Add a section when something new needs steps beyond `./sync`.
 
 ## Jira MCP
 
-Needs a Linux desktop session with systemd and these commands installed: `bw`
+Needs systemd and these commands installed: `bw`
 (Bitwarden CLI, already logged in with `bw login`), `uvx`, `bwrap` (bubblewrap),
-`zenity`, `python3`, `setpriv`, `systemd-run`, and `systemctl`.
-`mcp-atlassian-start` stops with a message naming any that is missing.
+`python3`, `systemd-run`, and `systemctl`. Desktop unlock also needs `zenity`
+and `setpriv`. `mcp-atlassian-start` stops with a message naming any that is
+missing.
 
 1. If `config.json` is missing, create it containing `{}`.
 2. Ask for each Jira URL unless the user already gave it. Add each instance
@@ -17,11 +18,17 @@ Needs a Linux desktop session with systemd and these commands installed: `bw`
    keep any settings already there. Do not commit that file. Do not
    create or rename Bitwarden items. Do not run `bw login`.
 3. `./sync --apply --replace-existing`
-4. Tell the user to log out and in again, or run
-   `~/.local/bin/mcp-atlassian-start --unlock`, so the Jira logins are cached in
-   `jira-cred-agent` and the persistent sandboxed `mcp-atlassian` daemon is
-   warm before the first thread (Bitwarden locks again immediately afterward).
-   Then restart the coding tools.
+4. Unlock once per boot. Do not restart T3.
+   - SSH or a local terminal: `session-unlock` (TTY prompts for the GitHub SSH
+     key passphrase and the Bitwarden master password).
+   - T3 Code: secret prompt for each, then
+     `SSH_KEY_PASSPHRASE=... github-ssh-unlock` and
+     `BW_PASSWORD=... mcp-atlassian-start --unlock`.
+   - Desktop login: autostart runs `session-unlock` and can open password
+     windows.
+   That caches Jira logins in `jira-cred-agent`, loads the GitHub key into
+   `github-ssh-agent`, and warms the sandboxed `mcp-atlassian` daemon.
+   Bitwarden locks again immediately afterward.
 5. When an instance sets `"gate": true`, the user adds a Bitwarden login whose
    URI is that Jira URL plus `/auth-gate`. Its username is the Authentik
    username and its password an Authentik app password, not the Jira account.

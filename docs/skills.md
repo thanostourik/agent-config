@@ -66,4 +66,6 @@ Sync installs the scripts in `bin/` to `~/.local/bin/`.
 | `verify-time` | Prints how much of the working time of Claude Code sessions went into `bin/verify`: drives, stack starts, drive rounds, repeated drives and waiting for room. Needs only Python. |
 | `mcp-atlassian-start` | Starts the Jira MCP server with the login it reads from Bitwarden. |
 | `jira-gate-proxy` | Lets `mcp-atlassian-start --gate` reach a Jira that sits behind Authentik. |
+| `github-ssh-unlock` | Loads the GitHub SSH key into a lingering ssh-agent so git works from T3 without a restart. |
+| `session-unlock` | Unlocks GitHub SSH and Jira Bitwarden for this session (SSH TTY, T3 env vars, or desktop windows). |
 | `guard-command` | Pre-command hook script that blocks irreversible system-wide destructive commands (Docker prunes, bulk Docker wipes, recursive `rm` on root/home/system directories, and raw disk writes). |

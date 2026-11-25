@@ -29,6 +29,15 @@
   flags, or wrappers on top of your earlier work. If this changes the agreed plan, share the new
   design first.
 
+## Remote GitHub and Jira unlock
+
+GitHub SSH and Jira MCP secrets are locked after a reboot until this user session is unlocked.
+Do not restart `t3code.service`.
+
+- SSH or a local terminal: `session-unlock`
+- T3 Code: `request_secret` for the GitHub SSH key passphrase and the Bitwarden master password, then `SSH_KEY_PASSPHRASE=... github-ssh-unlock` and `BW_PASSWORD=... mcp-atlassian-start --unlock`
+- Desktop login: autostart runs `session-unlock`
+
 ## Plans & AI workflow artifacts
 
 - Plans are files directly in `.plans/` (no subfolders), named `YYYY-MM-DD-short-slug.md`, and are

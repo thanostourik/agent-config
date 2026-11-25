@@ -65,17 +65,21 @@ Two things to keep as they are:
   `/auth-gate`. Sync adds `--gate` when the instance sets `"gate": true`.
   `jira-cred-agent` (systemd user unit `jira-cred-agent`, `0600` Unix socket in
   `XDG_RUNTIME_DIR`) caches only the fetched Jira and gate logins in RAM.
-  Bitwarden is unlocked once per desktop session via a short-lived `bw unlock`
+  Bitwarden is unlocked once per boot via a short-lived `bw unlock`
   call, only those URLs are read, and Bitwarden is never left unlocked or
-  running. `systemctl --user stop jira-cred-agent` clears the cached
+  running. Unlock from an SSH TTY with `session-unlock`, or from T3 with
+  `BW_PASSWORD` (secret prompt) plus `mcp-atlassian-start --unlock`. A zenity
+  window is only the desktop fallback. `systemctl --user stop jira-cred-agent` clears the cached
   credentials from RAM and removes the socket; stopping `jira-mcp-<hash>` stops
   the persistent MCP daemon. When a Jira instance is configured, sync also
   writes `~/.config/agent-config/jira-urls` and the login autostart entry
   `~/.config/autostart/jira-vault-unlock.desktop`, which runs
-  `mcp-atlassian-start --unlock` to pre-cache the logins and warm up the
-  persistent daemon(s) at login, not in a thread's first turn. Desktops without
+  `session-unlock` to load the GitHub SSH key into a lingering ssh-agent and
+  pre-cache the Jira logins at login, not in a thread's first turn. Desktops without
   XDG autostart (a bare window manager) need that command in their own startup
-  config.
+  config. `github-ssh-unlock` starts `github-ssh-agent.service` and points
+  `~/.ssh/agent-config.conf` at that socket so git works even when T3 started
+  at boot with the wrong `SSH_AUTH_SOCK`.
 - `config.defaults.json`: the shipped settings for skills, agents, hooks, and
   Jira MCP. The optional, gitignored `config.json` overrides single settings:
   sync merges objects key by key, and any other value replaces the shipped

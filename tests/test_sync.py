@@ -559,7 +559,7 @@ class SyncTest(unittest.TestCase):
         self.add_helper()
         self.jira_config({"work": {"url": "https://jira.example.com"}})
         self.run_sync("--apply")
-        self.assertIn(f"Exec={self.home}/.local/bin/mcp-atlassian-start --unlock",
+        self.assertIn(f"Exec={self.home}/.local/bin/session-unlock",
                       entry.read_text())
         self.jira_config({})
         self.run_sync("--apply")
