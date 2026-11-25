@@ -18,8 +18,8 @@ Create one self-contained HTML file.
 - Write it like a spec, not a landing page: dense, scannable, no hero section, no decorative chrome, no marketing voice, no em dashes.
 - Default to a readable dark theme: a dark gray background (not pure black), light text with high contrast, and restrained accent colors. If the user names a color or style, follow it.
 - Make it readable on a phone: use a responsive viewport and no fixed-width layout.
-- Use semantic HTML, inline CSS, inline SVG, and data-URL images. Do not load images from remote URLs.
-- Use an inline classic script only when interactivity materially helps. The page must still be useful without JavaScript.
+- Use semantic HTML, inline CSS in a `<style>` block, system fonts, inline SVG, and data-URL images. Do not load external CSS, CSS frameworks (such as Tailwind), web fonts, or remote images.
+- Do not use JavaScript: no `<script>` tags, inline event handlers (such as `onclick`), or `javascript:` links. Use HTML and CSS for simple interactivity (such as `<details>`, `popover`, or `:checked`).
 - Give external links `target="_blank"` and `rel="noopener noreferrer"`.
 
 Never include secrets in the document.
