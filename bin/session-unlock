@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Unlock GitHub SSH and Jira Bitwarden for this user session.
+
+Run from an SSH TTY after a reboot, or from T3 with BW_PASSWORD and
+SSH_KEY_PASSPHRASE from the secret prompt. On the desktop it can open
+password windows. Does not restart T3.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def main():
+    extra = sys.argv[1:]
+    git = subprocess.call([str(HERE / "github-ssh-unlock"), *extra])
+    jira_args = [a for a in extra if a != "--no-gui"]
+    jira = subprocess.call([str(HERE / "mcp-atlassian-start"), "--unlock", *jira_args])
+    raise SystemExit(git or jira)
+
+
+if __name__ == "__main__":
+    main()

@@ -289,29 +289,38 @@ os.execv(args[idx], args[idx:])
     def test_falls_back_to_host_when_full_url_is_missing(self):
         self.start_cred_agent()
         self.set_items({"jira.example.com": [ITEM]})
-        self.passwords.write_text("master-password\n")
-        self.run_helper()
+        self.run_helper(extra_env={"BW_PASSWORD": "master-password"})
         queries = [c["args"][-1] for c in self.bw_calls() if c["args"][:2] == ["list", "items"]]
         self.assertEqual(queries, ["https://jira.example.com", "jira.example.com"])
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_USERNAME"], "jira-user")
+        self.assertEqual(self.zenity_calls(), 0)
 
     def test_starts_cred_agent_and_unlocks_bw_once(self):
-        self.passwords.write_text("master-password\n")
-        self.run_helper()
+        self.run_helper(extra_env={"BW_PASSWORD": "master-password"})
         log = (self.state / "systemd-run.log").read_text()
         self.assertIn("--unit=jira-cred-agent", log)
         self.assertIn("--unit=jira-mcp-", log)
-        self.assertEqual(self.zenity_calls(), 1)
+        self.assertEqual(self.zenity_calls(), 0)
         self.assertEqual(os.stat(self.sock).st_mode & 0o777, 0o600)
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_API_TOKEN"], "jira-password")
-        # Second run hits the warm daemon without calling bw or zenity.
         self.run_helper()
-        self.assertEqual(self.zenity_calls(), 1)
+        self.assertEqual(self.zenity_calls(), 0)
+
+    def test_mcp_start_without_cache_fails_without_gui(self):
+        result = self.run_helper(expected=1)
+        self.assertIn("session-unlock", result.stderr)
+        self.assertEqual(self.zenity_calls(), 0)
+        self.assertFalse(self.env_out.exists())
+
+    def test_wrong_env_password_fails_without_retry(self):
+        result = self.run_helper(expected=1, extra_env={"BW_PASSWORD": "typo"})
+        self.assertIn("BW_PASSWORD was rejected", result.stderr)
+        self.assertEqual(self.zenity_calls(), 0)
 
     def test_wrong_password_prompts_again(self):
         self.start_cred_agent()
         self.passwords.write_text("typo\nmaster-password\n")
-        self.run_helper()
+        self.run_helper(args=("--unlock", "https://jira.example.com"), extra_env={"DISPLAY": ":0"})
         self.assertEqual(self.zenity_calls(), 2)
         self.assertEqual(json.loads(self.env_out.read_text())["JIRA_USERNAME"], "jira-user")
 
@@ -320,13 +329,12 @@ os.execv(args[idx], args[idx:])
         urls_file.parent.mkdir(parents=True)
         urls_file.write_text("https://jira.example.com\n")
         self.passwords.write_text("master-password\n")
-        self.run_helper(args=("--unlock",))
+        self.run_helper(args=("--unlock",), extra_env={"DISPLAY": ":0"})
         self.assertEqual(self.zenity_calls(), 1)
         ops = [c["args"][0] for c in self.bw_calls()]
         self.assertEqual(ops, ["status", "unlock", "sync", "list"])
         self.assertTrue(self.env_out.exists())
-        # Running --unlock again does not prompt because creds and daemon are warm.
-        self.run_helper(args=("--unlock",))
+        self.run_helper(args=("--unlock",), extra_env={"DISPLAY": ":0"})
         self.assertEqual(self.zenity_calls(), 1)
 
     def test_not_logged_in_fails_without_prompt(self):

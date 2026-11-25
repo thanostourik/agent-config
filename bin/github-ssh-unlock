@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""Load the GitHub SSH key into a lingering user ssh-agent.
+
+Coding tools (including T3's boot service) inherit a stale SSH_AUTH_SOCK.
+ssh reads ~/.ssh/agent-config.conf and uses this agent instead, so git works
+without restarting T3. Run this from an SSH TTY, or pass SSH_KEY_PASSPHRASE
+from T3's secret prompt. A desktop password window is only the fallback.
+"""
+
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+UNIT_NAME = "github-ssh-agent.service"
+SOCK_NAME = "github-ssh-agent.sock"
+KEY_NAME = "github"
+UNIT_TEXT = """[Unit]
+Description=SSH agent for GitHub from lingering user sessions
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh-agent -D -a %t/github-ssh-agent.sock
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+SSH_SNIPPET = """Match host github.com,ssh.github.com exec "SSH_AUTH_SOCK=/run/user/%i/github-ssh-agent.sock ssh-add -l >/dev/null 2>&1"
+    IdentityAgent /run/user/%i/github-ssh-agent.sock
+
+Match host github.com,ssh.github.com exec "SSH_AUTH_SOCK=/run/user/%i/keyring/ssh ssh-add -l >/dev/null 2>&1"
+    IdentityAgent /run/user/%i/keyring/ssh
+"""
+UNLOCK_HINT = (
+    "GitHub SSH key is not in the lingering agent and there is no prompt here.\n"
+    "From an SSH or local terminal: session-unlock\n"
+    "From T3 Code: secret prompt, then SSH_KEY_PASSPHRASE=<that> github-ssh-unlock"
+)
+
+
+def die(message, code=1):
+    print(message, file=sys.stderr)
+    raise SystemExit(code)
+
+
+def runtime_dir():
+    uid = os.getuid()
+    return Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}")
+
+
+def home_dir():
+    return Path(os.environ.get("HOME") or Path.home())
+
+
+def sock_path():
+    return runtime_dir() / SOCK_NAME
+
+
+def identities(sock):
+    env = os.environ.copy()
+    env["SSH_AUTH_SOCK"] = str(sock)
+    res = subprocess.run(
+        ["ssh-add", "-l"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    return res.returncode == 0
+
+
+def zenity_password(title, text):
+    if shutil.which("zenity") is None or shutil.which("setpriv") is None:
+        return ""
+    prompt = subprocess.run(
+        [
+            "setpriv",
+            "--pdeathsig",
+            "TERM",
+            "--",
+            "zenity",
+            "--entry",
+            "--hide-text",
+            f"--title={title}",
+            f"--text={text}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if prompt.returncode != 0:
+        return ""
+    return prompt.stdout.rstrip("\n")
+
+
+def prompt_password(title, text, allow_gui):
+    if sys.stdin.isatty():
+        import getpass
+        try:
+            return getpass.getpass(f"{text}\n{title}: ")
+        except EOFError:
+            return ""
+    if allow_gui and os.environ.get("DISPLAY"):
+        return zenity_password(title, text)
+    return ""
+
+
+def ensure_unit():
+    unit = home_dir() / ".config/systemd/user" / UNIT_NAME
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    if not unit.is_file() or unit.read_text(encoding="utf-8") != UNIT_TEXT:
+        unit.write_text(UNIT_TEXT, encoding="utf-8")
+        subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(
+        ["systemctl", "--user", "enable", "--now", UNIT_NAME],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    sock = sock_path()
+    for _ in range(50):
+        if sock.exists():
+            return sock
+        time.sleep(0.1)
+    die(f"github-ssh-agent did not start. See: journalctl --user -u {UNIT_NAME}")
+
+
+def usable_key():
+    home = home_dir()
+    ssh_dir = home / ".ssh"
+    preferred = ssh_dir / KEY_NAME
+    source = ssh_dir / "id_rsa"
+    if preferred.is_file():
+        mode = preferred.stat().st_mode
+        if preferred.stat().st_uid == os.getuid() and stat.S_IMODE(mode) == 0o600:
+            return preferred
+        preferred.chmod(0o600)
+        return preferred
+    if not source.is_file():
+        die("No SSH key at ~/.ssh/id_rsa or ~/.ssh/github.")
+    data = source.read_bytes()
+    old = os.umask(0o177)
+    try:
+        preferred.write_bytes(data)
+        preferred.chmod(0o600)
+    finally:
+        os.umask(old)
+    return preferred
+
+
+def ssh_add_key(key, sock, passphrase):
+    env = os.environ.copy()
+    env["SSH_AUTH_SOCK"] = str(sock)
+    if passphrase is None:
+        res = subprocess.run(["ssh-add", str(key)], env=env, check=False)
+        return res.returncode == 0
+    runtime = runtime_dir()
+    fd, secret_path = tempfile.mkstemp(prefix="github-ssh-askpass-", dir=str(runtime))
+    os.close(fd)
+    secret = Path(secret_path)
+    askpass = Path(secret_path + ".sh")
+    try:
+        old = os.umask(0o177)
+        try:
+            secret.write_text(passphrase, encoding="utf-8")
+            askpass.write_text(f"#!/bin/sh\ncat {secret}\n", encoding="utf-8")
+            askpass.chmod(0o700)
+        finally:
+            os.umask(old)
+        env["SSH_ASKPASS"] = str(askpass)
+        env["SSH_ASKPASS_REQUIRE"] = "force"
+        env.setdefault("DISPLAY", ":0")
+        res = subprocess.run(
+            ["ssh-add", str(key)],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        return res.returncode == 0
+    finally:
+        secret.unlink(missing_ok=True)
+        askpass.unlink(missing_ok=True)
+
+
+def ensure_ssh_include():
+    ssh_dir = home_dir() / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    snippet = ssh_dir / "agent-config.conf"
+    if not snippet.is_file() or snippet.read_text(encoding="utf-8") != SSH_SNIPPET:
+        snippet.write_text(SSH_SNIPPET, encoding="utf-8")
+        snippet.chmod(0o600)
+    config = ssh_dir / "config"
+    include = "Include agent-config.conf\n"
+    if config.is_file():
+        current = config.read_text(encoding="utf-8")
+        if "Include agent-config.conf" in current:
+            return
+        config.write_text(include + current, encoding="utf-8")
+        return
+    old = os.umask(0o177)
+    try:
+        config.write_text(include, encoding="utf-8")
+    finally:
+        os.umask(old)
+
+
+def main():
+    allow_gui = "--no-gui" not in sys.argv
+    ensure_ssh_include()
+    sock = ensure_unit()
+    if identities(sock):
+        return
+    key = usable_key()
+    env_pass = os.environ.get("SSH_KEY_PASSPHRASE")
+    if sys.stdin.isatty() and not env_pass:
+        if ssh_add_key(key, sock, None):
+            return
+        die("ssh-add failed.")
+    password = env_pass or prompt_password(
+        "GitHub SSH key passphrase",
+        "Passphrase for the GitHub SSH key (not the Linux login, not Bitwarden).",
+        allow_gui,
+    )
+    if not password:
+        if identities(sock):
+            return
+        die(UNLOCK_HINT)
+    if not ssh_add_key(key, sock, password):
+        if env_pass:
+            die("SSH_KEY_PASSPHRASE was rejected.")
+        die("ssh-add failed.")
+
+
+if __name__ == "__main__":
+    main()

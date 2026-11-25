@@ -781,7 +781,7 @@ def desired_files(config, home, hooks_by_tool):
         files[home / ".config/agent-config/jira-urls"] = ("\n".join(urls) + "\n").encode()
         files[home / ".config/autostart/jira-vault-unlock.desktop"] = (
             "[Desktop Entry]\nType=Application\nName=Unlock Jira vault\n"
-            f"Exec={home}/.local/bin/mcp-atlassian-start --unlock\n"
+            f"Exec={home}/.local/bin/session-unlock\n"
             "NoDisplay=true\n").encode()
     return files, executable
 
