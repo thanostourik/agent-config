@@ -65,6 +65,8 @@
 - Never write tests (unit, integration, regression, or E2E) unless I ask.
 - Never say "done" or "fixed" without exercising the change: run it, hit the endpoint, drive the UI.
   Reading your own code is not verification.
+- When reporting a bug fix or feature change, include proof from what you ran: embed a screenshot
+  if you drove a UI, or quote the key command output, response, or log lines.
 - Follow the project's verification process (check its instructions, docs, and skills).
 - Run focused tests, type checks, and lint checks appropriate to the change.
 - Verify everything you can run yourself. If you can write the steps for me, run them. This

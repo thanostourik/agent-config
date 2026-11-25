@@ -68,6 +68,9 @@ names, and report every feature `blocked: no isolation`. Otherwise:
      applied. When a change or a rebase alters one of those (edits, renames or renumbers an
      applied migration, or adds one before it), run `verify down` first, so `verify up`
      starts from the new code.
+   - Make sure the feature of the change saves proof of the new or fixed state to `$EVIDENCE/`
+     so your report can show it: a `.png` screenshot for a UI, or the response, command
+     output, or log excerpt for an API, CLI, or job.
 3. When the feature of the change passes, run `verify affected` once. It checks what is
    near the change, and prints each feature's summary line as soon as that feature
    finishes, as `[<done>/<total>] <line>`. It drives:
@@ -327,10 +330,11 @@ wait_for 10 api GET /notes?title=verify-create-note-1
 - Use stable handles: roles and accessible names, data attributes, routes, prompt strings.
   Never coordinates or tab order. The helper calls and traps of this project are in
   `PROJECT.md`.
-- Save proof to `$EVIDENCE/`: a screenshot or snapshot for a UI, the response or output
-  otherwise. On a failure, `bin/observe.sh` saves the app's state there, and
-  `bin/server-errors.sh` saves the app's server errors since the failing step began to
-  `server-errors.txt`. The summary line then shows the first of them.
+- Save proof to `$EVIDENCE/`: a `.png` screenshot for a UI (not an accessibility snapshot),
+  or the response, command output, or log excerpt for an API, CLI, or job. On a failure,
+  `bin/observe.sh` saves the app's state there, and `bin/server-errors.sh` saves the app's
+  server errors since the failing step began to `server-errors.txt`. The summary line then
+  shows the first of them.
 
 ### Waits and errors
 
@@ -465,8 +469,14 @@ Start from the summary lines.
   `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
 - List the dead code you found: each branch no input can reach, with what reaches first.
-- Link evidence with Markdown links to absolute paths, and check that each linked file
-  exists after `verify down`.
+- For the feature of the change (a bug fix or new/altered behavior), show proof in the
+  report — not for `verify all` or unaffected regression features:
+  - **UI (web, mobile, desktop):** embed the `.png` screenshot(s) showing the new or fixed
+    state (`![caption](/abs/path/to/file.png)`), not an accessibility snapshot.
+  - **API, CLI, or job:** include a short verbatim excerpt of the real response, command
+    output, or log lines, plus a Markdown link to the full file in `$EVIDENCE/` when it is
+    longer.
+  Check that every embedded or linked evidence file exists after `verify down`.
 - Report a failed `verify down` separately: a passing feature does not mean cleanup
   succeeded.
 - For isolation level `shared`, label the report `lower confidence: shared <resources>`.
