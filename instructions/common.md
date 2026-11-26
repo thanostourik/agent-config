@@ -147,6 +147,9 @@ steps. Reading and answering questions is the only work that happens on main.
 - Servers, configuration, and credentials are read-only unless I say otherwise. This covers
   deployed environments, remote databases, config files outside the repository, and password
   stores.
+- Never read `.env` files, local or gitignored Spring Boot profile files (`application-local.*`),
+  private keys, or credential files, and never dump environment variables (`env`, `printenv`).
+  Read `.env.example` or committed base config (`application.yml`) for names, or ask me.
 
 ## New projects
 

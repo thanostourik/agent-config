@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+import json
+import os
+import posixpath
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+SAFE_ENV_SUFFIXES = (".example", ".sample", ".template", ".dist", ".schema")
+SECRET_EXTENSIONS = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore")
+HOME_SECRET_RELATIVE_PATHS = {
+    ".aws/credentials",
+    ".netrc",
+    ".git-credentials",
+    ".npmrc",
+    ".pypirc",
+    ".docker/config.json",
+    ".kube/config",
+}
+SSH_SAFE_NAMES = {"config", "known_hosts", "known_hosts.old", "authorized_keys"}
+ENV_GLOB_PATTERN = re.compile(r"(?:^|/)\.env(?:\.|\*|$)")
+KEY_GLOB_PATTERN = re.compile(r"\.(?:pem|key|p12|pfx|jks|keystore)(?:$|\*)")
+SPRING_ALWAYS_SECRET_PATTERN = re.compile(r"^(?:application|bootstrap)-(?:local|secrets?)(?:-.*)?\.(?:properties|ya?ml)$")
+SPRING_PROFILE_CONFIG_PATTERN = re.compile(r"^(?:application|bootstrap)-.+\.(?:properties|ya?ml)$")
+SPRING_GLOB_PATTERN = re.compile(r"(?:^|/)(?:application|bootstrap)-(?:local|secrets?)")
+
+
+def is_gitignored(norm_path, cwd=""):
+    probe = Path(norm_path).parent
+    while not probe.is_dir() and probe != probe.parent:
+        probe = probe.parent
+    if not probe.is_dir():
+        probe = Path(cwd) if cwd and Path(cwd).is_dir() else Path.cwd()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(probe), "check-ignore", "-q", "--", norm_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def expand_path(raw, home_str, cwd):
+    cleaned = raw.strip().strip("'\"")
+    if not cleaned:
+        return ""
+    if cleaned == "~" or cleaned.startswith("~/"):
+        cleaned = home_str + cleaned[1:]
+    cleaned = re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", home_str, cleaned)
+    if not cleaned.startswith("/") and cwd:
+        cleaned = posixpath.join(cwd, cleaned)
+    return posixpath.normpath(cleaned)
+
+
+def is_secret_path(raw, home_str, cwd=""):
+    if not raw or not isinstance(raw, str):
+        return False
+    norm = expand_path(raw, home_str, cwd)
+    if not norm:
+        return False
+    if re.match(r"^/proc/[^/]+/environ$", norm):
+        return True
+    base = posixpath.basename(norm)
+    lower = base.lower()
+    if lower in {".env", ".envrc"}:
+        return True
+    if lower.startswith(".env.") and not lower.endswith(SAFE_ENV_SUFFIXES):
+        return True
+    if not lower.endswith(SAFE_ENV_SUFFIXES):
+        if SPRING_ALWAYS_SECRET_PATTERN.match(lower):
+            return True
+        if SPRING_PROFILE_CONFIG_PATTERN.match(lower) and is_gitignored(norm, cwd):
+            return True
+    if lower.endswith(SECRET_EXTENSIONS):
+        return True
+    if norm.startswith(home_str + "/"):
+        rel = norm[len(home_str) + 1:]
+        if rel in HOME_SECRET_RELATIVE_PATHS:
+            return True
+        if rel.startswith(".ssh/") and not lower.endswith(".pub") and base not in SSH_SAFE_NAMES:
+            return True
+    return False
+
+
+def is_secret_glob(pattern):
+    if not pattern or not isinstance(pattern, str):
+        return False
+    lower = pattern.strip().lower()
+    if any(lower.endswith(suffix) for suffix in SAFE_ENV_SUFFIXES):
+        return False
+    if ENV_GLOB_PATTERN.search(lower):
+        return True
+    if KEY_GLOB_PATTERN.search(lower):
+        return True
+    if SPRING_GLOB_PATTERN.search(lower):
+        return True
+    return False
+
+
+def extract_targets(payload):
+    if "toolCall" in payload:
+        args = (payload.get("toolCall") or {}).get("args") or {}
+        paths = [
+            args.get(key)
+            for key in ("Path", "path", "file_path", "SearchPath", "SearchDirectory", "Directory", "TargetFile", "AbsolutePath")
+            if isinstance(args.get(key), str)
+        ]
+        globs = [
+            args.get(key)
+            for key in ("Pattern", "pattern", "glob", "Includes")
+            if isinstance(args.get(key), str)
+        ]
+        return "antigravity", paths, globs, payload.get("cwd") or ""
+    if "toolInput" in payload:
+        args = payload.get("toolInput") or {}
+        paths = [
+            args.get(key)
+            for key in ("file_path", "path", "file", "target_file")
+            if isinstance(args.get(key), str)
+        ]
+        globs = [
+            args.get(key)
+            for key in ("glob", "pattern")
+            if isinstance(args.get(key), str)
+        ]
+        return "grok", paths, globs, payload.get("cwd") or ""
+    if "hookEventName" in payload:
+        return "antigravity", [], [], payload.get("cwd") or ""
+    if payload.get("hook_event_name") == "beforeReadFile" or (
+        "file_path" in payload and "tool_input" not in payload
+    ):
+        paths = [payload.get(key) for key in ("file_path", "path") if isinstance(payload.get(key), str)]
+        return "cursor", paths, [], payload.get("cwd") or ""
+    args = payload.get("tool_input") or {}
+    paths = [
+        args.get(key)
+        for key in ("file_path", "path", "file", "target_file")
+        if isinstance(args.get(key), str)
+    ]
+    globs = [
+        args.get(key)
+        for key in ("glob", "pattern")
+        if isinstance(args.get(key), str)
+    ]
+    return "claude_or_codex", paths, globs, payload.get("cwd") or ""
+
+
+def check_targets(paths, globs, cwd=""):
+    home_str = posixpath.normpath(str(Path.home()))
+    for path in paths:
+        if is_secret_path(path, home_str, cwd):
+            return (
+                f"Blocked: reading '{path}' is not allowed because it may contain secrets or credentials. "
+                "Read '.env.example' for variable names or ask the user."
+            )
+    for pattern in globs:
+        if is_secret_glob(pattern):
+            return (
+                f"Blocked: searching with pattern '{pattern}' targets secret or credential files. "
+                "Read '.env.example' for variable names or ask the user."
+            )
+    return None
+
+
+def main():
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return 0
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    protocol, paths, globs, cwd = extract_targets(payload)
+    reason = check_targets(paths, globs, cwd=cwd)
+    if protocol in ("antigravity", "grok"):
+        if reason:
+            print(json.dumps({"decision": "deny", "reason": reason}))
+        else:
+            print(json.dumps({"decision": "allow"}))
+        return 0
+    if protocol == "cursor":
+        if reason:
+            print(json.dumps({"permission": "deny", "user_message": reason, "agent_message": reason}))
+        else:
+            print(json.dumps({"permission": "allow"}))
+        return 0
+    if reason:
+        print(reason, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
