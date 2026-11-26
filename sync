@@ -87,6 +87,13 @@ HOOK_EVENTS = {
         "cursor": ("beforeShellExecution", None),
         "gemini": ("PreToolUse", "run_command"),
     },
+    "before-read": {
+        "claude-code": ("PreToolUse", "Read|Grep|Glob"),
+        "codex": ("PreToolUse", "Read|Grep|Glob"),
+        "grok": ("PreToolUse", "Read|Grep|Glob"),
+        "cursor": ("beforeReadFile", None),
+        "gemini": ("PreToolUse", "read_file|grep_search|find_by_name"),
+    },
 }
 CURSOR_HEADER = "---\ndescription: Personal agent configuration\nglobs: \nalwaysApply: true\n---\n\n"
 INSTANCE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")

@@ -54,7 +54,8 @@
     "verify-recorder": { "enabled": true }
   },
   "hooks": {
-    "guard-command": { "enabled": true }
+    "guard-command": { "enabled": true },
+    "guard-read": { "enabled": true }
   },
   "mcp": {
     "jira": {

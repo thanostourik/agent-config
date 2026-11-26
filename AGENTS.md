@@ -45,8 +45,12 @@ Two things to keep as they are:
   Python.
   `guard-command` is a pre-command hook script that blocks irreversible
   system-wide destructive commands (Docker prunes, bulk Docker removals,
-  recursive `rm` on root/home/system directories, and raw disk writes) across
+  recursive `rm` on root/home/system directories, and raw disk writes), env
+  dumps, and shell reads of `.env`, private key, and credential files across
   Claude Code, Codex, Grok, Cursor, and Antigravity. It needs only Python.
+  `guard-read` is a pre-read hook script that blocks file read and search tools
+  from opening `.env`, private key, and credential files across those same five
+  tools. It needs only Python.
   `mcp-atlassian-start` bridges a coding tool's stdio MCP connection to a
   persistent, sandboxed `mcp-atlassian` HTTP daemon (`systemd` user unit
   `jira-mcp-<hash>`) running pinned `uvx mcp-atlassian==<version>` inside `bwrap`
@@ -215,7 +219,7 @@ unknown or repeated names stop sync before any write. Per-tool hooks and agent
 definitions use their tool directory and have no `harness` field. `event` must be a key
 of the `HOOK_EVENTS` table in `sync`, which maps it to each tool's event name
 and item shape. Today that table
-holds `after-edit` and `before-command`. Add a row when a hook needs another event. `timeout`
+holds `after-edit`, `before-command`, and `before-read`. Add a row when a hook needs another event. `timeout`
 is seconds. Keys other than these four stop sync. A name under `hooks` in
 `config.json` that matches no hook file only prints a warning, so a removed
 hook is still cleaned up. The old per-tool keys (`claude-code`, `codex`,

@@ -45,6 +45,24 @@ PROTECTED_ROOT_DIRS = {
     "/bin", "/sbin", "/opt", "/root", "/srv", "/sys", "/proc", "/dev",
 }
 SAFE_DEV_TARGETS = {"/dev/null", "/dev/zero", "/dev/stdout", "/dev/stderr", "/dev/full"}
+SAFE_ENV_SUFFIXES = (".example", ".sample", ".template", ".dist", ".schema")
+SECRET_EXTENSIONS = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore")
+HOME_SECRET_RELATIVE_PATHS = {
+    ".aws/credentials",
+    ".netrc",
+    ".git-credentials",
+    ".npmrc",
+    ".pypirc",
+    ".docker/config.json",
+    ".kube/config",
+}
+SSH_SAFE_NAMES = {"config", "known_hosts", "known_hosts.old", "authorized_keys"}
+SECRET_READ_COMMANDS = {
+    "cat", "head", "tail", "less", "more", "bat", "batcat", "nl", "od",
+    "xxd", "hexdump", "strings", "base64", "grep", "egrep", "fgrep", "rg",
+    "ag", "ack", "sed", "awk", "gawk", "mawk", "cut", "sort", "jq", "yq",
+    "diff", "source", ".",
+}
 ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
 HEREDOC_START = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_-]*)\1")
 COMMAND_SEPARATOR = re.compile(r"^(?:;|&&|\|\||&|\n|\(|\)|\{|\})$")
@@ -344,13 +362,119 @@ def extract_nested_shell_command(tokens):
     return None
 
 
+def is_secret_path(arg, home_str, cwd):
+    cleaned = arg.strip().strip("'\"")
+    if not cleaned:
+        return False
+    expanded = cleaned
+    if expanded == "~" or expanded.startswith("~/"):
+        expanded = home_str + expanded[1:]
+    expanded = re.sub(r"^\$(?:HOME|\{HOME\})(?=/|$)", home_str, expanded)
+    if not expanded.startswith("/") and cwd:
+        expanded = posixpath.join(cwd, expanded)
+    norm = posixpath.normpath(expanded)
+    if re.match(r"^/proc/[^/]+/environ$", norm):
+        return True
+    base = posixpath.basename(norm)
+    lower = base.lower()
+    if lower in {".env", ".envrc"}:
+        return True
+    if lower.startswith(".env.") and not lower.endswith(SAFE_ENV_SUFFIXES):
+        return True
+    if lower.endswith(SECRET_EXTENSIONS):
+        return True
+    if norm.startswith(home_str + "/"):
+        rel = norm[len(home_str) + 1:]
+        if rel in HOME_SECRET_RELATIVE_PATHS:
+            return True
+        if rel.startswith(".ssh/") and not lower.endswith(".pub") and base not in SSH_SAFE_NAMES:
+            return True
+    return False
+
+
+def input_redirection_targets(tokens):
+    targets = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "<" and i + 1 < len(tokens):
+            targets.append(tokens[i + 1])
+            i += 2
+            continue
+        if tok.startswith("<") and not tok.startswith("<<") and len(tok) > 1:
+            targets.append(tok[1:])
+        i += 1
+    return targets
+
+
+def check_env_dump(raw_tokens):
+    tokens = strip_redirections(raw_tokens)
+    while tokens and ENV_ASSIGNMENT.match(tokens[0]):
+        tokens = tokens[1:]
+    if not tokens:
+        return None
+    head = os.path.basename(tokens[0])
+    rest = tokens[1:]
+    if head == "printenv":
+        return "Blocked: 'printenv' dumps environment variables that may contain secrets. Check '.env.example' or ask the user."
+    if head == "env":
+        i = 0
+        while i < len(rest):
+            if rest[i] in {"-u", "-C", "-S"}:
+                i += 2
+            elif rest[i].startswith("-") or ENV_ASSIGNMENT.match(rest[i]):
+                i += 1
+            else:
+                break
+        if i >= len(rest):
+            return "Blocked: bare 'env' dumps environment variables that may contain secrets. Check '.env.example' or ask the user."
+    if head == "export":
+        if not rest or any(tok == "-p" for tok in rest):
+            return "Blocked: 'export' without assignments dumps environment variables that may contain secrets."
+    if head in {"declare", "typeset"}:
+        if any(tok.startswith("-") and not tok.startswith("--") and ("p" in tok[1:] or "x" in tok[1:]) for tok in rest) and not any("=" in tok for tok in rest):
+            return f"Blocked: '{head}' dumps environment variables that may contain secrets."
+    if head == "compgen" and any(tok.startswith("-") and not tok.startswith("--") and "e" in tok[1:] for tok in rest):
+        return "Blocked: 'compgen -e' lists environment variables."
+    if head == "set" and not rest:
+        return "Blocked: bare 'set' dumps all shell and environment variables."
+    return None
+
+
+def check_secret_read(raw_tokens, unwrapped_tokens, cwd):
+    home_str = posixpath.normpath(str(Path.home()))
+    for target in input_redirection_targets(raw_tokens):
+        if is_secret_path(target, home_str, cwd):
+            return (
+                f"Blocked: redirecting '{target}' into a command reads a secret or credential file. "
+                "Read '.env.example' for variable names or ask the user."
+            )
+    if not unwrapped_tokens:
+        return None
+    head = os.path.basename(unwrapped_tokens[0])
+    if head not in SECRET_READ_COMMANDS:
+        return None
+    for tok in unwrapped_tokens[1:]:
+        if tok == "--" or (tok.startswith("-") and tok != "-"):
+            continue
+        if is_secret_path(tok, home_str, cwd):
+            return (
+                f"Blocked: '{head}' on '{tok}' reads a secret or credential file. "
+                "Read '.env.example' for variable names or ask the user."
+            )
+    return None
+
+
 def check_command(command, cwd="", depth=0):
     if not command or depth > 4:
         return None
     tokens = tokenize_shell(command)
     for pipeline in split_pipelines(tokens):
         unwrapped_stages = [unwrap_command(stage) for stage in pipeline]
-        for idx, stage in enumerate(unwrapped_stages):
+        for idx, (raw_stage, stage) in enumerate(zip(pipeline, unwrapped_stages)):
+            reason = check_env_dump(raw_stage) or check_secret_read(raw_stage, stage, cwd)
+            if reason:
+                return reason
             if not stage:
                 continue
             nested = extract_nested_shell_command(stage)
@@ -369,7 +493,12 @@ def check_command(command, cwd="", depth=0):
             if idx > 0 and os.path.basename(stage[0]) == "xargs":
                 inner = unwrap_xargs(stage)
                 if inner:
-                    reason = check_docker(inner) or check_rm(inner, cwd) or check_raw_disk(inner)
+                    reason = (
+                        check_docker(inner)
+                        or check_rm(inner, cwd)
+                        or check_raw_disk(inner)
+                        or check_secret_read(inner, inner, cwd)
+                    )
                     if reason:
                         return reason
                     if is_docker_remove(inner) and any(is_docker_list(prev) for prev in unwrapped_stages[:idx]):

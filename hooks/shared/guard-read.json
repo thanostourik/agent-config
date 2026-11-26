@@ -1,0 +1,5 @@
+{
+  "event": "before-read",
+  "command": "$HOME/.local/bin/guard-read",
+  "timeout": 10
+}

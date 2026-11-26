@@ -66,4 +66,5 @@ Sync installs the scripts in `bin/` to `~/.local/bin/`.
 | `verify-time` | Prints how much of the working time of Claude Code sessions went into `bin/verify`: drives, stack starts, drive rounds, repeated drives and waiting for room. Needs only Python. |
 | `mcp-atlassian-start` | Starts the Jira MCP server with the login it reads from Bitwarden. |
 | `jira-gate-proxy` | Lets `mcp-atlassian-start --gate` reach a Jira that sits behind Authentik. |
-| `guard-command` | Pre-command hook script that blocks irreversible system-wide destructive commands (Docker prunes, bulk Docker wipes, recursive `rm` on root/home/system directories, and raw disk writes). |
+| `guard-command` | Pre-command hook script that blocks irreversible system-wide destructive commands (Docker prunes, bulk Docker wipes, recursive `rm` on root/home/system directories, and raw disk writes), env dumps, and shell reads of `.env` and credential files. |
+| `guard-read` | Pre-read hook script that blocks file read and search tools from opening `.env`, private key, and credential files. |
