@@ -55,7 +55,7 @@ TOOLS = {
                     "skills": ".claude/skills", "agents": ".claude/agents"},
     "codex": {"instructions": ".codex/AGENTS.md", "hooks": ".codex/hooks.json",
               "skills": ".codex/skills", "agents": ".codex/agents"},
-    "grok": {"instructions": ".grok/AGENTS.md",
+    "grok": {"instructions": ".grok/AGENTS.md", "hooks": ".grok/hooks/agent-config.json",
              "skills": ".grok/skills", "agents": ".grok/agents"},
     "opencode": {"instructions": ".config/opencode/AGENTS.md",
                  "skills": ".config/opencode/skill", "agents": ".config/opencode/agent"},
@@ -76,12 +76,14 @@ HOOK_EVENTS = {
     "after-edit": {
         "claude-code": ("PostToolUse", "Write|Edit|MultiEdit"),
         "codex": ("PostToolUse", None),
+        "grok": ("PostToolUse", "Write|Edit|MultiEdit"),
         "cursor": ("afterFileEdit", None),
         "gemini": ("PostToolUse", "edit_file|write_file"),
     },
     "before-command": {
         "claude-code": ("PreToolUse", "Bash"),
         "codex": ("PreToolUse", "Bash"),
+        "grok": ("PreToolUse", "Bash"),
         "cursor": ("beforeShellExecution", None),
         "gemini": ("PreToolUse", "run_command"),
     },

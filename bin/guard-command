@@ -381,9 +381,14 @@ def check_command(command, cwd="", depth=0):
 
 
 def detect_protocol(payload):
-    if "toolCall" in payload or "hookEventName" in payload:
+    if "toolCall" in payload:
         args = (payload.get("toolCall") or {}).get("args") or {}
         return "antigravity", args.get("CommandLine") or "", payload.get("cwd") or ""
+    if "toolInput" in payload:
+        tool_input = payload.get("toolInput") or {}
+        return "grok", tool_input.get("command") or "", payload.get("cwd") or ""
+    if "hookEventName" in payload:
+        return "antigravity", "", payload.get("cwd") or ""
     if payload.get("hook_event_name") == "beforeShellExecution" or (
         "command" in payload and "tool_input" not in payload
     ):
@@ -404,7 +409,7 @@ def main():
         return 0
     protocol, command, cwd = detect_protocol(payload)
     reason = check_command(command, cwd=cwd)
-    if protocol == "antigravity":
+    if protocol in ("antigravity", "grok"):
         if reason:
             print(json.dumps({"decision": "deny", "reason": reason}))
         else:

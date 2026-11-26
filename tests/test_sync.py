@@ -159,7 +159,7 @@ class SyncTest(unittest.TestCase):
         self.run_sync("--check")
 
     def test_hook_for_a_tool_without_hooks_stops_sync(self):
-        self.write_hook("grok", "edit", {"afterFileEdit": []})
+        self.write_hook("opencode", "edit", {"afterFileEdit": []})
         self.run_sync("--apply", expected=2)
         self.assertFalse(self.home.exists())
 
@@ -180,6 +180,9 @@ class SyncTest(unittest.TestCase):
             {"PostToolUse": [{"hooks": [{"type": "command", "command": "lint"}]},
                              {"hooks": [render]}]})
         self.assertEqual(
+            json.loads((self.home / ".grok/hooks/agent-config.json").read_text())["hooks"],
+            {"PostToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [render]}]})
+        self.assertEqual(
             json.loads((self.home / ".cursor/hooks.json").read_text())["hooks"],
             {"afterFileEdit": [{"command": "fmt"},
                                {"command": "render --hook", "timeout": 30}]})
@@ -190,7 +193,7 @@ class SyncTest(unittest.TestCase):
         self.write_hook("shared", "render", {"event": ["after-edit"], "command": "x"})
         self.run_sync("--apply", expected=2)
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
-                                             "harness": "grok"})
+                                             "harness": "opencode"})
         self.run_sync("--apply", expected=2)
         self.write_hook("shared", "render", {"event": "after-edit", "command": "x",
                                              "timeouts": 30})

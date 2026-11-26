@@ -32,7 +32,7 @@ Two things to keep as they are:
 - `agents/<tool>/<name>.*`: an agent definition for one tool.
 - `hooks/<tool>/<name>.json`: one hook for one tool, in that tool's native
   shape: an object of event name to list of hook items, the same object that
-  sits under the tool's `hooks` key. Only Claude Code, Codex, Cursor,
+  sits under the tool's `hooks` key. Only Claude Code, Codex, Grok, Cursor,
   and Antigravity support hooks.
 - `hooks/shared/<name>.json`: one hook for every tool with hooks, written once
   in a neutral shape that sync translates. See "Hooks" below.
@@ -46,7 +46,7 @@ Two things to keep as they are:
   `guard-command` is a pre-command hook script that blocks irreversible
   system-wide destructive commands (Docker prunes, bulk Docker removals,
   recursive `rm` on root/home/system directories, and raw disk writes) across
-  Claude Code, Codex, Cursor, and Antigravity. It needs only Python.
+  Claude Code, Codex, Grok, Cursor, and Antigravity. It needs only Python.
   `mcp-atlassian-start` bridges a coding tool's stdio MCP connection to a
   persistent, sandboxed `mcp-atlassian` HTTP daemon (`systemd` user unit
   `jira-mcp-<hash>`) running pinned `uvx mcp-atlassian==<version>` inside `bwrap`
@@ -165,7 +165,7 @@ entry of another shape, or a malformed `{{allow` marker stops sync.
 | --- | --- | --- | --- | --- | --- |
 | `claude-code` | `~/.claude/CLAUDE.md` | `~/.claude/skills/` | `~/.claude/agents/` | `~/.claude/settings.json` | `~/.claude.json` (`mcpServers`) |
 | `codex` | `~/.codex/AGENTS.md` | `~/.codex/skills/` | `~/.codex/agents/` | `~/.codex/hooks.json` | `~/.codex/config.toml` (`mcp_servers`) |
-| `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | none | `~/.grok/config.toml` (`mcp_servers`) |
+| `grok` | `~/.grok/AGENTS.md` | `~/.grok/skills/` | `~/.grok/agents/` | `~/.grok/hooks/agent-config.json` | `~/.grok/config.toml` (`mcp_servers`) |
 | `opencode` | `~/.config/opencode/AGENTS.md` | `~/.config/opencode/skill/` | `~/.config/opencode/agent/` | none | `~/.config/opencode/opencode.json` (`mcp`) |
 | `cursor` | `~/.cursor/rules/agent-config.mdc` | `~/.cursor/skills/` | `~/.cursor/agents/` | `~/.cursor/hooks.json` | `~/.cursor/mcp.json` (`mcpServers`) |
 | `gemini` | `~/.gemini/config/AGENTS.md` | `~/.gemini/config/skills/` | `~/.gemini/config/agents/` | `~/.gemini/config/hooks.json` | `~/.gemini/config/mcp_config.json` (`mcpServers`) |
@@ -209,8 +209,8 @@ A shared hook looks like this:
 }
 ```
 
-Without `harness`, a shared hook installs to Claude Code, Codex, Cursor, and
-Antigravity. When present, it selects only the listed tools from those four;
+Without `harness`, a shared hook installs to Claude Code, Codex, Grok, Cursor,
+and Antigravity. When present, it selects only the listed tools from those five;
 unknown or repeated names stop sync before any write. Per-tool hooks and agent
 definitions use their tool directory and have no `harness` field. `event` must be a key
 of the `HOOK_EVENTS` table in `sync`, which maps it to each tool's event name
@@ -223,8 +223,8 @@ hook is still cleaned up. The old per-tool keys (`claude-code`, `codex`,
 to keep one hook away from one tool, list the other tools in its `harness`.
 
 Sync merges the enabled hooks of each tool, sorted by name, into one object of
-event name to hook items. Codex gets it as `{"hooks": ...}` in its hook file,
-Cursor as `{"version": 1, "hooks": ...}`. Antigravity's `hooks.json` holds
+event name to hook items. Codex and Grok get it as `{"hooks": ...}` in their
+hook files, Cursor as `{"version": 1, "hooks": ...}`. Antigravity's `hooks.json` holds
 named hooks, so it gets `{"agent-config": ...}`. Claude Code keeps hooks inside
 `settings.json` next to other settings, so sync owns only the `hooks` key
 there: it reads the installed `settings.json`, replaces that one key, and
