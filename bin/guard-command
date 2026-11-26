@@ -4,6 +4,7 @@ import os
 import posixpath
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -57,6 +58,8 @@ HOME_SECRET_RELATIVE_PATHS = {
     ".kube/config",
 }
 SSH_SAFE_NAMES = {"config", "known_hosts", "known_hosts.old", "authorized_keys"}
+SPRING_ALWAYS_SECRET_PATTERN = re.compile(r"^(?:application|bootstrap)-(?:local|secrets?)(?:-.*)?\.(?:properties|ya?ml)$")
+SPRING_PROFILE_CONFIG_PATTERN = re.compile(r"^(?:application|bootstrap)-.+\.(?:properties|ya?ml)$")
 SECRET_READ_COMMANDS = {
     "cat", "head", "tail", "less", "more", "bat", "batcat", "nl", "od",
     "xxd", "hexdump", "strings", "base64", "grep", "egrep", "fgrep", "rg",
@@ -362,6 +365,24 @@ def extract_nested_shell_command(tokens):
     return None
 
 
+def is_gitignored(norm_path, cwd=""):
+    probe = Path(norm_path).parent
+    while not probe.is_dir() and probe != probe.parent:
+        probe = probe.parent
+    if not probe.is_dir():
+        probe = Path(cwd) if cwd and Path(cwd).is_dir() else Path.cwd()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(probe), "check-ignore", "-q", "--", norm_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def is_secret_path(arg, home_str, cwd):
     cleaned = arg.strip().strip("'\"")
     if not cleaned:
@@ -381,6 +402,11 @@ def is_secret_path(arg, home_str, cwd):
         return True
     if lower.startswith(".env.") and not lower.endswith(SAFE_ENV_SUFFIXES):
         return True
+    if not lower.endswith(SAFE_ENV_SUFFIXES):
+        if SPRING_ALWAYS_SECRET_PATTERN.match(lower):
+            return True
+        if SPRING_PROFILE_CONFIG_PATTERN.match(lower) and is_gitignored(norm, cwd):
+            return True
     if lower.endswith(SECRET_EXTENSIONS):
         return True
     if norm.startswith(home_str + "/"):
