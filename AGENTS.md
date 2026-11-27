@@ -54,7 +54,9 @@ Two things to keep as they are:
   `mcp-atlassian-start` bridges a coding tool's stdio MCP connection to a
   persistent, sandboxed `mcp-atlassian` HTTP daemon (`systemd` user unit
   `jira-mcp-<hash>`) running pinned `uvx mcp-atlassian==<version>` inside `bwrap`
-  (bubblewrap) with no access to the user's home directory or runtime sockets.
+  (bubblewrap) with no access to runtime sockets or the user's home directory
+  except a read-only bind of `~/.mcp-atlassian/files` (`MCP_ATLASSIAN_FILES_DIR`)
+  for staging Jira attachments.
   The daemon listens on `127.0.0.1` at a random secret path stored in a `0600`
   state file in `XDG_RUNTIME_DIR`, so thread starts connect in milliseconds
   instead of booting Python and FastMCP on every thread. Pass `--gate` when

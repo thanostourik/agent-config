@@ -326,6 +326,10 @@ def read_configured_urls(home):
     return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def files_dir_for(home):
+    return home / ".mcp-atlassian" / "files"
+
+
 def build_sandbox_cmd(home, extra_args, offline=True):
     need("uvx", "bwrap")
     uvx_which = shutil.which("uvx")
@@ -336,8 +340,13 @@ def build_sandbox_cmd(home, extra_args, offline=True):
         or Path(os.environ.get("XDG_CACHE_HOME") or home / ".cache") / "uv"
     )
     uv_data = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "uv"
+    files_dir = files_dir_for(home)
     uv_cache.mkdir(parents=True, exist_ok=True)
     uv_data.mkdir(parents=True, exist_ok=True)
+    files_dir_existed = files_dir.exists()
+    files_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not files_dir_existed:
+        files_dir.chmod(0o700)
 
     cmd = [
         "bwrap",
@@ -360,6 +369,7 @@ def build_sandbox_cmd(home, extra_args, offline=True):
         "--tmpfs", str(home),
         "--bind", str(uv_data), str(uv_data),
         "--bind", str(uv_cache), str(uv_cache),
+        "--ro-bind", str(files_dir), str(files_dir),
     ]
     home_prefix = str(home) + os.sep
     bound = set()
@@ -375,7 +385,7 @@ def build_sandbox_cmd(home, extra_args, offline=True):
     return cmd
 
 
-def build_mcp_env(jira_url, jira_user, jira_token):
+def build_mcp_env(jira_url, jira_user, jira_token, files_dir):
     env = {
         "PATH": os.environ["PATH"],
         "HOME": os.environ["HOME"],
@@ -383,6 +393,7 @@ def build_mcp_env(jira_url, jira_user, jira_token):
         "JIRA_USERNAME": jira_user,
         "JIRA_API_TOKEN": jira_token,
         "ALLOW_GLOBAL_CRED_FALLBACK": "true",
+        "MCP_ATLASSIAN_FILES_DIR": str(files_dir),
     }
     for key in (
         "LANG",
@@ -459,7 +470,7 @@ def tcp_ready(port):
         return False
 
 
-def read_daemon_state(state_path):
+def read_daemon_state(state_path, files_dir):
     if not state_path.is_file():
         return None
     try:
@@ -468,6 +479,7 @@ def read_daemon_state(state_path):
         return None
     if (not isinstance(data, dict)
             or data.get("spec") != MCP_ATLASSIAN_SPEC
+            or data.get("files_dir") != str(files_dir)
             or not isinstance(data.get("port"), int)
             or not isinstance(data.get("path"), str)):
         return None
@@ -524,6 +536,7 @@ def serve_daemon(home, runtime, url, gate, state_path):
     cached = ensure_cached(sock_path, lock_path, targets)
     jira_user, jira_password = cached[url]
 
+    files_dir = files_dir_for(home)
     proxy = None
     proxy_url = ""
     if gate:
@@ -532,9 +545,9 @@ def serve_daemon(home, runtime, url, gate, state_path):
         proxy, proxy_url = start_gate_proxy(
             url, jira_user, jira_password, gate_user, gate_password, proxy_token
         )
-        mcp_env = build_mcp_env(proxy_url, jira_user, proxy_token)
+        mcp_env = build_mcp_env(proxy_url, jira_user, proxy_token, files_dir)
     else:
-        mcp_env = build_mcp_env(url, jira_user, jira_password)
+        mcp_env = build_mcp_env(url, jira_user, jira_password, files_dir)
 
     port = free_port()
     mcp_path = "/mcp/" + secrets.token_urlsafe(32)
@@ -546,6 +559,7 @@ def serve_daemon(home, runtime, url, gate, state_path):
         "proxy_url": proxy_url,
         "url": url.rstrip("/"),
         "spec": MCP_ATLASSIAN_SPEC,
+        "files_dir": str(files_dir),
     })
 
     def stop(signum, _frame):
@@ -569,10 +583,11 @@ def serve_daemon(home, runtime, url, gate, state_path):
     raise SystemExit(code)
 
 
-def ensure_daemon(runtime, url, gate):
+def ensure_daemon(home, runtime, url, gate):
     key = instance_key(url, gate)
+    files_dir = files_dir_for(home)
     state_path = runtime / f"jira-mcp-{key}.json"
-    state = read_daemon_state(state_path)
+    state = read_daemon_state(state_path, files_dir)
     if state is not None:
         return state
 
@@ -589,7 +604,7 @@ def ensure_daemon(runtime, url, gate):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
-        state = read_daemon_state(state_path)
+        state = read_daemon_state(state_path, files_dir)
         if state is not None:
             return state
         unit = f"jira-mcp-{key}"
@@ -618,7 +633,7 @@ def ensure_daemon(runtime, url, gate):
         )
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
-            state = read_daemon_state(state_path)
+            state = read_daemon_state(state_path, files_dir)
             if state is not None:
                 return state
             time.sleep(0.05)
@@ -643,8 +658,8 @@ def extract_sse_payloads(body):
     return payloads
 
 
-def bridge_stdio(runtime, url, gate):
-    state = ensure_daemon(runtime, url, gate)
+def bridge_stdio(home, runtime, url, gate):
+    state = ensure_daemon(home, runtime, url, gate)
     conn = http.client.HTTPConnection("127.0.0.1", state["port"], timeout=120)
     headers = {
         "Content-Type": "application/json",
@@ -662,7 +677,7 @@ def bridge_stdio(runtime, url, gate):
                 conn.close()
                 if attempt == 1:
                     raise
-                state = ensure_daemon(runtime, url, gate)
+                state = ensure_daemon(home, runtime, url, gate)
                 conn = http.client.HTTPConnection("127.0.0.1", state["port"], timeout=120)
 
     try:
@@ -732,7 +747,7 @@ def main():
             stripped = u.rstrip("/")
             if stripped.endswith("/auth-gate"):
                 continue
-            ensure_daemon(runtime, stripped, f"{stripped}/auth-gate" in url_set)
+            ensure_daemon(home, runtime, stripped, f"{stripped}/auth-gate" in url_set)
         return
 
     url = args[0]
@@ -742,7 +757,7 @@ def main():
     elif len(args) != 1:
         die("usage: mcp-atlassian-start <jira-url> [--gate] | --unlock [<url> ...]")
 
-    bridge_stdio(runtime, url, gate)
+    bridge_stdio(home, runtime, url, gate)
 
 
 if __name__ == "__main__":
