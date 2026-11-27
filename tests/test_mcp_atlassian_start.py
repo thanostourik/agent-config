@@ -80,7 +80,8 @@ args = sys.argv[1:]
 env_out = Path(os.environ["FAKE_ENV_OUT"])
 keys = [
     "JIRA_URL", "JIRA_USERNAME", "JIRA_API_TOKEN",
-    "ALLOW_GLOBAL_CRED_FALLBACK", "READ_ONLY_MODE", "BW_SESSION", "XDG_RUNTIME_DIR",
+    "ALLOW_GLOBAL_CRED_FALLBACK", "MCP_ATLASSIAN_FILES_DIR",
+    "READ_ONLY_MODE", "BW_SESSION", "XDG_RUNTIME_DIR",
 ]
 data = {k: os.environ.get(k) for k in keys}
 data["argv"] = args
@@ -271,6 +272,10 @@ os.execv(args[idx], args[idx:])
         self.assertEqual(out["JIRA_USERNAME"], "jira-user")
         self.assertEqual(out["JIRA_API_TOKEN"], "jira-password")
         self.assertEqual(out["ALLOW_GLOBAL_CRED_FALLBACK"], "true")
+        files_dir = self.root / ".mcp-atlassian/files"
+        self.assertEqual(out["MCP_ATLASSIAN_FILES_DIR"], str(files_dir))
+        self.assertTrue(files_dir.is_dir())
+        self.assertEqual(os.stat(files_dir).st_mode & 0o777, 0o700)
         self.assertIsNone(out["READ_ONLY_MODE"])
         self.assertIsNone(out["BW_SESSION"])
         self.assertIsNone(out["XDG_RUNTIME_DIR"])
@@ -279,12 +284,37 @@ os.execv(args[idx], args[idx:])
         self.assertIn("--stateless", out["argv"])
         bwrap_args = json.loads(self.bwrap_out.read_text())
         self.assertIn("--unshare-pid", bwrap_args)
-        self.assertIn("--tmpfs", bwrap_args)
+        tmpfs_home_idx = next(
+            i for i in range(len(bwrap_args) - 1)
+            if bwrap_args[i] == "--tmpfs" and bwrap_args[i + 1] == str(self.root)
+        )
+        ro_bind_files_idx = next(
+            i for i in range(len(bwrap_args) - 2)
+            if bwrap_args[i:i + 3] == ["--ro-bind", str(files_dir), str(files_dir)]
+        )
+        self.assertGreater(ro_bind_files_idx, tmpfs_home_idx)
 
         # Warm daemon bridge works even with minimal PATH (no bw, uvx, or bwrap).
         warm = self.run_helper(extra_env={"PATH": "/usr/bin:/bin"})
         warm_lines = [json.loads(line) for line in warm.stdout.splitlines() if line.strip()]
         self.assertEqual(warm_lines[0]["result"]["echo"], "initialize")
+
+    def test_stale_daemon_state_without_files_dir_restarts_daemon(self):
+        self.start_cred_agent({
+            "https://jira.example.com": {"username": "jira-user", "password": "jira-password"},
+        })
+        self.run_helper()
+        state_path = next(self.runtime.glob("jira-mcp-*.json"))
+        state = json.loads(state_path.read_text())
+        self.assertEqual(state["files_dir"], str(self.root / ".mcp-atlassian/files"))
+        stale_port = state["port"]
+        del state["files_dir"]
+        state_path.write_text(json.dumps(state) + "\n")
+
+        self.run_helper()
+        refreshed = json.loads(state_path.read_text())
+        self.assertEqual(refreshed["files_dir"], str(self.root / ".mcp-atlassian/files"))
+        self.assertNotEqual(refreshed["port"], stale_port)
 
     def test_falls_back_to_host_when_full_url_is_missing(self):
         self.start_cred_agent()
