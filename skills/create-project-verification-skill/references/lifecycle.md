@@ -62,6 +62,21 @@ and `cleanup.sh` deletes that record.
 - When there is no such clone, or more than one, `launch.sh` stops. It names the repo and
   says to clone it next to this one.
 
+## Local env and config files
+
+When the app cannot run with stubs alone and needs gitignored env or local config files
+(such as `.env`, `.env.local`, `.env.*`, or `application-local.*`), a fresh git worktree
+does not have them, and agent hooks may block agents from reading them directly.
+
+- `launch.sh` (and any `start-<part>.sh`) handles them itself. When a required file is
+  missing in this checkout and this checkout is a worktree, copy or read it from the main
+  clone (the folder holding `git rev-parse --path-format=absolute --git-common-dir`),
+  without modifying the main clone and without printing the file's contents.
+- When the file is missing in the main clone too, stop and print the repo's bootstrap step
+  (such as its setup script or `.env.example` instructions).
+- Never ask an agent to read secret files while generating `launch.sh`: read `.env.example`
+  or the source code for required variable names instead.
+
 ## Ownership
 
 The ownership record in `.cache/` lists what the run created. An environment is **owned**

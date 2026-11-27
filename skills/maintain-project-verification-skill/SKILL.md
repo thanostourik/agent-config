@@ -41,7 +41,7 @@ It is safe to run again. Commit its result before anything else.
 ## 2. Do what it lists
 
 Do the items the script lists, in the order it lists them, and nothing else. An item with
-no entry below is done as its line says. Three more items, marked "every upgrade", are
+no entry below is done as its line says. Four more items, marked "every upgrade", are
 checked even when the script does not list them. Do them after the `launch.sh` items.
 
 - **`PROJECT.md`**: write it from `.cache/upgrade/SKILL.md` and `.cache/upgrade/README.md`,
@@ -78,6 +78,11 @@ checked even when the script does not list them. Do them after the `launch.sh` i
   - Replace each with the lookup that "Another repo" in `<generator>/references/lifecycle.md`
     describes, and write the repo path in `PROJECT.md` instead of the folder.
   - Delete a settings or variables file that held only such folders.
+- **Local env and config files** (every upgrade): when `launch.sh` or any `start-<part>.sh`
+  requires gitignored env or local config files (such as `.env`, `.env.local`, `.env.*`, or
+  `application-local.*`) and does not fall back to the main clone in a worktree, update it
+  as "Local env and config files" in `<generator>/references/lifecycle.md` says. Skip this
+  when the skill needs no such files.
 - **References to the removed scripts**: remove them. A helper that reads the old runner's
   files, such as an `observe.sh` reading `.cache/drive/<feature>/steps/`, reads
   `$VERIFY_DIR/log` and `$EVIDENCE` instead.
@@ -166,7 +171,19 @@ skill's work. Then run `bin/verify uncovered` and `bin/verify down`.
 
 ## 4. Ship and report
 
-Commit and open one PR as the repository's conventions say. Report:
+Commit and open one PR as the repository's conventions say.
+
+If step 3 was blocked before any required drive could run, still push the branch, open the
+PR as a draft, and run the static checks (`bin/verify lint`, `bin/verify uncovered`), but
+keep `.cache/upgrade/` and do not write the completion report below. Reply briefly with:
+
+- the draft PR link and one line on what is committed;
+- the exact blocker;
+- what you need from the user to unblock step 3.
+
+Never end a blocked reply with `"Recipes are up to date. Nothing else to run."`
+
+When step 3 finished, report:
 
 - what the script changed, and what you did from its list;
 - each drive with its command, number of features and time;
