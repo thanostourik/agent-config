@@ -102,11 +102,12 @@ names, and report every feature `blocked: no isolation`. Otherwise:
    they check something else.
 5. Work through the three lists `verify affected` also prints:
    - **Entry points and actions (`bin/actions.sh`) in changed files that no recipe
-     covers.** These are the screens, routes, buttons and handlers the change added.
-     `verify affected` fails while this list is not empty, even when every driven feature
-     passed. Give each item a step and an `# expects:` line, in the feature it belongs to
-     or in a new one. Or give it an `# expects:` line marked not driven, with its reason.
-     Then drive those features.
+     covers.** `verify affected` fails while this list is not empty, even when every
+     driven feature passed. Give each item the change added or altered a step and an
+     `# expects:` line, in the feature it belongs to or in a new one. Or give it an
+     `# expects:` line marked not driven, with its reason. Then drive those features.
+     Leave items the change did not touch as they are, and report them as coverage the
+     project lacked before this change, the reason `verify affected` still fails.
    - **Changed files no feature names, with nothing reached.** When such a file changes
      behavior a feature checks, drive that feature by name and add the file to its
      `# touches:` line. Skip files that change no behavior: tests, docs, build files.
@@ -422,8 +423,11 @@ or a test), and the actual result. Diagnose before fixing. In the log, each step
 ends with the time since the recipe began, such as `(at 21s)`. A step took the difference
 to the next line. The failure is one of:
 
-- **Recipe or helper defect:** a command, locator or wait is wrong. Fix it without changing
-  the expected behavior, and rerun the feature.
+- **Recipe or helper defect:** a command, locator or wait is wrong. Fix it when the change
+  caused it, when the change added or edited the recipe, or when it blocks a check of a
+  result the change alters. Keep the expected behavior, and rerun the feature. Otherwise
+  report it as a defect that existed before the change, with the failing step, and leave
+  it.
 - **Environment defect or missing prerequisite:** create what is missing with the project's
   own APIs or setup, inside the run's environment. Missing seed data is not a blocker.
 - **Product defect:** the app contradicts supported expected behavior. Fix the code when it
@@ -469,6 +473,8 @@ Start from the summary lines.
   `verify all`.
 - List every `# expects:` line the change left marked not driven, with its reason.
 - List the dead code you found: each branch no input can reach, with what reaches first.
+- List what you left because it existed before the change: recipe or helper defects with
+  their failing step, and uncovered items in changed files.
 - For the feature of the change (a bug fix or new/altered behavior), show proof in the
   report — not for `verify all` or unaffected regression features:
   - **UI (web, mobile, desktop):** embed the `.png` screenshot(s) showing the new or fixed
