@@ -85,6 +85,8 @@ Ask only when you are blocked:
 - the project has no isolated way to run the app
 - a launch fails, or the Doctor check refuses
 - the ready gate cannot pass
+- `peer-review-loop` must ask about a defect it may not fix within the
+  branch's scope
 - the next step is destructive, reaches outside the repository, or touches
   other branches
 - the goal is ambiguous in a way that changes the result

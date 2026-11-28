@@ -15,6 +15,8 @@ Decide alone and keep working. Ask only when:
 - you are blocked: the change cannot be verified, or `peer-review-loop` has no
   reviewer left
 - the PR's approach is wrong, or most of its code needs rewriting
+- `peer-review-loop` must ask about a defect it may not fix within the PR's
+  scope
 - another PR makes this one obsolete
 
 Ask through the harness's question tool, so the thread shows that it is
@@ -84,7 +86,8 @@ it.
       it."
     - **What I changed:** one line per change.
     - **Not part of this PR:** at most three lines, each starting with
-      `bug on main` or `idea`. Leave the section out when there is nothing.
+      `bug on main`, `bug in this PR` (a defect whose fix would grow the PR),
+      or `idea`. Leave the section out when there is nothing.
     - The paths of the proof folder and the review ledger, on one line.
 
     The proof and the declined findings are in the PR description and the

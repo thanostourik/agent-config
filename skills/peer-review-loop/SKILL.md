@@ -100,9 +100,24 @@ that instead.
      it, unless the surrounding code changed since that row's commit (in which
      case, re-evaluate it).
    - **Fixed earlier and raised again:** re-check it; the fix may not hold.
-   - **Real and introduced by this branch:** fix it with the smallest change
-     that resolves it. No refactors, renames, or new features.
-   - **Real, but pre-existing before this branch:** record it as `out of scope`.
+   - **Real defect in this branch:** a bug, regression, crash, data loss, or
+     security, auth, or permission hole in code this branch added or changed,
+     or behavior that contradicts the requirements. Fix it with the smallest
+     change that resolves it. No refactors, renames, or new features.
+   - **Out of scope:** record it as `out of scope` and do not fix it, at any
+     severity:
+     - a defect that existed before this branch
+     - work nobody asked for on this branch's code: a new capability,
+       handling for cases the requirements do not mention, extra hardening, a
+       refactor, matching changes to similar code elsewhere, or tests the
+       requirements do not ask for
+   - **Real defect, but the fix grows the branch:** the fix would change the
+     agreed behavior, API, or schema, add a dependency, or edit code unrelated
+     to this change. Do not fix it. When the branch should not ship with it
+     (security, auth, permissions, data loss, or a broken requirement), ask
+     the user through your question tool, with the fix you would make.
+     Otherwise record it as `out of scope`, with the fix it needs as the
+     reason.
    - **False positive:** decline it with a verifiable reason.
    Record every new finding in the ledger.
 6. Verify each behavior-changing fix with a focused check (such as a single test
@@ -111,7 +126,7 @@ that instead.
 
 A round is clean when every active round reviewer finished (at least one) and,
 after skipping declined and out-of-scope findings, nothing above `low` remains.
-Fix `low` findings too, but they do not require another review round.
+Fix `low` real defects too, but they do not require another review round.
 
 One-pass reviewers inspect the round-one commit while you continue fixing and
 committing. When a one-pass reviewer finishes, evaluate its findings against the
